@@ -1297,6 +1297,7 @@ STR_CONFIG_SETTING_LAND_GENERATOR_TERRA_GENESIS                 :TerraGenesis
 
 
 
+
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE                        :Mesta fjarstøða frá eggini til olju reinsiverk: {STRING}
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE_HELPTEXT               :Olju reinsiverk verða bert bygd nær eggini á kortinum, tað er við strondina fyri oyggja kort
 
@@ -1545,8 +1546,8 @@ STR_CONFIG_SETTING_NEWS_COMPANY_INFORMATION_HELPTEXT            :Vís eitt tíð
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN                           :Upplating av ídaðum : {STRING}
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN_HELPTEXT                  :Vís eitt tíðindablað tá nýggjir ídnaðir lata upp
 
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE                          :Steingjing av ídnaðum: {STRING}
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_HELPTEXT                 :Vís eitt tíðindablað tá ídnaðir steingja
+
+
 
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES                         :Búskapar broytingar: {STRING}
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES_HELPTEXT                :Vís tíðindablað um broytingar í heimsbúskapinum

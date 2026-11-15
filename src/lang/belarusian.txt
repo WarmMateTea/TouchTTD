@@ -1886,6 +1886,7 @@ STR_CONFIG_SETTING_TERRAIN_TYPE_HELPTEXT                        :Азначце 
 STR_CONFIG_SETTING_INDUSTRY_DENSITY                             :Колькасць прадпрыемстваў: {STRING}
 STR_CONFIG_SETTING_INDUSTRY_DENSITY_HELPTEXT                    :Выберыце, колькі прадпрыемстваў ствараць напачатку і на якім узроўні падтрымліваць іх колькасць падчас гульні.
 
+
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE                        :Макс. адлегласьць ад краю мапы да прадпрыемстваў нафтавае індустрыі: {STRING}
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE_HELPTEXT               :Гэта наладка абмяжоўвае адлегласьць ад краю мапы да нафтавых платформаў і нафтаперапрацоўчых заводаў. Такім чынам, на краях мапы, якія сканчаюцца вадою, яны будуць будавацца ля берага. На мапах памерам больш 256 гэта значэньне будзе адпаведна павялічана.
 
@@ -2194,8 +2195,8 @@ STR_CONFIG_SETTING_NEWS_COMPANY_INFORMATION_HELPTEXT            :Паказва�
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN                           :Адкрыцьцё новых прадпрыемстваў: {STRING}
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN_HELPTEXT                  :Паказаць ґазэту, калі адкрываецца новае прадпрыемства
 
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE                          :Закрыцьцё прадпрыемстваў: {STRING}
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_HELPTEXT                 :Паказаць ґазэту, калі нейкае прадпрыемства закрываецца
+
+
 
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES                         :Зьмены ў эканоміцы: {STRING}
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES_HELPTEXT                :Паказваць ґазэты аб глабальных зьменах ў эканоміцы

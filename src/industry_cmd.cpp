@@ -2312,6 +2312,7 @@ static uint32_t GetScaledIndustryGenerationProbability(IndustryType it, std::opt
 	uint32_t chance = ind_spc->appear_creation[to_underlying(_settings_game.game_creation.landscape)];
 	if (!ind_spc->enabled || ind_spc->layouts.empty() ||
 			(_game_mode != GameMode::Editor && _settings_game.difficulty.industry_density == IndustryDensity::FundedOnly) ||
+		    (_settings_game.economy.spawn_primary_industry_only && !ind_spc->IsRawIndustry()) ||
 			(chance = GetIndustryProbabilityCallback(it, IndustryAvailabilityCallType::MapGeneration, chance)) == 0) {
 		*force_at_least_one = false;
 		return 0;
@@ -2340,6 +2341,11 @@ static uint16_t GetIndustryGamePlayProbability(IndustryType it, uint8_t *min_num
 	}
 
 	const IndustrySpec *ind_spc = GetIndustrySpec(it);
+	if (_settings_game.economy.spawn_primary_industry_only && !ind_spc->IsRawIndustry()) {
+		*min_number = 0;
+		return 0;
+	}
+
 	uint8_t chance = ind_spc->appear_ingame[to_underlying(_settings_game.game_creation.landscape)];
 	if (!ind_spc->enabled || ind_spc->layouts.empty() ||
 			(ind_spc->behaviour.Test(IndustryBehaviour::Before1950) && TimerGameCalendar::year > 1950) ||
@@ -3045,7 +3051,13 @@ static void ChangeIndustryProduction(Industry *i, bool monthly)
 		NewsType nt;
 		/* Compute news category */
 		if (closeit) {
-			nt = NewsType::IndustryClose;
+			switch (WhoCanServiceIndustry(i)) {
+				case 0: nt = NewsType::IndustryCloseNobody; break;
+				case 1: nt = NewsType::IndustryCloseOther; break;
+				case 2: nt = NewsType::IndustryCloseCompany; break;
+				default: NOT_REACHED();
+			}
+
 			AI::BroadcastNewEvent(new ScriptEventIndustryClose(i->index));
 			Game::NewEvent(new ScriptEventIndustryClose(i->index));
 		} else {

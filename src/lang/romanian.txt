@@ -1576,6 +1576,7 @@ STR_CONFIG_SETTING_TERRAIN_TYPE_HELPTEXT                        :Alegeți înăl
 STR_CONFIG_SETTING_INDUSTRY_DENSITY                             :Densitatea industriei: {STRING}
 STR_CONFIG_SETTING_INDUSTRY_DENSITY_HELPTEXT                    :Stabilește câte industrii ar trebui generate și ce nivel ar trebui întreținut pe durata jocului
 
+
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE                        :Distanța maximă de la marginea hărții pentru rafinării: {STRING}
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE_HELPTEXT               :Rafinăriile de petrol vor fi construite doar la marginea hărții, sau pe coastă, în cazul harților insulare
 
@@ -1885,8 +1886,8 @@ STR_CONFIG_SETTING_NEWS_COMPANY_INFORMATION_HELPTEXT            :Afișează un z
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN                           :Inaugurare industrii: {STRING}
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN_HELPTEXT                  :Afișează un ziar când o nouă industrie este înființată
 
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE                          :Închidere industrii: {STRING}
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_HELPTEXT                 :Afișează un ziar când o industrie este inchisă
+
+
 
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES                         :Schimbări economice: {STRING}
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES_HELPTEXT                :Afișează un ziar când apar schimbări globale ale economiei

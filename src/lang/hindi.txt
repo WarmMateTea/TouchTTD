@@ -536,6 +536,7 @@ STR_CONFIG_SETTING_ERRMSG_DURATION_HELPTEXT                     :लाल व�
 
 
 
+
 ###length 4
 
 ###length 4
@@ -646,6 +647,8 @@ STR_CONFIG_SETTING_AI_BUILDS_AIRCRAFT                           :कंप्य
 
 
 STR_CONFIG_SETTING_NEWS_ACCIDENTS_DISASTERS                     :दुर्घटनायें / आपदायें : {STRING}
+
+
 
 
 

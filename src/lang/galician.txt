@@ -1606,6 +1606,7 @@ STR_CONFIG_SETTING_TERRAIN_TYPE_HELPTEXT                        :Escolle a altit
 STR_CONFIG_SETTING_INDUSTRY_DENSITY                             :Densidade industrial: {STRING}
 STR_CONFIG_SETTING_INDUSTRY_DENSITY_HELPTEXT                    :Establece cantas industrias deben xerarse e que nivel se debe manter durante o xogo
 
+
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE                        :Distancia máxima das refinarías ao borde do mundo: {STRING}
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE_HELPTEXT               :Limita a qué distancia dos bordes do mundo as refinerías e pozos petrolíferos poden construirse. En mapas con illas asegura que estean situadas preto da costa. En mapas maiores de 256 unidades, o valor escálase acorde ao tamaño do mapa
 
@@ -1917,8 +1918,8 @@ STR_CONFIG_SETTING_NEWS_COMPANY_INFORMATION_HELPTEXT            :Amosa un xornal
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN                           :Apertura de industrias: {STRING}
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN_HELPTEXT                  :Amosa no xornal cando abre unha industria nova
 
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE                          :Peche de industrias: {STRING}
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_HELPTEXT                 :Amosa no xornal as industrias que pechan
+
+
 
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES                         :Cambios na economía: {STRING}
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES_HELPTEXT                :Amosa no xornal os cambios globáis na economía

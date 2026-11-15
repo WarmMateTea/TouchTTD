@@ -1462,6 +1462,7 @@ STR_CONFIG_SETTING_TERRAIN_TYPE                                 :நிலவக
 STR_CONFIG_SETTING_INDUSTRY_DENSITY                             :தொழிற்சாலை அடர்த்தி: {STRING}
 STR_CONFIG_SETTING_INDUSTRY_DENSITY_HELPTEXT                    :விளையாட்டின் போது எத்தனை தொழில்கள் உருவாக்கப்பட வேண்டும் மற்றும் எந்த நிலை பராமரிக்கப்பட வேண்டும் என்பதை அமைக்கவும்
 
+
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE                        :வரைபட எல்லையிலிருந்து எண்ணெய் தொழிற்சாலைகள் இருக்கக்கூடிய தூரம்: {STRING}
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE_HELPTEXT               :எண்ணெய் சுத்திகரிப்பு நிலையங்கள் வரைபடத்தின் எல்லைகளில் மட்டுமே கட்ட இயலும், அதாவது தீவு வரைபடங்களில் கடற்கரைகளில் கட்ட இயலும்
 
@@ -1720,8 +1721,8 @@ STR_CONFIG_SETTING_NEWS_COMPANY_INFORMATION_HELPTEXT            :ஒரு ப�
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN                           :தொழிற்சாலைகளின் திறப்பு: {STRING}
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN_HELPTEXT                  :தொழிற்சாலைகள் திறக்கப்படும்போது செய்தித்தாளினைக் காட்டு
 
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE                          :தொழிற்சாலைகளின் மூடல்: {STRING}
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_HELPTEXT                 :தொழிற்சாலைகள் மூடப்படும்போது செய்தித்தாளினைக் காட்டு
+
+
 
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES                         :பொருளாதார மாற்றங்கள்: {STRING}
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES_HELPTEXT                :உலக பொருளாதார மாற்றங்களைப் பற்றி செய்தித்தாளினைக் காட்டு

@@ -334,7 +334,9 @@ static constexpr EnumIndexArray<NewsTypeData, NewsType, NewsType::End> _news_typ
 	NewsTypeData("news_display.accident_other",    90, SND_BEGIN       ),  ///< NewsType::AccidentOther
 	NewsTypeData("news_display.company_info",      60, SND_BEGIN       ),  ///< NewsType::CompanyInfo
 	NewsTypeData("news_display.open",              90, SND_BEGIN       ),  ///< NewsType::IndustryOpen
-	NewsTypeData("news_display.close",             90, SND_BEGIN       ),  ///< NewsType::IndustryClose
+	NewsTypeData("news_display.close_player",      90, SND_BEGIN       ),  ///< NewsType::IndustryCloseCompany
+	NewsTypeData("news_display.close_other",       90, SND_BEGIN       ),  ///< NewsType::IndustryCloseOther
+	NewsTypeData("news_display.close_nobody",      90, SND_BEGIN       ),  ///< NewsType::IndustryCloseNobody
 	NewsTypeData("news_display.economy",           30, SND_BEGIN       ),  ///< NewsType::Economy
 	NewsTypeData("news_display.production_player", 30, SND_BEGIN       ),  ///< NewsType::IndustryCompany
 	NewsTypeData("news_display.production_other",  30, SND_BEGIN       ),  ///< NewsType::IndustryOther
@@ -599,7 +601,7 @@ struct NewsWindow : Window {
 				} else {
 					TileIndex tile1 = GetReferenceTile(this->ni->ref1);
 					TileIndex tile2 = GetReferenceTile(this->ni->ref2);
-					if (_ctrl_pressed) {
+					if (IsCtrlPressed()) {
 						if (tile1 != INVALID_TILE) ShowExtraViewportWindow(tile1);
 						if (tile2 != INVALID_TILE) ShowExtraViewportWindow(tile2);
 					} else {

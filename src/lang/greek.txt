@@ -1183,7 +1183,7 @@ STR_GAME_OPTIONS_VIDEO_DRIVER_INFO                              :Τρέχων ο
 STR_GAME_OPTIONS_INTERFACE                                      :Διεπαφή
 
 STR_GAME_OPTIONS_GUI_SCALE_FRAME                                :Μέγεθος διεπαφής
-STR_GAME_OPTIONS_GUI_SCALE_TOOLTIP                              :Σύρετε το κουμπί για να ορίσετε το μέγεθος της διεπαφής. Ctrl+Σύρσιμο για συνεχή προσαρμογή
+STR_GAME_OPTIONS_GUI_SCALE_TOOLTIP                              :Σύρετε τον ρυθμιστή για να ορίσετε το μέγεθος της διεπαφής. Το εύρος περιορίζεται από το μέγεθος του παραθύρου. Κρατήστε πατημένο το Ctrl και σύρετε για συνεχή προσαρμογή
 STR_GAME_OPTIONS_GUI_SCALE_AUTO                                 :Αυτόματος εντοπισμός μεγέθους
 STR_GAME_OPTIONS_GUI_SCALE_AUTO_TOOLTIP                         :Τσεκάρετέ το για να ανιχνεύεται το μέγεθος της διεπαφής αυτόματα
 
@@ -1717,6 +1717,9 @@ STR_CONFIG_SETTING_TERRAIN_TYPE_HELPTEXT                        :Επιλέξτ�
 STR_CONFIG_SETTING_INDUSTRY_DENSITY                             :Πυκνότητα βιομηχανιών: {STRING}
 STR_CONFIG_SETTING_INDUSTRY_DENSITY_HELPTEXT                    :Θέτει πόσες βιομηχανίες θα δημιουργηθούν και σε τι επίπεδο θα μέινουν κάτα τη διάρκεια το παιχνιδιού
 
+STR_CONFIG_SETTING_SPAWN_PRIMARY_INDUSTRY_ONLY                  :Δημιουργία μόνο κυρίως βιομηχανιών: {STRING}
+STR_CONFIG_SETTING_SPAWN_PRIMARY_INDUSTRY_ONLY_HELPTEXT         :Αν είναι ενεργό, μόνο οι κυρίως βιομηχανίες δημιουργούνται κατά τη διαδικασία δημιουργίας χάρτη και παιχνιδιού.
+
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE                        :Μέγιστη απόσταση από την άκρη του χάρτη για τα Διυλιστήρια: {STRING}
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE_HELPTEXT               :Όριο για το πόσο μακριά από τα σύνορα του χάρτη μπορούν να κατασκευαστούν διυλιστήρια και εξέδρες πετρελαίου. Στους χάρτες νησιών, αυτό διασφαλίζει ότι βρίσκονται κοντά στην ακτή. Σε χάρτες μεγαλύτερους από 256 πλακίδια, αυτή η τιμή κλιμακώνεται προς τα πάνω
 
@@ -2041,8 +2044,14 @@ STR_CONFIG_SETTING_NEWS_COMPANY_INFORMATION_HELPTEXT            :Προβάλλ�
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN                           :Έναρξη των βιομηχανιών: {STRING}
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN_HELPTEXT                  :Εμφάνιση εφημερίδας όταν ανοίγουν νέες βιομηχανίες
 
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE                          :Κλείσιμο βιομηχανιών: {STRING}
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_HELPTEXT                 :Εμφάνιση εφημερίδας όταν κλείνουν βιομηχανίες
+STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_COMPANY                  :Κλείσιμο βιομηχανιών που εξυπηρετούνται από την εταιρεία: {STRING}
+STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_COMPANY_HELPTEXT         :Εμφάνιση εφημερίδας όταν βιομηχανίες που εξυπηρετούνται από την εταιρεία κλείνουν
+
+STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_OTHER                    :Κλείσιμο βιομηχανιών που εξυπηρετούνται από ανταγωνιστή/ές: {STRING}
+STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_OTHER_HELPTEXT           :Εμφάνιση εφημερίδας όταν βιομηχανίες που εξυπηρετούνται από ανταγωνιστές κλείνουν
+
+STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_UNSERVED                 :Κλείσιμο βιομηχανιών που δεν εξυπηρετούνται από κάποιον: {STRING}
+STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_UNSERVED_HELPTEXT        :Εμφάνιση εφημερίδας όταν βιομηχανίες που δεν εξυπηρετούνται από κάποιον κλείνουν
 
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES                         :Οικονομικές αλλαγές: {STRING}
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES_HELPTEXT                :Εμφάνιση εφημερίδας σε αλλαγές παγκόσμιων οικονομικών μεγεθών
@@ -2054,7 +2063,7 @@ STR_CONFIG_SETTING_NEWS_INDUSTRY_CHANGES_OTHER                  :Διαφορο�
 STR_CONFIG_SETTING_NEWS_INDUSTRY_CHANGES_OTHER_HELPTEXT         :Εμφάνιση εφημερίδας όταν μεταβάλλεται η παραγωγικότητα μιας βιομηχανίας που εξυπηρετείται από ανταγωνιστές
 
 STR_CONFIG_SETTING_NEWS_INDUSTRY_CHANGES_UNSERVED               :Άλλες διαφοροποιήσεις στην παραγωγή: {STRING}
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CHANGES_UNSERVED_HELPTEXT      :Εμφάνιση εφημερίδας όταν μεταβάλλεται η παραγωγικότητα μιας βιομηχανίας που δεν εξυπηρετείται από την εταιρεία σας ή ανταγωνιστές
+STR_CONFIG_SETTING_NEWS_INDUSTRY_CHANGES_UNSERVED_HELPTEXT      :Εμφάνιση εφημερίδας όταν μεταβάλλεται η παραγωγικότητα μιας βιομηχανίας που δεν εξυπηρετείται από κάποιον
 
 STR_CONFIG_SETTING_NEWS_ADVICE                                  :Συμβουλές / πληροφορίες για τα εταιρικά οχήματα: {STRING}
 STR_CONFIG_SETTING_NEWS_ADVICE_HELPTEXT                         :Εμφάνιση μηνημάτων όταν κάποιο όχημα χρήζει προσοχής
@@ -3050,7 +3059,7 @@ STR_BUILD_SIGNAL_ELECTRIC_EXIT_TOOLTIP                          :{BLACK}Σημα
 STR_BUILD_SIGNAL_ELECTRIC_COMBO_TOOLTIP                         :{BLACK}Συνδυαστικός Σηματοδότης (ηλεκτρικός){}Ο συνδυαστικός σηματοδότης δουλεύει απλά ως σηματοδότης εισόδου και εξόδου ταυτόχρονα. Αυτό σας επιτρέπει την κατασκευή μεγάλων «δέντρων» με προ-σηματοδότες
 STR_BUILD_SIGNAL_ELECTRIC_PBS_TOOLTIP                           :{BLACK}Σηματοδότης Τροχιάς (ηλεκτρικός){}Ένας σηματοδότης τροχιάς επιτρέπει σε περισσότερα από ένα τρένο να είναι σε ένα κομμάτι ελέγχου την ίδια στιγμή, εάν το τρένο μπορεί να δεσμεύσει τροχιά σε ασφαλές σημείο στάσης. Κανονικοί σηματοδότες τροχιάς μπορούν να περαστούν από την πίσω πλευρά
 STR_BUILD_SIGNAL_ELECTRIC_PBS_OWAY_TOOLTIP                      :{BLACK}Μονόδρομος Σηματοδότης Τροχιάς (ηλεκτρικός){}Ένας σηματοδότης τροχιάς επιτρέπει σε περισσότερα από ένα τρένο να είναι σε ένα κομμάτι ελέγχου την ίδια στιγμή, εάν το τρένο μπορεί να δεσμεύσει τροχιά σε ασφαλές σημείο στάσης. Μονόδρομοι σηματοδότες τροχιάς δεν μπορούν να περαστούν από την πίσω πλευρά
-STR_BUILD_SIGNAL_CONVERT_TOOLTIP                                :{BLACK}Μετατροπή σήματος{}Πατήστε σε ένα υπάρχον σήμα για να το μετατρέψετε στον επιλεγμένο τύπο και παραλλαγή. Ctrl+Κλικ για εναλλαγή της υπάρχουσας παραλλαγής.  Shift+Κλικ για εμφάνιση του εκτιμώμενου κόστους μετατροπής
+STR_BUILD_SIGNAL_CONVERT_TOOLTIP                                :{BLACK}Μετατροπή σήματος{}Πατήστε σε ένα υπάρχον σήμα για να το μετατρέψετε στον επιλεγμένο τύπο και παραλλαγή. Ctrl+Κλικ για εναλλαγή της υπάρχουσας παραλλαγής. Επίσης πατήστε Shift για εμφάνιση μόνο του εκτιμώμενου κόστους
 STR_BUILD_SIGNAL_DRAG_SIGNALS_DENSITY_TOOLTIP                   :{BLACK}Απόσταση μεταξύ σηματοδοτών με σύρσιμο
 STR_BUILD_SIGNAL_DRAG_SIGNALS_DENSITY_DECREASE_TOOLTIP          :{BLACK}Μείωση απόστασης μεταξύ σηματοδοτών με σύρσιμο
 STR_BUILD_SIGNAL_DRAG_SIGNALS_DENSITY_INCREASE_TOOLTIP          :{BLACK}Αύξηση απόστασης μεταξύ σηματοδοτών με σύρσιμο
@@ -4453,10 +4462,10 @@ STR_DEPOT_VEHICLE_TOOLTIP_CHAIN                                 :{BLACK}{NUM} {P
 STR_DEPOT_VEHICLE_TOOLTIP_CARGO                                 :{}{CARGO_LONG} ({CARGO_SHORT})
 
 ###length VEHICLE_TYPES
-STR_DEPOT_TRAIN_LIST_TOOLTIP                                    :{BLACK}Τρένα - τραβήξτε ένα όχημα με αριστερό κλικ για να το προσθέστε/αφαιρέστε από ένα τρένο, δεξί κλικ για πληροφορίες. Ctrl+Κλικ για εφαρμογή οποιασδήποτε από τις δύο λειτουργίες στην ακόλουθη αλυσίδα
-STR_DEPOT_ROAD_VEHICLE_LIST_TOOLTIP                             :{BLACK}Οδικά οχήματα - δεξί κλικ σε ένα όχημα για πληροφορίες
-STR_DEPOT_SHIP_LIST_TOOLTIP                                     :{BLACK}Πλοία - δεξί κλικ σε ένα πλοίο για πληροφορίες
-STR_DEPOT_AIRCRAFT_LIST_TOOLTIP                                 :{BLACK}Αεροσκάφη - δεξί κλικ σε ένα αεροσκάφος για πληροφορίες
+STR_DEPOT_TRAIN_LIST_TOOLTIP                                    :{BLACK}Τρένα - τραβήξτε ένα όχημα με αριστερό κλικ για να το προσθέστε/αφαιρέστε από ένα τρένο, δεξί κλικ για πληροφορίες. Ctrl+Κλικ για εφαρμογή οποιασδήποτε από τις δύο λειτουργίες στην ακόλουθη αλυσίδα. Κρατήστε πατημένο το Ctrl+Shift για εμφάνιση είδους φορτίου
+STR_DEPOT_ROAD_VEHICLE_LIST_TOOLTIP                             :{BLACK}Οδικά οχήματα - δεξί κλικ σε ένα όχημα για πληροφορίες. Κρατήστε πατημένο το Ctrl+Shift για εμφάνιση είδους φορτίου
+STR_DEPOT_SHIP_LIST_TOOLTIP                                     :{BLACK}Πλοία - δεξί κλικ σε ένα πλοίο για πληροφορίες. Κρατήστε πατημένο το Ctrl+Shift για εμφάνιση είδους φορτίου
+STR_DEPOT_AIRCRAFT_LIST_TOOLTIP                                 :{BLACK}Αεροσκάφη - δεξί κλικ σε ένα αεροσκάφος για πληροφορίες. Κρατήστε πατημένο το Ctrl+Shift για εμφάνιση είδους φορτίου
 
 ###length VEHICLE_TYPES
 STR_DEPOT_TRAIN_SELL_TOOLTIP                                    :{BLACK}Τραβήξτε το όχημα τρένου εδώ για να το πουλήσετε

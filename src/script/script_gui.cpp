@@ -764,8 +764,6 @@ struct ScriptDebugWindow : public Window {
 
 		this->querystrings[WID_SCRD_BREAK_STR_EDIT_BOX] = &this->break_editbox;
 
-		this->hscroll->SetStepSize(10); // Speed up horizontal scrollbar
-
 		/* Restore the break string value from static variable, and enable the filter. */
 		this->break_editbox.text.Assign(this->filter.break_string);
 		this->break_string_filter.SetFilterTerm(this->filter.break_string);
@@ -779,6 +777,8 @@ struct ScriptDebugWindow : public Window {
 
 	void OnInit() override
 	{
+		this->hscroll->SetStepSize(GetCharacterHeight(FontSize::Normal)); // Speed up horizontal scrollbar
+
 		this->show_break_box = _settings_client.gui.ai_developer_tools;
 		this->GetWidget<NWidgetStacked>(WID_SCRD_BREAK_STRING_WIDGETS)->SetDisplayedPlane(this->show_break_box ? 0 : SZSP_HORIZONTAL);
 		if (!this->show_break_box) this->filter.break_check_enabled = false;
@@ -1010,12 +1010,12 @@ struct ScriptDebugWindow : public Window {
 
 		/* Check which button is clicked */
 		if (IsInsideMM(widget, WID_SCRD_COMPANY_BUTTON_START, WID_SCRD_COMPANY_BUTTON_END + 1)) {
-			this->ChangeToScript(static_cast<CompanyID>(widget - WID_SCRD_COMPANY_BUTTON_START), _ctrl_pressed);
+			this->ChangeToScript(static_cast<CompanyID>(widget - WID_SCRD_COMPANY_BUTTON_START), IsCtrlPressed());
 		}
 
 		switch (widget) {
 			case WID_SCRD_SCRIPT_GAME:
-				this->ChangeToScript(OWNER_DEITY, _ctrl_pressed);
+				this->ChangeToScript(OWNER_DEITY, IsCtrlPressed());
 				break;
 
 			case WID_SCRD_RELOAD_TOGGLE:

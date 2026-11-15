@@ -284,7 +284,7 @@ public:
 	{
 		switch (widget) {
 			case WID_LI_LOCATION:
-				if (_ctrl_pressed) {
+				if (IsCtrlPressed()) {
 					ShowExtraViewportWindow(this->tile);
 				} else {
 					ScrollMainWindowToTile(this->tile);
@@ -355,6 +355,7 @@ static const std::initializer_list<const std::string_view> _credits = {
 	"  Niels Martin Hansen (nielsm) - Music system, general coding (since 1.9)",
 	"  Owen Rudge (orudge) - Forum host, OS/2 port (since 0.1)",
 	"  Peter Nelson (peter1138) - Spiritual descendant from NewGRF gods (since 0.4.5)",
+	"  Cyprian Klimaszewski (rito12) - General coding (since 16)",
 	"  Remko Bijker (Rubidium) - Coder and way more (since 0.4.5)",
 	"  Patric Stout (TrueBrain) - NoProgrammer (since 0.3), sys op",
 	"  Tyler Trahan (2TallTyler) - General / Time Lord (since 13)",
@@ -667,7 +668,7 @@ struct TooltipsWindow : public Window
 		/* We can show tooltips while dragging tools. These are shown as long as
 		 * we are dragging the tool. Normal tooltips work with hover or rmb. */
 		switch (this->close_cond) {
-			case TooltipCloseCondition::RightClick: if (!_right_button_down) this->Close(); break;
+			case TooltipCloseCondition::RightClick: if (!IsRightButtonDown()) this->Close(); break;
 			case TooltipCloseCondition::Hover: if (!_mouse_hovering) this->Close(); break;
 			case TooltipCloseCondition::None: break;
 

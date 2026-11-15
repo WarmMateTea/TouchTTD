@@ -1370,6 +1370,7 @@ STR_CONFIG_SETTING_TERRAIN_TYPE_HELPTEXT                        :(Slegs TerraGen
 STR_CONFIG_SETTING_INDUSTRY_DENSITY                             :Nywerheidsdigtheid: {STRING}
 STR_CONFIG_SETTING_INDUSTRY_DENSITY_HELPTEXT                    :Kies hoeveel nywerhede geskep gaan word en hoeveel gedurende die spel te handhaaf
 
+
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE                        :Maksimum afstand vanaf rand vir olie industrieë: {STRING}
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE_HELPTEXT               :Olieraffinaderye word net naby die kaart kant gebou, dit is, teen die kus vir eiland kaarte
 
@@ -1631,8 +1632,8 @@ STR_CONFIG_SETTING_NEWS_COMPANY_INFORMATION_HELPTEXT            :Vertoon 'n koer
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN                           :Opening van industrieë: {STRING}
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN_HELPTEXT                  :Vertoon die koerant wanneer 'n nuwe nywerheid oopmaak
 
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE                          :Toemaak van industrieë: {STRING}
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_HELPTEXT                 :Vertoon die koerant wanneer 'n nywerheid toemaak
+
+
 
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES                         :Ekonomie veranderings: {STRING}
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES_HELPTEXT                :Vertoon die koerant vir enige globale veranderinge aan die ekonomie

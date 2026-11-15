@@ -1727,6 +1727,7 @@ STR_CONFIG_SETTING_TERRAIN_TYPE_HELPTEXT                        :(Samo TerraGene
 STR_CONFIG_SETTING_INDUSTRY_DENSITY                             :Gustina fabrika: {STRING}
 STR_CONFIG_SETTING_INDUSTRY_DENSITY_HELPTEXT                    :Odaberi koliko fabrika treba da se generiše i koji će se nivo održati tokom igre
 
+
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE                        :Najveće rastojanje od ivice za Rafinerije Nafte: {STRING}
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE_HELPTEXT               :Rafinerije nafte se grade samo u blizini ivice karte, to jest uz obalu za otočne karte
 
@@ -2027,8 +2028,8 @@ STR_CONFIG_SETTING_NEWS_COMPANY_INFORMATION_HELPTEXT            :Prikazuje novin
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN                           :Otvaranje nove fabrike: {STRING}
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN_HELPTEXT                  :Prikazuje novinske naslove kada se otvori nova fabrika
 
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE                          :Zatvaranje fabrike: {STRING}
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_HELPTEXT                 :Prikazuje novinske naslove o zatvaranju fabrika
+
+
 
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES                         :Promene u privredi: {STRING}
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES_HELPTEXT                :Prikazuje novinske naslove o globalnim privrednim promenama

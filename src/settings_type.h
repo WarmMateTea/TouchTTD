@@ -374,6 +374,13 @@ struct LocaleSettings {
 	std::string digit_decimal_separator; ///< decimal separator
 };
 
+/** News display style. */
+enum class NewsDisplay : uint8_t {
+	Off, ///< Only show a reminder in the status bar.
+	Summary, ///< Show a summary in the news ticker.
+	Full, ///< Show a full newspaper.
+};
+
 /** Settings related to news */
 struct NewsSettings {
 	uint8_t arrival_player; ///< NewsDisplay of vehicles arriving at new stations of current player
@@ -382,7 +389,9 @@ struct NewsSettings {
 	uint8_t accident_other; ///< NewsDisplay if a vehicle from another company is involved in an accident
 	uint8_t company_info; ///< NewsDisplay of general company information
 	uint8_t open; ///< NewsDisplay on new industry constructions
-	uint8_t close; ///< NewsDisplay about closing industries
+	uint8_t close_player; ///< NewsDisplay about closing industries affecting current player
+	uint8_t close_other; ///< NewsDisplay about closing industries affecting competitors
+	uint8_t close_nobody; ///< NewsDisplay about closing industries affecting no one
 	uint8_t economy; ///< NewsDisplay on economical changes
 	uint8_t production_player; ///< NewsDisplay of production changes of industries affecting current player
 	uint8_t production_other; ///< NewsDisplay of production changes of industries affecting competitors
@@ -633,6 +642,7 @@ struct EconomySettings {
 	bool give_money; ///< allow giving other companies money
 	bool mod_road_rebuild; ///< roadworks remove unnecessary RoadBits
 	bool multiple_industry_per_town; ///< allow many industries of the same type per town
+	bool spawn_primary_industry_only; ///< Should we only spawn primary industry during map generation and gameplay? (Player or Game Script must place other types)
 	uint8_t town_growth_rate; ///< town growth rate
 	uint8_t larger_towns; ///< the number of cities to build. These start off larger and grow twice as fast
 	uint8_t initial_city_size; ///< multiplier for the initial size of the cities compared to towns

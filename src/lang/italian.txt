@@ -1619,6 +1619,7 @@ STR_CONFIG_SETTING_TERRAIN_TYPE_HELPTEXT                        :Scegliere l'alt
 STR_CONFIG_SETTING_INDUSTRY_DENSITY                             :Densità delle industrie: {STRING.fs}
 STR_CONFIG_SETTING_INDUSTRY_DENSITY_HELPTEXT                    :Determina quante industrie sono generate e a quale livello di densità sulla mappa sono mantenute nel corso della partita.
 
+
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE                        :Massima distanza delle industrie petrolifere dal bordo della mappa: {STRING}
 STR_CONFIG_SETTING_OIL_REF_EDGE_DISTANCE_HELPTEXT               :Limita la distanza dal bordo della mappa entro cui possono essere costruite raffinerie e piattaforme petrolifere. Nelle mappe insulari sono comunque sempre vicino alla costa. Su mappe più grandi di 256 caselle il valore aumenta proporzionalmente
 
@@ -1931,8 +1932,8 @@ STR_CONFIG_SETTING_NEWS_COMPANY_INFORMATION_HELPTEXT            :Mostra un giorn
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN                           :Apertura di industrie: {STRING}
 STR_CONFIG_SETTING_NEWS_INDUSTRY_OPEN_HELPTEXT                  :Mostra un giornale quando aprono nuove industrie
 
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE                          :Chiusura di industrie: {STRING}
-STR_CONFIG_SETTING_NEWS_INDUSTRY_CLOSE_HELPTEXT                 :Mostra un giornale quando le industrie chiudono
+
+
 
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES                         :Cambiamenti economici: {STRING}
 STR_CONFIG_SETTING_NEWS_ECONOMY_CHANGES_HELPTEXT                :Mostra un giornale quando si verificano cambiamenti nell'economia globale

@@ -216,7 +216,7 @@ static void PlaceRail_Station(TileIndex tile)
 		RailType rt = _cur_railtype;
 		uint8_t numtracks = _settings_client.gui.station_numtracks;
 		uint8_t platlength = _settings_client.gui.station_platlength;
-		bool adjacent = _ctrl_pressed;
+		bool adjacent = IsCtrlPressed();
 
 		auto proc = [=](bool test, StationID to_join) -> bool {
 			if (test) {
@@ -278,11 +278,11 @@ static void GenericPlaceSignals(TileIndex tile)
 		if (FindWindowById(WindowClass::BuildSignal, 0) != nullptr) {
 			/* signal GUI is used */
 			Command<Commands::BuildSignal>::Post(_convert_signal_button ? STR_ERROR_SIGNAL_CAN_T_CONVERT_SIGNALS_HERE : STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, CcPlaySound_CONSTRUCTION_RAIL,
-				tile, track, _cur_signal_type, _cur_signal_variant, _convert_signal_button, false, _ctrl_pressed, cycle_start, cycle_end, 0, 0);
+				tile, track, _cur_signal_type, _cur_signal_variant, _convert_signal_button, false, IsCtrlPressed(), cycle_start, cycle_end, 0, 0);
 		} else {
 			SignalVariant sigvar = TimerGameCalendar::year < _settings_client.gui.semaphore_build_before ? SignalVariant::Semaphore : SignalVariant::Electric;
 			Command<Commands::BuildSignal>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, CcPlaySound_CONSTRUCTION_RAIL,
-				tile, track, _settings_client.gui.default_signal_type, sigvar, false, false, _ctrl_pressed, cycle_start, cycle_end, 0, 0);
+				tile, track, _settings_client.gui.default_signal_type, sigvar, false, false, IsCtrlPressed(), cycle_start, cycle_end, 0, 0);
 
 		}
 	}
@@ -429,13 +429,13 @@ static void HandleAutoSignalPlacement()
 	 * in a network game can specify their own signal density */
 	if (_remove_button_clicked) {
 		Command<Commands::RemoveSignalLong>::Post(STR_ERROR_CAN_T_REMOVE_SIGNALS_FROM, CcPlaySound_CONSTRUCTION_RAIL,
-				TileVirtXY(_thd.selstart.x, _thd.selstart.y), TileVirtXY(_thd.selend.x, _thd.selend.y), track, _ctrl_pressed);
+				TileVirtXY(_thd.selstart.x, _thd.selstart.y), TileVirtXY(_thd.selend.x, _thd.selend.y), track, IsCtrlPressed());
 	} else {
 		bool sig_gui = FindWindowById(WindowClass::BuildSignal, 0) != nullptr;
 		SignalType sigtype = sig_gui ? _cur_signal_type : _settings_client.gui.default_signal_type;
 		SignalVariant sigvar = sig_gui ? _cur_signal_variant : (TimerGameCalendar::year < _settings_client.gui.semaphore_build_before ? SignalVariant::Semaphore : SignalVariant::Electric);
 		Command<Commands::BuildSignalLong>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, CcPlaySound_CONSTRUCTION_RAIL,
-				TileVirtXY(_thd.selstart.x, _thd.selstart.y), TileVirtXY(_thd.selend.x, _thd.selend.y), track, sigtype, sigvar, false, _ctrl_pressed, !_settings_client.gui.drag_signals_fixed_distance, _settings_client.gui.drag_signals_density);
+				TileVirtXY(_thd.selstart.x, _thd.selstart.y), TileVirtXY(_thd.selend.x, _thd.selend.y), track, sigtype, sigvar, false, IsCtrlPressed(), !_settings_client.gui.drag_signals_fixed_distance, _settings_client.gui.drag_signals_density);
 	}
 }
 
@@ -639,7 +639,7 @@ struct BuildRailToolbarWindow : Window {
 
 		if (widget == WID_RAT_REMOVE) {
 			BuildRailClick_Remove(this);
-			if (_ctrl_pressed) RailToolbar_CtrlChanged(this);
+			if (IsCtrlPressed()) RailToolbar_CtrlChanged(this);
 			return;
 		}
 
@@ -666,7 +666,7 @@ struct BuildRailToolbarWindow : Window {
 				break;
 
 			case WID_RAT_BUILD_SIGNALS: {
-				if (started != _ctrl_pressed) {
+				if (started != IsCtrlPressed()) {
 					ShowSignalBuilder(this);
 				}
 				break;
@@ -674,7 +674,7 @@ struct BuildRailToolbarWindow : Window {
 		}
 
 		this->UpdateRemoveWidgetStatus(widget);
-		if (_ctrl_pressed) RailToolbar_CtrlChanged(this);
+		if (IsCtrlPressed()) RailToolbar_CtrlChanged(this);
 	}
 
 	EventState OnHotkey(int hotkey) override
@@ -779,7 +779,7 @@ struct BuildRailToolbarWindow : Window {
 					break;
 
 				case DDSP_CONVERT_RAIL:
-					Command<Commands::ConvertRail>::Post(STR_ERROR_CAN_T_CONVERT_RAIL, CcPlaySound_CONSTRUCTION_RAIL, end_tile, start_tile, _cur_railtype, _ctrl_pressed);
+					Command<Commands::ConvertRail>::Post(STR_ERROR_CAN_T_CONVERT_RAIL, CcPlaySound_CONSTRUCTION_RAIL, end_tile, start_tile, _cur_railtype, IsCtrlPressed());
 					break;
 
 				case DDSP_REMOVE_STATION:
@@ -787,7 +787,7 @@ struct BuildRailToolbarWindow : Window {
 					if (this->IsWidgetLowered(WID_RAT_BUILD_STATION)) {
 						/* Station */
 						if (_remove_button_clicked) {
-							bool keep_rail = !_ctrl_pressed;
+							bool keep_rail = !IsCtrlPressed();
 							Command<Commands::RemoveFromRailStation>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, CcPlaySound_CONSTRUCTION_RAIL, end_tile, start_tile, keep_rail);
 						} else {
 							HandleStationPlacement(start_tile, end_tile);
@@ -795,12 +795,12 @@ struct BuildRailToolbarWindow : Window {
 					} else {
 						/* Waypoint */
 						if (_remove_button_clicked) {
-							bool keep_rail = !_ctrl_pressed;
+							bool keep_rail = !IsCtrlPressed();
 							Command<Commands::RemoveFromRailWaypoint>::Post(STR_ERROR_CAN_T_REMOVE_RAIL_WAYPOINT , CcPlaySound_CONSTRUCTION_RAIL, end_tile, start_tile, keep_rail);
 						} else {
 							TileArea ta(start_tile, end_tile);
 							Axis axis = select_method == VPM_X_LIMITED ? Axis::X : Axis::Y;
-							bool adjacent = _ctrl_pressed;
+							bool adjacent = IsCtrlPressed();
 
 							auto proc = [=](bool test, StationID to_join) -> bool {
 								if (test) {
@@ -1002,7 +1002,7 @@ static void HandleStationPlacement(TileIndex start, TileIndex end)
 
 	StationPickerSelection params = _station_gui;
 	RailType rt = _cur_railtype;
-	bool adjacent = _ctrl_pressed;
+	bool adjacent = IsCtrlPressed();
 
 	auto proc = [=](bool test, StationID to_join) -> bool {
 		if (test) {
@@ -1149,26 +1149,6 @@ private:
 		}
 	}
 
-	/**
-	 * Set the build station tile highlight to current station size.
-	 */
-	void SetSelectedSize()
-	{
-		if (_settings_client.gui.station_dragdrop) {
-			SetTileSelectSize(1, 1);
-		} else {
-			int x = _settings_client.gui.station_numtracks;
-			int y = _settings_client.gui.station_platlength;
-			if (_station_gui.axis == Axis::X) std::swap(x, y);
-			if (!_remove_button_clicked) {
-				SetTileSelectSize(x, y);
-			}
-		}
-
-		int rad = (_settings_game.station.modified_catchment) ? CA_TRAIN : CA_UNMODIFIED;
-		if (_settings_client.gui.station_show_coverage) SetTileSelectBigSize(-rad, -rad, 2 * rad, 2 * rad);
-	}
-
 public:
 	BuildRailStationWindow(WindowDesc &desc, Window *parent) : PickerWindow(desc, parent, TransportType::Rail, StationPickerCallbacks::instance)
 	{
@@ -1187,7 +1167,6 @@ public:
 		}
 		this->SetWidgetLoweredState(WID_BRAS_HIGHLIGHT_OFF, !_settings_client.gui.station_show_coverage);
 		this->SetWidgetLoweredState(WID_BRAS_HIGHLIGHT_ON, _settings_client.gui.station_show_coverage);
-		this->SetSelectedSize();
 
 		this->PickerWindow::OnInit();
 	}
@@ -1211,7 +1190,21 @@ public:
 	void OnPaint() override
 	{
 		const StationSpec *statspec = StationClass::Get(_station_gui.sel_class)->GetSpec(_station_gui.sel_type);
+
+		if (_settings_client.gui.station_dragdrop) {
+			SetTileSelectSize(1, 1);
+		} else {
+			int x = _settings_client.gui.station_numtracks;
+			int y = _settings_client.gui.station_platlength;
+			if (_station_gui.axis == Axis::X) std::swap(x, y);
+			if (!_remove_button_clicked) {
+				SetTileSelectSize(x, y);
+			}
+		}
+
 		int rad = (_settings_game.station.modified_catchment) ? CA_TRAIN : CA_UNMODIFIED;
+
+		if (_settings_client.gui.station_show_coverage) SetTileSelectBigSize(-rad, -rad, 2 * rad, 2 * rad);
 
 		for (uint bits = 0; bits < 7; bits++) {
 			bool disable = bits >= _settings_game.station.station_spread;
@@ -1309,8 +1302,6 @@ public:
 				this->RaiseWidget(WID_BRAS_PLATFORM_DIR_X + to_underlying(_station_gui.axis));
 				_station_gui.axis = static_cast<Axis>(widget - WID_BRAS_PLATFORM_DIR_X);
 				this->LowerWidget(WID_BRAS_PLATFORM_DIR_X + to_underlying(_station_gui.axis));
-
-				this->SetSelectedSize();
 				SndClickBeep();
 				this->SetDirty();
 				CloseWindowById(WindowClass::JoinStation, 0);
@@ -1343,7 +1334,6 @@ public:
 
 				this->LowerWidget(_settings_client.gui.station_numtracks + WID_BRAS_PLATFORM_NUM_BEGIN);
 				this->LowerWidget(_settings_client.gui.station_platlength + WID_BRAS_PLATFORM_LEN_BEGIN);
-				this->SetSelectedSize();
 				SndClickBeep();
 				this->SetDirty();
 				CloseWindowById(WindowClass::JoinStation, 0);
@@ -1377,7 +1367,6 @@ public:
 
 				this->LowerWidget(_settings_client.gui.station_numtracks + WID_BRAS_PLATFORM_NUM_BEGIN);
 				this->LowerWidget(_settings_client.gui.station_platlength + WID_BRAS_PLATFORM_LEN_BEGIN);
-				this->SetSelectedSize();
 				SndClickBeep();
 				this->SetDirty();
 				CloseWindowById(WindowClass::JoinStation, 0);
@@ -1412,7 +1401,6 @@ public:
 
 				this->SetWidgetLoweredState(_settings_client.gui.station_numtracks + WID_BRAS_PLATFORM_NUM_BEGIN, !_settings_client.gui.station_dragdrop);
 				this->SetWidgetLoweredState(_settings_client.gui.station_platlength + WID_BRAS_PLATFORM_LEN_BEGIN, !_settings_client.gui.station_dragdrop);
-				this->SetSelectedSize();
 				SndClickBeep();
 				this->SetDirty();
 				CloseWindowById(WindowClass::JoinStation, 0);
@@ -1425,7 +1413,6 @@ public:
 
 				this->SetWidgetLoweredState(WID_BRAS_HIGHLIGHT_OFF, !_settings_client.gui.station_show_coverage);
 				this->SetWidgetLoweredState(WID_BRAS_HIGHLIGHT_ON, _settings_client.gui.station_show_coverage);
-				this->SetSelectedSize();
 				SndClickBeep();
 				this->SetDirty();
 				SetViewportCatchmentStation(nullptr, true);

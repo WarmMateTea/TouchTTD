@@ -476,7 +476,7 @@ public:
 	{
 		switch (widget) {
 			case WID_TV_CENTER_VIEW: // scroll to location
-				if (_ctrl_pressed) {
+				if (IsCtrlPressed()) {
 					ShowExtraViewportWindow(this->town->xy);
 				} else {
 					ScrollMainWindowToTile(this->town->xy);
@@ -493,6 +493,7 @@ public:
 
 			case WID_TV_CATCHMENT:
 				SetViewportCatchmentTown(Town::Get(this->window_number), !this->IsWidgetLowered(WID_TV_CATCHMENT));
+				SndClickBeep();
 				break;
 
 			case WID_TV_EXPAND: // expand town - only available on Scenario editor
@@ -1081,7 +1082,7 @@ public:
 					}
 					break;
 				}
-				if (_ctrl_pressed) {
+				if (IsCtrlPressed()) {
 					ShowExtraViewportWindow(t->xy);
 				} else {
 					ScrollMainWindowToTile(t->xy);
@@ -1376,7 +1377,7 @@ public:
 				tile, this->town_size, this->city, this->town_layout, random, townnameparts, name);
 
 		/* Rerandomise name, if success and no cost-estimation. */
-		if (success && !_shift_pressed) this->RandomTownName();
+		if (success && !IsShiftPressed()) this->RandomTownName();
 	}
 
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
@@ -1966,7 +1967,7 @@ struct BuildHouseWindow : public PickerWindow {
 
 		const HouseSpec *spec = HouseSpec::Get(HousePickerCallbacks::sel_type);
 		Command<Commands::PlaceHouseArea>::Post(STR_ERROR_CAN_T_BUILD_HOUSE, CcPlaySound_CONSTRUCTION_OTHER,
-			end_tile, start_tile, spec->Index(), BuildHouseWindow::house_protected, BuildHouseWindow::replace, _ctrl_pressed);
+			end_tile, start_tile, spec->Index(), BuildHouseWindow::house_protected, BuildHouseWindow::replace, IsCtrlPressed());
 	}
 
 	const IntervalTimer<TimerWindow> view_refresh_interval = {std::chrono::milliseconds(2500), [this](auto) {
