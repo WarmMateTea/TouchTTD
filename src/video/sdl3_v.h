@@ -34,6 +34,8 @@ public:
 
 	bool ToggleFullscreen(bool fullscreen) override;
 
+	Rect GetSafeArea() const override;
+
 	bool AfterBlitterChange() override;
 
 	void ClaimMousePointer() override;

@@ -145,3 +145,44 @@ If it crashes: `adb logcat -s SDL TouchTTD DEBUG` over Tailscale (see the plan) 
 **Blocked:** wireless `adb` needs the server on the user's tailnet. Installing Tailscale on the server was refused by the permission system (it joins the machine to a private network), so the user installs it: `curl -fsSL https://tailscale.com/install.sh | sh && tailscale up`.
 
 **Tip:** `START=menu` makes `tools/mobile/run_headless.sh` start at the main menu, to test the same path a phone user takes.
+
+## Step 13: Wireless adb over Tailscale
+
+- **Tailscale on the server:** the user installed it (`curl -fsSL https://tailscale.com/install.sh | sh && tailscale up`). The server is `srv1122612` (100.91.245.74); the phone is `poco-x7-pro` (100.65.145.31).
+- **Pairing:** `adb pair <ip>:<pairing port> <code>`. The **pairing port** only exists while the phone's "Pair device with pairing code" popup is open, and it differs from the **connect port** shown on the Wireless debugging screen. Sending a code without the port fails with `protocol fault (couldn't read status message)`.
+- **Finding the ports:** with the popup open, a quick TCP scan of the phone (a Python `asyncio` connect loop over ports 1024–65535) shows two open ports, pairing and connect. Pair on the one that isn't the connect port.
+- **Connect:** `adb connect 100.65.145.31:<connect port>`. The first attempt right after pairing failed; the second worked.
+- `adb` lives in `/opt/android-sdk/platform-tools`.
+
+**With adb, the phone can be driven like the headless desktop:**
+```bash
+adb shell input tap X Y                       # physical pixels (1220×2712 in portrait)
+adb exec-out screencap -p > shot.png
+adb shell monkey -p io.github.warmmatetea.touchttd -c android.intent.category.LAUNCHER 1   # launch
+adb shell am force-stop io.github.warmmatetea.touchttd
+adb logcat -d | grep -v BLASTBufferQueue      # MIUI logs a lot of buffer noise
+```
+
+## Step 14: Root cause of "the UI disappears when the map loads"
+
+Reproduced on the phone over adb: main menu fine, then New Game → Generate shows the map with **no shell at all**. Taps where the dock should be did nothing.
+
+`adb shell dumpsys window` showed the status bar at y 0–130 and the navigation bar at y 2559–2712, **both visible**, while the game's surface covers the whole 2712 px height. The shell was placed against the screen edges: the status pill at y ≈ 12 and the dock at y ≈ 2556–2712. Both sat **under the system bars**. The main menu looked fine only because it's centred.
+
+**Fixes:**
+1. **The safe area (design custom #11):**
+   - `VideoDriver::GetSafeArea()` is new: by default the whole screen; the SDL3 driver uses `SDL_GetWindowSafeArea()`.
+   - `RelocateMobileWindows()`, the sheet slot and the construction-toolbar position now stay inside the safe area.
+   - `SDL_EVENT_WINDOW_SAFE_AREA_CHANGED` re-runs the layout, for when bars show or hide, or the device rotates and the camera cutout moves sides.
+2. **Full screen on Android:** the SDL3 driver always creates the window with `SDL_WINDOW_FULLSCREEN` on Android, which hides the system bars (swipe from an edge to show them). It's done in the driver, not in the first-run config, so phones that already have a config get it too.
+
+**Lesson:** the headless tests used a screen with no insets, so this whole class of bug was invisible there. Phone-specific layout needs a device check.
+
+**Verified on the phone** after the fix (installed with `adb install -r`, driven with `adb shell input tap`). Screenshots are in `screenshots/android/`:
+- `A01`: the main menu, full screen (no system bars).
+- `A02`: the game after New Game → Generate, with the status pill, minimap button and dock all visible.
+- `A03`: tapping World opens the half-height sheet with the mobile Town directory.
+
+**New findings:**
+- **Hover tooltips appear after a tap** (`A03`). Android leaves the emulated mouse pointer where the finger lifted, so OpenTTD treats it as a hover. The gesture layer must suppress hover on touch.
+- **The hidden navigation bar still counts as unsafe.** With the bars hidden, `SDL_GetWindowSafeArea()` still leaves out the 153 px gesture strip at the bottom, so the dock floats above a strip of map. Gesture navigation does need clearance at that edge. *For the designer:* dock flush with the bottom edge, with only its buttons kept clear?

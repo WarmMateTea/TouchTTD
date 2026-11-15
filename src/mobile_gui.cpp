@@ -51,6 +51,7 @@
 #include "help_gui.h"
 #include "fios.h"
 #include "openttd.h"
+#include "video/video_driver.hpp"
 #include "settings_type.h"
 #include "settings_gui.h"
 #include "newgrf_config.h"
@@ -189,6 +190,21 @@ static bool IsLandscape()
 }
 
 /**
+ * Get the part of the screen the shell may use: not under the system bars, the camera cutout or rounded corners.
+ * @return The safe area, within the screen.
+ */
+static Rect GetSafeArea()
+{
+	Rect screen{0, 0, _screen.width - 1, _screen.height - 1};
+	Rect safe = VideoDriver::GetInstance() != nullptr ? VideoDriver::GetInstance()->GetSafeArea() : screen;
+	safe.left = Clamp(safe.left, 0, screen.right);
+	safe.top = Clamp(safe.top, 0, screen.bottom);
+	safe.right = Clamp(safe.right, safe.left, screen.right);
+	safe.bottom = Clamp(safe.bottom, safe.top, screen.bottom);
+	return safe;
+}
+
+/**
  * Move a window, keeping its viewport (if any) in place relative to the window.
  * @param w The window.
  * @param x New left edge.
@@ -310,16 +326,17 @@ static void OpenSheetContent(WindowClass cls, void (*open)())
 static Rect GetSheetSlot()
 {
 	const Window *dock = FindWindowById(WindowClass::MobileDock, 0);
+	Rect safe = GetSafeArea();
 	if (IsLandscape()) {
-		int dock_width = dock != nullptr ? dock->width : 0;
-		int width = std::min(ScaleGUITrad(MOBILE_SIDE_PANEL_WIDTH), _screen.width - dock_width);
-		return {_screen.width - width, 0, _screen.width - 1, _screen.height - 1};
+		int dock_right = dock != nullptr ? dock->left + dock->width : safe.left;
+		int width = std::min(ScaleGUITrad(MOBILE_SIDE_PANEL_WIDTH), safe.right + 1 - dock_right);
+		return {safe.right + 1 - width, safe.top, safe.right, safe.bottom};
 	}
 
-	int bottom = _screen.height - (dock != nullptr ? dock->height : 0);
-	int full_height = bottom - ScaleGUITrad(MOBILE_MAP_STRIP);
+	int bottom = dock != nullptr ? dock->top : safe.bottom + 1;
+	int full_height = bottom - safe.top - ScaleGUITrad(MOBILE_MAP_STRIP);
 	int height = _sheet.full ? full_height : std::min(ScaleGUITrad(MOBILE_HALF_SHEET_HEIGHT), full_height);
-	return {0, bottom - height, _screen.width - 1, bottom - 1};
+	return {safe.left, bottom - height, safe.right, bottom - 1};
 }
 
 /* --- Build --- */
@@ -1120,6 +1137,7 @@ void RelocateMobileWindows()
 
 	bool landscape = IsLandscape();
 	const int margin = ScaleGUITrad(MOBILE_MARGIN);
+	const Rect safe = GetSafeArea();
 
 	/* The dock: close it and open the other layout when the orientation changed. */
 	MobileDockWindow *dock = dynamic_cast<MobileDockWindow *>(FindWindowById(WindowClass::MobileDock, 0));
@@ -1130,16 +1148,16 @@ void RelocateMobileWindows()
 	}
 	if (dock == nullptr) dock = new MobileDockWindow(landscape ? _mobile_dock_landscape_desc : _mobile_dock_portrait_desc, landscape);
 	if (landscape) {
-		FitWindowTo(dock, dock->width, _screen.height);
-		MoveWindowTo(dock, 0, 0);
+		FitWindowTo(dock, dock->width, safe.Height());
+		MoveWindowTo(dock, safe.left, safe.top);
 	} else {
-		FitWindowTo(dock, _screen.width, dock->height);
-		MoveWindowTo(dock, 0, _screen.height - dock->height);
+		FitWindowTo(dock, safe.Width(), dock->height);
+		MoveWindowTo(dock, safe.left, safe.bottom + 1 - dock->height);
 	}
-	int map_left = landscape ? dock->width : 0;
+	int map_left = landscape ? dock->left + dock->width : safe.left;
 
 	/* The sheet slot: the tab window at the top, the content and its overlay below. */
-	int map_right = _screen.width;
+	int map_right = safe.right + 1;
 	if (IsSheetOpen()) {
 		Rect slot = GetSheetSlot();
 		if (landscape) map_right = slot.left;
@@ -1159,21 +1177,21 @@ void RelocateMobileWindows()
 	}
 
 	if (Window *status = FindWindowById(WindowClass::MobileStatus, 0); status != nullptr) {
-		MoveWindowTo(status, map_left + margin, margin);
+		MoveWindowTo(status, map_left + margin, safe.top + margin);
 	}
 
 	if (Window *minimap = FindWindowById(WindowClass::MobileMinimap, 0); minimap != nullptr) {
-		MoveWindowTo(minimap, map_right - minimap->width - margin, margin);
+		MoveWindowTo(minimap, map_right - minimap->width - margin, safe.top + margin);
 	}
 
 	if (Window *news = FindWindowById(WindowClass::MobileNews, 0); news != nullptr) {
 		if (landscape) {
 			int width = std::min(ScaleGUITrad(MOBILE_NEWS_WIDTH), map_right - map_left - ScaleGUITrad(16));
 			FitWindowTo(news, width, news->height);
-			MoveWindowTo(news, CentreBounds(map_left, map_right, news->width), margin);
+			MoveWindowTo(news, CentreBounds(map_left, map_right, news->width), safe.top + margin);
 		} else {
-			FitWindowTo(news, _screen.width - 2 * margin, news->height);
-			MoveWindowTo(news, margin, ScaleGUITrad(MOBILE_NEWS_TOP_PORTRAIT));
+			FitWindowTo(news, safe.Width() - 2 * margin, news->height);
+			MoveWindowTo(news, safe.left + margin, safe.top + ScaleGUITrad(MOBILE_NEWS_TOP_PORTRAIT));
 		}
 	}
 
@@ -1181,18 +1199,18 @@ void RelocateMobileWindows()
 	if (Window *menu = FindWindowById(WindowClass::MobileMenu, 0); menu != nullptr) {
 		const NWidgetBase *button = dock->GetWidget<NWidgetBase>(WID_MD_MENU);
 		if (landscape) {
-			MoveWindowTo(menu, dock->width, std::min<int>(dock->top + button->pos_y, _screen.height - menu->height));
+			MoveWindowTo(menu, map_left, std::min<int>(dock->top + button->pos_y, safe.bottom + 1 - menu->height));
 		} else {
-			MoveWindowTo(menu, _screen.width - menu->width - margin, dock->top - menu->height);
+			MoveWindowTo(menu, safe.right + 1 - menu->width - margin, dock->top - menu->height);
 		}
 	}
 	if (Window *build = FindWindowById(WindowClass::MobileBuildMenu, 0); build != nullptr) {
 		const NWidgetBase *button = dock->GetWidget<NWidgetBase>(WID_MD_BUILD);
 		if (landscape) {
-			MoveWindowTo(build, dock->width, std::max<int>(0, dock->top + button->pos_y + button->current_y - build->height));
+			MoveWindowTo(build, map_left, std::max<int>(safe.top, dock->top + button->pos_y + button->current_y - build->height));
 		} else {
 			int x = dock->left + button->pos_x + (button->current_x - build->width) / 2;
-			MoveWindowTo(build, Clamp(x, 0, _screen.width - build->width), dock->top - build->height);
+			MoveWindowTo(build, Clamp(x, safe.left, safe.right + 1 - build->width), dock->top - build->height);
 		}
 	}
 
@@ -1265,8 +1283,9 @@ void MobileDockOverlayInSheet(Window *w)
 Point GetMobileToolbarAlignedWindowPosition(int window_width)
 {
 	const Window *dock = FindWindowById(WindowClass::MobileDock, 0);
-	int map_left = (dock != nullptr && IsLandscape()) ? dock->width : 0;
-	return {std::max(map_left, CentreBounds(map_left, _screen.width, window_width)), ScaleGUITrad(MOBILE_MAP_STRIP)};
+	Rect safe = GetSafeArea();
+	int map_left = (dock != nullptr && IsLandscape()) ? dock->left + dock->width : safe.left;
+	return {std::max(map_left, CentreBounds(map_left, safe.right + 1, window_width)), safe.top + ScaleGUITrad(MOBILE_MAP_STRIP)};
 }
 
 /** Switch between the desktop and the mobile layout after the setting changed. */

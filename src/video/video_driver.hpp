@@ -71,6 +71,15 @@ public:
 	virtual bool ToggleFullscreen(bool fullscreen) = 0;
 
 	/**
+	 * Get the part of the screen that is not covered by system bars, display cutouts or rounded corners.
+	 * @return The safe area, in screen pixels.
+	 */
+	virtual Rect GetSafeArea() const
+	{
+		return {0, 0, _screen.width - 1, _screen.height - 1};
+	}
+
+	/**
 	 * Change the vsync setting.
 	 * @param vsync The new setting.
 	 */

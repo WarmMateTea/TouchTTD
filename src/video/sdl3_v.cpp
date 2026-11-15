@@ -19,6 +19,7 @@
 #include "../fileio_func.h"
 #include "../framerate_type.h"
 #include "../window_func.h"
+#include "../window_gui.h"
 #include "sdl3_v.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
@@ -201,6 +202,10 @@ bool VideoDriver_SDL_Base::CreateMainWindow(uint w, uint h, uint flags)
 	if (_fullscreen) {
 		flags |= SDL_WINDOW_FULLSCREEN;
 	}
+#ifdef __ANDROID__
+	/* A window on a phone is always full screen; this also hides the system bars. */
+	flags |= SDL_WINDOW_FULLSCREEN;
+#endif
 
 	std::string caption = VideoDriver::GetCaption();
 	this->sdl_window = SDL_CreateWindow(caption.c_str(), w, h, flags);
@@ -596,6 +601,12 @@ bool VideoDriver_SDL_Base::PollEvent()
 			this->MakeDirty(0, 0, _screen.width, _screen.height);
 			break;
 
+		case SDL_EVENT_WINDOW_SAFE_AREA_CHANGED:
+			/* System bars or a display cutout moved; windows that keep clear of them must move too. */
+			RelocateAllWindows(_screen.width, _screen.height);
+			MarkWholeScreenDirty();
+			break;
+
 		case SDL_EVENT_WINDOW_RESIZED:
 		case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
 			int w = std::max(ev.window.data1, 64);
@@ -854,6 +865,15 @@ void VideoDriver_SDL_Base::UnlockVideoBuffer()
 	}
 
 	this->buffer_locked = false;
+}
+
+Rect VideoDriver_SDL_Base::GetSafeArea() const
+{
+	SDL_Rect r;
+	if (this->sdl_window == nullptr || !SDL_GetWindowSafeArea(this->sdl_window, &r) || r.w <= 0 || r.h <= 0) {
+		return this->VideoDriver::GetSafeArea();
+	}
+	return {r.x, r.y, r.x + r.w - 1, r.y + r.h - 1};
 }
 
 void VideoDriver_SDL_Base::SetScreensaverInhibited(bool inhibited)
