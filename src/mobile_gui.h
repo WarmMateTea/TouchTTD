@@ -12,6 +12,8 @@
 
 #include "window_type.h"
 #include "core/geometry_type.hpp"
+#include "gfx_type.h"
+#include "strings_type.h"
 
 bool IsMobileLayout();
 bool IsMobileShellWindow(WindowClass cls);
@@ -22,6 +24,12 @@ bool MobileHandleBack();
 void MobileDockOverlayInSheet(Window *w);
 Point GetMobileToolbarAlignedWindowPosition(int window_width);
 void ApplyMobileLayoutSetting();
+Rect GetMobileVisibleMapRect();
+Point GetMobileMapCentreOffset();
+void MobileShowInSheet(Window *w);
+void ShowMobileBuildFlyoutForToolbar(Window *toolbar, WidgetID widget);
+bool ShowMobileError(const std::string &summary, const std::string &detail);
+void DrawMobileIconButton(const Rect &r, SpriteID sprite, StringID label, bool lowered, bool disabled);
 
 void ShowMobileNewsBanner();
 void CloseMobileNewsBanner();

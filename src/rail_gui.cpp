@@ -47,6 +47,9 @@
 #include "station_map.h"
 #include "tunnelbridge_map.h"
 
+#include "mobile_build.h"
+#include "mobile_gui.h"
+
 #include "widgets/rail_widget.h"
 
 #include "table/strings.h"
@@ -320,6 +323,43 @@ void CcBuildRailTunnel(Commands, const CommandCost &result, TileIndex tile)
 }
 
 /**
+ * Get the rail type of the rail toolbar.
+ * @return The rail type being built.
+ */
+RailType GetCurrentRailType()
+{
+	return _cur_railtype;
+}
+
+/**
+ * Is the rail toolbar in remove mode?
+ * @return \c true when building tools remove instead.
+ */
+bool IsRailRemoveModeActive()
+{
+	return _remove_button_clicked;
+}
+
+/**
+ * Switch the rail toolbar's remove mode without touching its buttons; used to replay a selection
+ * in review in the mode it was made in.
+ * @param remove Whether building tools remove instead.
+ */
+void SetRailRemoveMode(bool remove)
+{
+	_remove_button_clicked = remove;
+}
+
+/**
+ * Build a rail tunnel from a tile, as the tunnel tool does.
+ * @param tile The tunnel entrance.
+ */
+void PostRailTunnel(TileIndex tile)
+{
+	Command<Commands::BuildTunnel>::Post(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE, CcBuildRailTunnel, tile, TransportType::Rail, _cur_railtype, INVALID_ROADTYPE);
+}
+
+/**
  * Toggles state of the Remove button of Build rail toolbar
  * @param w window the button belongs to
  */
@@ -441,18 +481,31 @@ static void HandleAutoSignalPlacement()
 
 
 /** Rail toolbar management class. */
+static void ShowMobileRailMoreFlyout(struct BuildRailToolbarWindow *toolbar);
+
 struct BuildRailToolbarWindow : Window {
 	RailType railtype = INVALID_RAILTYPE; ///< Rail type to build.
 	WidgetID last_user_action = INVALID_WIDGET; ///< Last started user action.
+	const bool mobile; ///< Whether this is the mobile layout of the toolbar.
+	const bool landscape; ///< For the mobile layout: whether this is the landscape (one row) layout.
 
-	BuildRailToolbarWindow(WindowDesc &desc, RailType railtype) : Window(desc), railtype(railtype)
+	/** The tools that the mobile layout keeps in its More flyout, in that flyout's order. */
+	static inline const WidgetID more_tools_landscape[] = {WID_RAT_BUILD_WAYPOINT, WID_RAT_CONVERT_RAIL, WID_RAT_BUILD_NS, WID_RAT_BUILD_EW, WID_RAT_BUILD_X, WID_RAT_BUILD_Y};
+	static inline const WidgetID more_tools_portrait[] = {WID_RAT_BUILD_BRIDGE, WID_RAT_BUILD_TUNNEL, WID_RAT_BUILD_WAYPOINT, WID_RAT_CONVERT_RAIL, WID_RAT_BUILD_NS, WID_RAT_BUILD_X, WID_RAT_BUILD_EW, WID_RAT_BUILD_Y};
+
+	BuildRailToolbarWindow(WindowDesc &desc, RailType railtype, bool mobile = false, bool landscape = false) : Window(desc), railtype(railtype), mobile(mobile), landscape(landscape)
 	{
 		this->CreateNestedTree();
+		if (mobile) this->GetWidget<NWidgetStacked>(WID_RAT_SEL_HIDDEN)->SetDisplayedPlane(SZSP_NONE);
 		this->FinishInitNested(TransportType::Rail);
 		this->DisableWidget(WID_RAT_REMOVE);
 		this->OnInvalidateData();
 
-		if (_settings_client.gui.link_terraform_toolbar) ShowTerraformToolbar(this);
+		if (mobile) {
+			this->UpdateMobileHint();
+		} else if (_settings_client.gui.link_terraform_toolbar) {
+			ShowTerraformToolbar(this);
+		}
 	}
 
 	void Close([[maybe_unused]] int data = 0) override
@@ -461,7 +514,115 @@ struct BuildRailToolbarWindow : Window {
 		if (this->IsWidgetLowered(WID_RAT_BUILD_WAYPOINT)) SetViewportCatchmentWaypoint(nullptr, true);
 		if (_settings_client.gui.link_terraform_toolbar) CloseWindowById(WindowClass::ScenarioGenerateLandscape, 0, false);
 		CloseWindowById(WindowClass::JoinStation, 0);
+		CloseWindowById(WindowClass::MobileRailMore, 0);
 		this->Window::Close();
+		/* Give the dock its place back. */
+		if (this->mobile) RelocateMobileWindows();
+	}
+
+	/**
+	 * The tools in the mobile layout's More flyout.
+	 * @return The tools.
+	 */
+	std::span<const WidgetID> GetMoreTools() const
+	{
+		if (this->landscape) return more_tools_landscape;
+		return more_tools_portrait;
+	}
+
+	/**
+	 * The icon of a tool, as its toolbar button shows it.
+	 * @param tool The tool.
+	 * @return Its sprite.
+	 */
+	SpriteID GetToolSprite(WidgetID tool) const
+	{
+		const RailTypeInfo *rti = GetRailTypeInfo(this->railtype);
+		switch (tool) {
+			case WID_RAT_BUILD_NS: return rti->gui_sprites.build_ns_rail;
+			case WID_RAT_BUILD_X: return rti->gui_sprites.build_x_rail;
+			case WID_RAT_BUILD_EW: return rti->gui_sprites.build_ew_rail;
+			case WID_RAT_BUILD_Y: return rti->gui_sprites.build_y_rail;
+			case WID_RAT_CONVERT_RAIL: return rti->gui_sprites.convert_rail;
+			case WID_RAT_BUILD_TUNNEL: return rti->gui_sprites.build_tunnel;
+			case WID_RAT_BUILD_WAYPOINT: return SPR_IMG_WAYPOINT;
+			case WID_RAT_BUILD_BRIDGE: return SPR_IMG_BRIDGE;
+			default: return SPR_IMG_AUTORAIL;
+		}
+	}
+
+	/** Show the hint of the selected tool in the status line. */
+	void UpdateMobileHint()
+	{
+		if (!this->mobile) return;
+		StringID hint = STR_MOBILE_BUILD_HINT_PICK_TOOL;
+		if (_thd.GetCallbackWnd() == this) {
+			switch (this->last_user_action) {
+				case WID_RAT_BUILD_NS:
+				case WID_RAT_BUILD_X:
+				case WID_RAT_BUILD_EW:
+				case WID_RAT_BUILD_Y:
+				case WID_RAT_AUTORAIL: hint = _remove_button_clicked ? STR_MOBILE_BUILD_HINT_REMOVE_TRACK : STR_MOBILE_BUILD_HINT_TRACK; break;
+				case WID_RAT_DEMOLISH: hint = STR_MOBILE_BUILD_HINT_DEMOLISH; break;
+				case WID_RAT_BUILD_BRIDGE: hint = STR_MOBILE_BUILD_HINT_BRIDGE; break;
+				case WID_RAT_BUILD_TUNNEL: hint = STR_MOBILE_BUILD_HINT_TUNNEL; break;
+				case WID_RAT_CONVERT_RAIL: hint = STR_MOBILE_BUILD_HINT_CONVERT; break;
+				case WID_RAT_BUILD_DEPOT:
+				case WID_RAT_BUILD_WAYPOINT:
+				case WID_RAT_BUILD_STATION:
+				case WID_RAT_BUILD_SIGNALS: hint = STR_MOBILE_BUILD_HINT_PLACE; break;
+				default: break;
+			}
+		}
+		MobileBuildSetToolHint(hint);
+	}
+
+	/**
+	 * What confirming does with the selected tool, for the confirm button while nothing is in review.
+	 * @return The kind of construction.
+	 */
+	MobileBuildKind GetToolKind() const
+	{
+		if (GetMobileBuildState() == MobileBuildState::Pending) return GetMobileBuildKind();
+		switch (this->last_user_action) {
+			case WID_RAT_DEMOLISH: return MobileBuildKind::Demolish;
+			case WID_RAT_CONVERT_RAIL: return MobileBuildKind::Convert;
+			default: return _remove_button_clicked ? MobileBuildKind::Remove : MobileBuildKind::Build;
+		}
+	}
+
+	/** Update the mobile layout's status line, Cancel, Build/Undo and More buttons to the state of the review. */
+	void UpdateMobileWidgets()
+	{
+		MobileBuildState state = GetMobileBuildState();
+		bool picking = state == MobileBuildState::BridgePicking;
+
+		bool reinit = false;
+		auto set_plane = [&](WidgetID widget, int plane) {
+			NWidgetStacked *sel = this->GetWidget<NWidgetStacked>(widget);
+			if (sel->shown_plane == plane) return;
+			sel->SetDisplayedPlane(plane);
+			reinit = true;
+		};
+		set_plane(WID_RAT_SEL_TOOLS, picking ? SZSP_NONE : 0);
+		set_plane(WID_RAT_SEL_CONFIRM, picking ? SZSP_NONE : (MobileBuildHasUndo() ? 1 : 0));
+
+		MobileBuildKind kind = this->GetToolKind();
+		NWidgetCore *confirm = this->GetWidget<NWidgetCore>(WID_RAT_CONFIRM);
+		confirm->colour = kind == MobileBuildKind::Build ? Colours::Green : Colours::Red;
+		static const StringID labels[] = {STR_MOBILE_BUILD_CONFIRM_BUILD, STR_MOBILE_BUILD_CONFIRM_REMOVE, STR_MOBILE_BUILD_CONFIRM_DEMOLISH, STR_MOBILE_BUILD_CONFIRM_CONVERT};
+		confirm->SetString(labels[to_underlying(kind)]);
+		this->SetWidgetDisabledState(WID_RAT_CONFIRM, !MobileBuildCanConfirm());
+		this->SetWidgetDisabledState(WID_RAT_CANCEL, !MobileBuildCanCancel());
+
+		auto more = this->GetMoreTools();
+		this->SetWidgetLoweredState(WID_RAT_MORE, std::ranges::find(more, this->last_user_action) != more.end() && this->IsWidgetLowered(this->last_user_action));
+
+		if (reinit) {
+			this->ReInit();
+			RelocateMobileWindows();
+		}
+		this->SetDirty();
 	}
 
 	/** List of widgets to be disabled if infrastructure limit prevents building. */
@@ -474,6 +635,8 @@ struct BuildRailToolbarWindow : Window {
 	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
 	{
 		if (!gui_scope) return;
+
+		if (this->mobile) this->UpdateMobileWidgets();
 
 		if (_cur_railtype != this->railtype) {
 			this->ModifyRailType(_cur_railtype);
@@ -525,6 +688,37 @@ struct BuildRailToolbarWindow : Window {
 		this->GetWidget<NWidgetCore>(WID_RAT_BUILD_DEPOT)->SetSprite(rti->gui_sprites.build_depot);
 		this->GetWidget<NWidgetCore>(WID_RAT_CONVERT_RAIL)->SetSprite(rti->gui_sprites.convert_rail);
 		this->GetWidget<NWidgetCore>(WID_RAT_BUILD_TUNNEL)->SetSprite(rti->gui_sprites.build_tunnel);
+		if (this->mobile) this->GetWidget<NWidgetCore>(WID_RAT_CATEGORY)->SetSprite(rti->gui_sprites.build_x_rail);
+	}
+
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		switch (widget) {
+			case WID_RAT_STATUS: {
+				TextColour colour;
+				std::string status = GetMobileBuildStatus(colour);
+				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
+				int lines_height = std::min<int>(tr.Height(), GetCharacterHeight(FontSize::Normal) * 2);
+				tr.top = CentreBounds(r.top, r.bottom, std::min(lines_height, GetStringHeight(status, tr.Width())));
+				DrawStringMultiLineWithClipping(tr.WithHeight(lines_height), status, colour);
+				break;
+			}
+
+			case WID_RAT_MORE: {
+				/* The tool chosen from the flyout, or "..." while none is. */
+				bool lowered = this->IsWidgetLowered(WID_RAT_MORE);
+				int offset = lowered ? ScaleGUITrad(1) : 0;
+				if (lowered) {
+					SpriteID sprite = this->GetToolSprite(this->last_user_action);
+					Dimension d = GetSpriteSize(sprite);
+					DrawSprite(sprite, PAL_NONE, CentreBounds(r.left, r.right, d.width) + offset, CentreBounds(r.top, r.bottom, d.height) + offset);
+				} else {
+					DrawString(r.left, r.right, CentreBounds(r.top, r.bottom, GetCharacterHeight(FontSize::Normal)), STR_MOBILE_RAIL_MORE, TextColour::White, AlignmentH::Centre);
+				}
+				break;
+			}
+		}
 	}
 
 	/**
@@ -535,6 +729,7 @@ struct BuildRailToolbarWindow : Window {
 	{
 		this->railtype = railtype;
 		this->ReInit();
+		MobileBuildReestimate();
 	}
 
 	void UpdateRemoveWidgetStatus(WidgetID clicked_widget)
@@ -569,6 +764,11 @@ struct BuildRailToolbarWindow : Window {
 
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
+		if (widget == WID_RAT_UNDO) {
+			/* Removing track refunds part of its cost; show that as a gain rather than a negative cost. */
+			Money cost = GetMobileBuildUndoCost();
+			return cost < 0 ? GetString(STR_MOBILE_BUILD_UNDO_REFUND, -cost) : GetString(STR_MOBILE_BUILD_UNDO, cost);
+		}
 		if (widget == WID_RAT_CAPTION) {
 			const RailTypeInfo *rti = GetRailTypeInfo(this->railtype);
 			if (rti->max_speed > 0) {
@@ -635,11 +835,24 @@ struct BuildRailToolbarWindow : Window {
 	{
 		if (widget < WID_RAT_BUILD_NS) return;
 
+		switch (widget) {
+			case WID_RAT_CATEGORY: ShowMobileBuildFlyoutForToolbar(this, widget); return;
+			case WID_RAT_MORE: ShowMobileRailMoreFlyout(this); return;
+			case WID_RAT_CANCEL: MobileBuildCancel(); return;
+			case WID_RAT_CONFIRM: MobileBuildConfirm(); return;
+			case WID_RAT_UNDO: MobileBuildUndo(); return;
+			case WID_RAT_EXIT: this->Close(); return;
+			case WID_RAT_STATUS: return;
+			default: break;
+		}
+
 		_remove_button_clicked = false;
 
 		if (widget == WID_RAT_REMOVE) {
 			BuildRailClick_Remove(this);
 			if (IsCtrlPressed()) RailToolbar_CtrlChanged(this);
+			MobileBuildReestimate();
+			this->UpdateMobileHint();
 			return;
 		}
 
@@ -675,6 +888,8 @@ struct BuildRailToolbarWindow : Window {
 
 		this->UpdateRemoveWidgetStatus(widget);
 		if (IsCtrlPressed()) RailToolbar_CtrlChanged(this);
+		this->UpdateMobileHint();
+		if (this->mobile) this->UpdateMobileWidgets();
 	}
 
 	EventState OnHotkey(int hotkey) override
@@ -732,7 +947,8 @@ struct BuildRailToolbarWindow : Window {
 				break;
 
 			case WID_RAT_BUILD_TUNNEL:
-				Command<Commands::BuildTunnel>::Post(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE, CcBuildRailTunnel, tile, TransportType::Rail, _cur_railtype, INVALID_ROADTYPE);
+				if (MobileBuildTunnelTap(this, tile)) break;
+				PostRailTunnel(tile);
 				break;
 
 			case WID_RAT_CONVERT_RAIL:
@@ -753,6 +969,8 @@ struct BuildRailToolbarWindow : Window {
 
 	Point OnInitialPosition(int16_t sm_width, [[maybe_unused]] int16_t sm_height, [[maybe_unused]] int window_number) override
 	{
+		/* The mobile layout pass docks the mobile toolbar. */
+		if (this->mobile) return {0, _screen.height - sm_height};
 		return AlignInitialConstructionToolbar(sm_width);
 	}
 
@@ -762,7 +980,8 @@ struct BuildRailToolbarWindow : Window {
 			switch (select_proc) {
 				default: NOT_REACHED();
 				case DDSP_BUILD_BRIDGE:
-					if (!_settings_client.gui.persistent_buildingtools) ResetObjectToPlace();
+					/* The mobile layout keeps the tool, and the span highlighted, while the bridge list is open. */
+					if (!_settings_client.gui.persistent_buildingtools && !this->mobile) ResetObjectToPlace();
 					ShowBuildBridgeWindow(start_tile, end_tile, TransportType::Rail, _cur_railtype, INVALID_ROADTYPE);
 					break;
 
@@ -833,6 +1052,7 @@ struct BuildRailToolbarWindow : Window {
 		CloseWindowById(WindowClass::BuildWaypoint, TransportType::Rail);
 		CloseWindowById(WindowClass::JoinStation, 0);
 		CloseWindowByClass(WindowClass::BuildBridge);
+		this->UpdateMobileHint();
 	}
 
 	void OnPlacePresize([[maybe_unused]] Point pt, TileIndex tile) override
@@ -964,6 +1184,260 @@ static WindowDesc _build_rail_desc(
 );
 
 
+/** One tool button of the mobile rail toolbar. */
+#define MOBILE_RAIL_TOOL(widget, sprite, tip) NWidget(WWT_IMGBTN, Colours::Grey, widget), SetMinimalSize(40, 40), SetSpriteTip(sprite, tip)
+
+/** The tools of the rail toolbar that the mobile layout keeps in its More flyout; never shown in the toolbar itself. */
+#define MOBILE_RAIL_HIDDEN_TOOLS \
+	MOBILE_RAIL_TOOL(WID_RAT_BUILD_NS, SPR_IMG_RAIL_NS, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_TRACK), \
+	MOBILE_RAIL_TOOL(WID_RAT_BUILD_X, SPR_IMG_RAIL_NE, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_TRACK), \
+	MOBILE_RAIL_TOOL(WID_RAT_BUILD_EW, SPR_IMG_RAIL_EW, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_TRACK), \
+	MOBILE_RAIL_TOOL(WID_RAT_BUILD_Y, SPR_IMG_RAIL_NW, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_TRACK), \
+	MOBILE_RAIL_TOOL(WID_RAT_BUILD_WAYPOINT, SPR_IMG_WAYPOINT, STR_RAIL_TOOLBAR_TOOLTIP_CONVERT_RAIL_TO_WAYPOINT), \
+	MOBILE_RAIL_TOOL(WID_RAT_CONVERT_RAIL, SPR_IMG_CONVERT_RAIL, STR_RAIL_TOOLBAR_TOOLTIP_CONVERT_RAIL)
+
+/** Rail toolbar of the mobile layout in landscape: one bar along the bottom of the map. */
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_rail_landscape_widgets = {
+	NWidget(WWT_PANEL, Colours::Grey),
+		NWidget(NWID_HORIZONTAL), SetPadding(3, 4, 3, 4), SetPIP(0, 4, 0),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_TOOLS),
+				NWidget(NWID_HORIZONTAL), SetPIP(0, 4, 0),
+					MOBILE_RAIL_TOOL(WID_RAT_CATEGORY, SPR_IMG_BUILDRAIL, STR_MOBILE_RAIL_CATEGORY_TOOLTIP),
+					NWidget(NWID_SPACER), SetMinimalSize(0, 0),
+					MOBILE_RAIL_TOOL(WID_RAT_AUTORAIL, SPR_IMG_AUTORAIL, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_AUTORAIL),
+					MOBILE_RAIL_TOOL(WID_RAT_REMOVE, SPR_IMG_REMOVE, STR_RAIL_TOOLBAR_TOOLTIP_TOGGLE_BUILD_REMOVE_FOR),
+					MOBILE_RAIL_TOOL(WID_RAT_DEMOLISH, SPR_IMG_DYNAMITE, STR_TOOLTIP_DEMOLISH_BUILDINGS_ETC),
+					NWidget(NWID_SPACER), SetMinimalSize(0, 0),
+					MOBILE_RAIL_TOOL(WID_RAT_BUILD_STATION, SPR_IMG_RAIL_STATION, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_STATION),
+					MOBILE_RAIL_TOOL(WID_RAT_BUILD_DEPOT, SPR_IMG_DEPOT_RAIL, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_TRAIN_DEPOT_FOR_BUILDING),
+					MOBILE_RAIL_TOOL(WID_RAT_BUILD_SIGNALS, SPR_IMG_RAIL_SIGNALS, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_SIGNALS),
+					MOBILE_RAIL_TOOL(WID_RAT_BUILD_BRIDGE, SPR_IMG_BRIDGE, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_BRIDGE),
+					MOBILE_RAIL_TOOL(WID_RAT_BUILD_TUNNEL, SPR_IMG_TUNNEL_RAIL, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_TUNNEL),
+					NWidget(NWID_SPACER), SetMinimalSize(0, 0),
+					NWidget(WWT_PANEL, Colours::Grey, WID_RAT_MORE), SetMinimalSize(40, 40), SetToolTip(STR_MOBILE_RAIL_MORE_TOOLTIP), EndContainer(),
+				EndContainer(),
+			EndContainer(),
+			NWidget(WWT_INSET, Colours::Grey, WID_RAT_STATUS), SetMinimalSize(120, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_CANCEL), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_BUILD_CANCEL_TOOLTIP),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_CONFIRM),
+				NWidget(WWT_PUSHTXTBTN, Colours::Green, WID_RAT_CONFIRM), SetMinimalSize(56, 40), SetStringTip(STR_MOBILE_BUILD_CONFIRM_BUILD, STR_MOBILE_BUILD_CONFIRM_TOOLTIP),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_UNDO), SetMinimalSize(100, 40), SetStringTip(STR_MOBILE_BUILD_UNDO, STR_MOBILE_BUILD_UNDO_TOOLTIP),
+			EndContainer(),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_HIDDEN),
+				NWidget(NWID_HORIZONTAL),
+					MOBILE_RAIL_HIDDEN_TOOLS,
+					NWidget(WWT_PUSHTXTBTN, Colours::Green, WID_RAT_EXIT), SetMinimalSize(56, 40), SetStringTip(STR_MOBILE_BUILD_EXIT, STR_MOBILE_BUILD_EXIT_TOOLTIP),
+				EndContainer(),
+			EndContainer(),
+		EndContainer(),
+	EndContainer(),
+};
+
+/** Rail toolbar of the mobile layout in portrait: two rows replacing the dock. */
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_rail_portrait_widgets = {
+	NWidget(WWT_PANEL, Colours::Grey),
+		NWidget(NWID_VERTICAL), SetPadding(4), SetPIP(0, 4, 0),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, 4, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Green, WID_RAT_EXIT), SetMinimalSize(56, 40), SetStringTip(STR_MOBILE_BUILD_EXIT, STR_MOBILE_BUILD_EXIT_TOOLTIP),
+				NWidget(WWT_INSET, Colours::Grey, WID_RAT_STATUS), SetMinimalSize(120, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_CANCEL), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_BUILD_CANCEL_TOOLTIP),
+				NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_CONFIRM),
+					NWidget(WWT_PUSHTXTBTN, Colours::Green, WID_RAT_CONFIRM), SetMinimalSize(56, 40), SetStringTip(STR_MOBILE_BUILD_CONFIRM_BUILD, STR_MOBILE_BUILD_CONFIRM_TOOLTIP),
+					NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_UNDO), SetMinimalSize(100, 40), SetStringTip(STR_MOBILE_BUILD_UNDO, STR_MOBILE_BUILD_UNDO_TOOLTIP),
+				EndContainer(),
+				/* Inside this row rather than below it: in a vertical container, a child that can't resize
+				 * (like this always hidden selection) stops the whole container from resizing horizontally. */
+				NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_HIDDEN),
+					NWidget(NWID_HORIZONTAL),
+						MOBILE_RAIL_HIDDEN_TOOLS,
+						MOBILE_RAIL_TOOL(WID_RAT_BUILD_BRIDGE, SPR_IMG_BRIDGE, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_BRIDGE),
+						MOBILE_RAIL_TOOL(WID_RAT_BUILD_TUNNEL, SPR_IMG_TUNNEL_RAIL, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_TUNNEL),
+					EndContainer(),
+				EndContainer(),
+			EndContainer(),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_TOOLS),
+				NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
+					MOBILE_RAIL_TOOL(WID_RAT_CATEGORY, SPR_IMG_BUILDRAIL, STR_MOBILE_RAIL_CATEGORY_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+					MOBILE_RAIL_TOOL(WID_RAT_AUTORAIL, SPR_IMG_AUTORAIL, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_AUTORAIL), SetFill(1, 0), SetResize(1, 0),
+					MOBILE_RAIL_TOOL(WID_RAT_REMOVE, SPR_IMG_REMOVE, STR_RAIL_TOOLBAR_TOOLTIP_TOGGLE_BUILD_REMOVE_FOR), SetFill(1, 0), SetResize(1, 0),
+					MOBILE_RAIL_TOOL(WID_RAT_DEMOLISH, SPR_IMG_DYNAMITE, STR_TOOLTIP_DEMOLISH_BUILDINGS_ETC), SetFill(1, 0), SetResize(1, 0),
+					MOBILE_RAIL_TOOL(WID_RAT_BUILD_STATION, SPR_IMG_RAIL_STATION, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_STATION), SetFill(1, 0), SetResize(1, 0),
+					MOBILE_RAIL_TOOL(WID_RAT_BUILD_DEPOT, SPR_IMG_DEPOT_RAIL, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_TRAIN_DEPOT_FOR_BUILDING), SetFill(1, 0), SetResize(1, 0),
+					MOBILE_RAIL_TOOL(WID_RAT_BUILD_SIGNALS, SPR_IMG_RAIL_SIGNALS, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_SIGNALS), SetFill(1, 0), SetResize(1, 0),
+					NWidget(WWT_PANEL, Colours::Grey, WID_RAT_MORE), SetMinimalSize(40, 40), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_RAIL_MORE_TOOLTIP), EndContainer(),
+				EndContainer(),
+			EndContainer(),
+		EndContainer(),
+	EndContainer(),
+};
+
+#undef MOBILE_RAIL_HIDDEN_TOOLS
+#undef MOBILE_RAIL_TOOL
+
+static WindowDesc _mobile_rail_landscape_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::BuildToolbar, WindowClass::None,
+	WindowDefaultFlag::Construction,
+	_nested_mobile_rail_landscape_widgets,
+	&BuildRailToolbarWindow::hotkeys
+);
+
+static WindowDesc _mobile_rail_portrait_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::BuildToolbar, WindowClass::None,
+	WindowDefaultFlag::Construction,
+	_nested_mobile_rail_portrait_widgets,
+	&BuildRailToolbarWindow::hotkeys
+);
+
+/** Flyout of the mobile rail toolbar with the tools that don't fit in the toolbar. */
+struct MobileRailMoreWindow : Window {
+	BuildRailToolbarWindow *toolbar; ///< The toolbar the tools belong to.
+
+	MobileRailMoreWindow(WindowDesc &desc, BuildRailToolbarWindow *toolbar) : Window(desc), toolbar(toolbar)
+	{
+		this->CreateNestedTree();
+		this->GetWidget<NWidgetStacked>(WID_RMORE_SEL_EXTRA)->SetDisplayedPlane(toolbar->GetMoreTools().size() > 6 ? 0 : SZSP_NONE);
+		this->FinishInitNested(0);
+		this->flags.Reset(WindowFlag::WhiteBorder);
+	}
+
+	Point OnInitialPosition(int16_t sm_width, int16_t sm_height, [[maybe_unused]] int window_number) override
+	{
+		/* Above the More button, right edges aligned. */
+		const NWidgetBase *more = this->toolbar->GetWidget<NWidgetBase>(WID_RAT_MORE);
+		int right = this->toolbar->left + more->pos_x + more->current_x;
+		return {Clamp(right - sm_width, 0, std::max(0, _screen.width - sm_width)), std::max(0, this->toolbar->top + (int)more->pos_y - sm_height)};
+	}
+
+	/**
+	 * The toolbar tool behind a button.
+	 * @param widget The button.
+	 * @return The tool, or \c INVALID_WIDGET.
+	 */
+	WidgetID GetTool(WidgetID widget) const
+	{
+		auto tools = this->toolbar->GetMoreTools();
+		size_t index = widget - WID_RMORE_FIRST;
+		return index < tools.size() ? tools[index] : INVALID_WIDGET;
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		WidgetID tool = this->GetTool(widget);
+		if (tool == INVALID_WIDGET) return;
+
+		StringID label;
+		switch (tool) {
+			case WID_RAT_BUILD_WAYPOINT: label = STR_MOBILE_RAIL_WAYPOINT; break;
+			case WID_RAT_CONVERT_RAIL: label = STR_MOBILE_RAIL_CONVERT; break;
+			case WID_RAT_BUILD_NS: label = STR_MOBILE_RAIL_NS; break;
+			case WID_RAT_BUILD_EW: label = STR_MOBILE_RAIL_EW; break;
+			case WID_RAT_BUILD_X: label = STR_MOBILE_RAIL_X; break;
+			case WID_RAT_BUILD_Y: label = STR_MOBILE_RAIL_Y; break;
+			case WID_RAT_BUILD_BRIDGE: label = STR_MOBILE_RAIL_BRIDGE; break;
+			case WID_RAT_BUILD_TUNNEL: label = STR_MOBILE_RAIL_TUNNEL; break;
+			default: NOT_REACHED();
+		}
+		bool active = this->toolbar->last_user_action == tool && this->toolbar->IsWidgetLowered(tool);
+		DrawMobileIconButton(r, this->toolbar->GetToolSprite(tool), label, active, this->toolbar->IsWidgetDisabled(tool));
+	}
+
+	void OnPaint() override
+	{
+		for (WidgetID widget = WID_RMORE_FIRST; widget <= WID_RMORE_LAST; ++widget) {
+			WidgetID tool = this->GetTool(widget);
+			this->SetWidgetLoweredState(widget, tool != INVALID_WIDGET && this->toolbar->last_user_action == tool && this->toolbar->IsWidgetLowered(tool));
+		}
+		this->DrawWidgets();
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		WidgetID tool = this->GetTool(widget);
+		if (tool == INVALID_WIDGET || this->toolbar->IsWidgetDisabled(tool)) return;
+		BuildRailToolbarWindow *toolbar = this->toolbar;
+		this->Close();
+		toolbar->OnClick({0, 0}, tool, 1);
+	}
+};
+
+/** One button of the More flyout. */
+#define MOBILE_RAIL_MORE_BUTTON(index) NWidget(WWT_PANEL, Colours::Grey, WID_RMORE_FIRST + (index)), SetMinimalSize(56, 48), EndContainer()
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_rail_more_widgets = {
+	NWidget(WWT_PANEL, Colours::Grey),
+		NWidget(NWID_VERTICAL), SetPadding(4), SetPIP(0, 4, 0),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, 4, 0),
+				MOBILE_RAIL_MORE_BUTTON(0), MOBILE_RAIL_MORE_BUTTON(1), MOBILE_RAIL_MORE_BUTTON(2), MOBILE_RAIL_MORE_BUTTON(3),
+			EndContainer(),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, 4, 0),
+				MOBILE_RAIL_MORE_BUTTON(4), MOBILE_RAIL_MORE_BUTTON(5),
+				NWidget(NWID_SELECTION, Colours::Invalid, WID_RMORE_SEL_EXTRA),
+					NWidget(NWID_HORIZONTAL), SetPIP(0, 4, 0),
+						MOBILE_RAIL_MORE_BUTTON(6), MOBILE_RAIL_MORE_BUTTON(7),
+					EndContainer(),
+				EndContainer(),
+				NWidget(NWID_SPACER), SetFill(1, 0),
+			EndContainer(),
+		EndContainer(),
+	EndContainer(),
+};
+
+#undef MOBILE_RAIL_MORE_BUTTON
+
+static WindowDesc _mobile_rail_more_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::MobileRailMore, WindowClass::None,
+	{},
+	_nested_mobile_rail_more_widgets
+);
+
+/**
+ * Open the More flyout of the mobile rail toolbar, or close it when it is open.
+ * @param toolbar The toolbar.
+ */
+static void ShowMobileRailMoreFlyout(BuildRailToolbarWindow *toolbar)
+{
+	if (FindWindowById(WindowClass::MobileRailMore, 0) != nullptr) {
+		CloseWindowById(WindowClass::MobileRailMore, 0);
+		return;
+	}
+	new MobileRailMoreWindow(_mobile_rail_more_desc, toolbar);
+}
+
+/**
+ * Get the rail toolbar of the mobile layout.
+ * @return The toolbar, or \c nullptr when it is not open.
+ */
+Window *GetMobileRailToolbar()
+{
+	BuildRailToolbarWindow *w = dynamic_cast<BuildRailToolbarWindow *>(FindWindowById(WindowClass::BuildToolbar, TransportType::Rail));
+	return (w != nullptr && w->mobile) ? w : nullptr;
+}
+
+/**
+ * Is a mobile rail toolbar the landscape layout?
+ * @param w The toolbar.
+ * @return \c true for the landscape layout.
+ */
+bool IsMobileRailToolbarLandscape(const Window *w)
+{
+	const BuildRailToolbarWindow *t = dynamic_cast<const BuildRailToolbarWindow *>(w);
+	return t != nullptr && t->landscape;
+}
+
+/** After a rotation: open the mobile rail toolbar in the other layout, with the same tool. */
+void RecreateMobileRailToolbar()
+{
+	BuildRailToolbarWindow *w = dynamic_cast<BuildRailToolbarWindow *>(GetMobileRailToolbar());
+	if (w == nullptr) return;
+	WidgetID tool = (_thd.GetCallbackWnd() == w && w->last_user_action != INVALID_WIDGET && w->IsWidgetLowered(w->last_user_action)) ? w->last_user_action : INVALID_WIDGET;
+	w->Close();
+	Window *nw = ShowBuildRailToolbar(_cur_railtype);
+	if (nw != nullptr && tool != INVALID_WIDGET) nw->OnClick({0, 0}, tool, 1);
+}
+
 /**
  * Open the build rail toolbar window for a specific rail type.
  *
@@ -986,6 +1460,10 @@ Window *ShowBuildRailToolbar(RailType railtype)
 
 	CloseWindowByClass(WindowClass::BuildToolbar);
 	_remove_button_clicked = false;
+	if (IsMobileLayout()) {
+		bool landscape = _screen.width > _screen.height;
+		return new BuildRailToolbarWindow(landscape ? _mobile_rail_landscape_desc : _mobile_rail_portrait_desc, railtype, true, landscape);
+	}
 	return new BuildRailToolbarWindow(_build_rail_desc, railtype);
 }
 

@@ -8,6 +8,7 @@ Work notes for the touch-first mobile layout of this OpenTTD fork. The project r
 | [`01-shell-implementation-log.md`](01-shell-implementation-log.md) | Round 1 (app shell): steps, findings, bugs, verification |
 | [`02-android-build-plan.md`](02-android-build-plan.md) | Android: what exists, how the build works, delivery options, what's needed from the user |
 | [`03-android-build-log.md`](03-android-build-log.md) | Android: toolchain install, upstream merge, vcpkg, Gradle project, first APK, publishing |
+| [`04-round2-implementation-log.md`](04-round2-implementation-log.md) | Round 2 (laying track): steps, findings, verification |
 | [`backlog.md`](backlog.md) | Things for later steps, with context (e.g. keeping a game alive in the background on Android) |
 | [`teaching-resume.md`](teaching-resume.md) | Where the learning stands and how to continue it with the new code |
 | `handoffs/` | Documents passed between sessions (mentor, design, implementation), numbered in order |
@@ -20,6 +21,7 @@ Work notes for the touch-first mobile layout of this OpenTTD fork. The project r
 2. `01-impl-to-design-initial-brief.md`: brief that started the design session
 3. `02-design-to-impl-round1.md`: design round 1 (app shell), the spec that was built
 4. `03-impl-to-design-round2.md`: round 1 results, answers to the feasibility questions, input for round 2
+5. `04-design-to-impl-round2.md`: design round 2 (laying track): rail toolbar, review before building, bridges, tunnels, undo
 
 ## Code map
 

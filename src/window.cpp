@@ -1369,6 +1369,7 @@ static uint GetWindowZPriority(WindowClass wc)
 
 	switch (wc) {
 		case WindowClass::ToolTips:
+		case WindowClass::MobileBuildLabel:
 			++z_priority;
 			[[fallthrough]];
 
@@ -1398,6 +1399,9 @@ static uint GetWindowZPriority(WindowClass wc)
 		case WindowClass::MobileBuildMenu:
 		case WindowClass::MobileMenu:
 		case WindowClass::MobileHubTabs:
+		case WindowClass::MobileError:
+		case WindowClass::MobileSheetFiller:
+		case WindowClass::MobileRailMore:
 			++z_priority;
 			[[fallthrough]];
 
@@ -3655,6 +3659,13 @@ void RelocateAllWindows(int neww, int newh)
 				continue;
 
 			case WindowClass::News:
+				if (IsMobileLayout()) {
+					/* Centred in the visible map, as when it opened. */
+					Rect map = GetMobileVisibleMapRect();
+					left = Clamp((map.left + map.right + 1 - w->width) / 2, 0, std::max(0, neww - w->width));
+					top = Clamp((map.top + map.bottom + 1 - w->height) / 2, 0, std::max(0, newh - w->height));
+					break;
+				}
 				top = newh - w->height;
 				left = PositionNewsMessage(w);
 				break;

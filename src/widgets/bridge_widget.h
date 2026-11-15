@@ -17,6 +17,9 @@ enum BuildBridgeSelectionWidgets : WidgetID {
 	WID_BBS_DROPDOWN_CRITERIA, ///< Criteria of sort dropdown.
 	WID_BBS_BRIDGE_LIST,       ///< List of bridges.
 	WID_BBS_SCROLLBAR,         ///< Scrollbar of the list.
+	WID_BBS_TITLE,             ///< Mobile layout: title, drawn as a panel so it can't drag the window.
+	WID_BBS_CLOSE,             ///< Mobile layout: cancel the bridge.
+	WID_BBS_FOOTER,            ///< Mobile layout: hint below the list.
 };
 
 #endif /* WIDGETS_BRIDGE_WIDGET_H */

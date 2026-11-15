@@ -438,8 +438,24 @@ struct NewsWindow : Window {
 
 	Point OnInitialPosition([[maybe_unused]] int16_t sm_width, [[maybe_unused]] int16_t sm_height, [[maybe_unused]] int window_number) override
 	{
+		if (IsMobileLayout()) return GetMobileNewspaperPosition(sm_width, sm_height);
 		Point pt = { 0, _screen.height };
 		return pt;
+	}
+
+	/**
+	 * Where the newspaper goes in the mobile layout, until it gets a design of its own:
+	 * centred in the visible map, so it never covers the dock.
+	 * @param width Width of the newspaper.
+	 * @param height Height of the newspaper.
+	 * @return Its top-left corner.
+	 */
+	static Point GetMobileNewspaperPosition(int width, int height)
+	{
+		Rect map = GetMobileVisibleMapRect();
+		int x = Clamp((map.left + map.right + 1 - width) / 2, 0, std::max(0, _screen.width - width));
+		int y = Clamp((map.top + map.bottom + 1 - height) / 2, 0, std::max(0, _screen.height - height));
+		return {x, y};
 	}
 
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
@@ -659,6 +675,8 @@ struct NewsWindow : Window {
 	 * The interval of 210ms is chosen to maintain 15ms at normal zoom: 210 / GetCharacterHeight(FontSize::Normal) = 15ms.
 	 */
 	const IntervalTimer<TimerWindow> scroll_interval = {std::chrono::milliseconds(210) / GetCharacterHeight(FontSize::Normal), [this](uint count) {
+		/* The mobile layout shows the newspaper in place, without sliding it up from the bottom. */
+		if (IsMobileLayout()) return;
 		int newtop = std::max(this->top - 2 * static_cast<int>(count), _screen.height - this->height - this->status_height - this->chat_height);
 		this->SetWindowTop(newtop);
 	}};

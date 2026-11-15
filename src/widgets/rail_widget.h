@@ -28,6 +28,23 @@ enum RailToolbarWidgets : WidgetID {
 	WID_RAT_BUILD_TUNNEL,   ///< Build a tunnel.
 	WID_RAT_REMOVE,         ///< Bulldozer to remove rail.
 	WID_RAT_CONVERT_RAIL,   ///< Convert other rail to this type.
+	WID_RAT_CATEGORY,       ///< Mobile layout: rail type and construction category flyout.
+	WID_RAT_MORE,           ///< Mobile layout: flyout with the less used tools.
+	WID_RAT_STATUS,         ///< Mobile layout: status line.
+	WID_RAT_CANCEL,         ///< Mobile layout: cancel the selection in review.
+	WID_RAT_CONFIRM,        ///< Mobile layout: build (or remove, demolish, convert) the selection in review.
+	WID_RAT_UNDO,           ///< Mobile layout: undo the last construction.
+	WID_RAT_EXIT,           ///< Mobile layout: leave build mode (portrait, where the dock is hidden).
+	WID_RAT_SEL_TOOLS,      ///< Mobile layout: selection hiding the tools while picking a bridge.
+	WID_RAT_SEL_CONFIRM,    ///< Mobile layout: selection between confirm, undo and nothing.
+	WID_RAT_SEL_HIDDEN,     ///< Mobile layout: never shown; holds the tools that are in the More flyout.
+};
+
+/** Widgets of the mobile layout's More flyout of the rail toolbar. */
+enum MobileRailMoreWidgets : WidgetID {
+	WID_RMORE_FIRST, ///< First tool button; the others follow.
+	WID_RMORE_LAST = WID_RMORE_FIRST + 7, ///< Last possible tool button.
+	WID_RMORE_SEL_EXTRA, ///< Selection hiding the last two buttons when there are only six tools.
 };
 
 /** Widgets of the #BuildRailStationWindow class. */

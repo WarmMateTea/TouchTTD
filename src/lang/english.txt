@@ -911,6 +911,56 @@ STR_MOBILE_TOWN_SORT_POPULATION_ASC                             :Smallest first
 STR_MOBILE_TOWN_SORT_RATING_DESC                                :Best rating first
 STR_MOBILE_TOWN_SORT_RATING_ASC                                 :Worst rating first
 STR_MOBILE_TOWN_INFO                                            :{BLACK}i
+STR_MOBILE_BUILD_HINT_PICK_TOOL                                 :Pick a tool
+STR_MOBILE_BUILD_HINT_TRACK                                     :Drag to lay track
+STR_MOBILE_BUILD_HINT_REMOVE_TRACK                              :Drag to remove track
+STR_MOBILE_BUILD_HINT_DEMOLISH                                  :Drag over an area to demolish
+STR_MOBILE_BUILD_HINT_BRIDGE                                    :Drag from one bridge end to the other
+STR_MOBILE_BUILD_HINT_TUNNEL                                    :Tap a slope to start a tunnel
+STR_MOBILE_BUILD_HINT_CONVERT                                   :Drag over an area to convert the rail
+STR_MOBILE_BUILD_HINT_PLACE                                     :Tap the map to place it
+STR_MOBILE_BUILD_STATUS_LIFT                                    :Lift to review
+STR_MOBILE_BUILD_STATUS_COST                                    :{COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_REMOVE                                  :Remove {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_DEMOLISH                                :Demolish {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_CONVERT                                 :Convert {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_REFUND                                         :+{CURRENCY_LONG}
+STR_MOBILE_BUILD_STATUS_ERROR                                   :! {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_BUILT                                   :Built {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_PICK_BRIDGE                             :Pick a bridge for {COMMA} tile{P "" s}
+STR_MOBILE_BUILD_LABEL_TILES                                    :{COMMA} tile{P "" s}
+STR_MOBILE_BUILD_CONFIRM_BUILD                                  :{WHITE}Build
+STR_MOBILE_BUILD_CONFIRM_REMOVE                                 :{WHITE}Remove
+STR_MOBILE_BUILD_CONFIRM_DEMOLISH                               :{WHITE}Demolish
+STR_MOBILE_BUILD_CONFIRM_CONVERT                                :{WHITE}Convert
+STR_MOBILE_BUILD_CONFIRM_TOOLTIP                                :{BLACK}Do what is selected on the map
+STR_MOBILE_BUILD_CANCEL_TOOLTIP                                 :{BLACK}Cancel the selection
+STR_MOBILE_BUILD_UNDO                                           :Undo · {CURRENCY_SHORT}
+STR_MOBILE_BUILD_UNDO_REFUND                                    :Undo · +{CURRENCY_SHORT}
+STR_MOBILE_BUILD_UNDO_TOOLTIP                                   :{BLACK}Remove what was just built
+STR_MOBILE_BUILD_EXIT                                           :{WHITE}Exit
+STR_MOBILE_BUILD_EXIT_TOOLTIP                                   :{BLACK}Leave build mode
+STR_MOBILE_BUILD_RAILTYPE_TOOLTIP                               :{BLACK}Rail type to build
+STR_MOBILE_RAIL_CATEGORY_TOOLTIP                                :{BLACK}Change the rail type, or build something else
+STR_MOBILE_RAIL_MORE                                            :{WHITE}...
+STR_MOBILE_RAIL_MORE_TOOLTIP                                    :{BLACK}More tools: waypoints, rail conversion, track in one direction
+STR_MOBILE_RAIL_WAYPOINT                                        :Waypoint
+STR_MOBILE_RAIL_CONVERT                                         :Convert
+STR_MOBILE_RAIL_NS                                              :Track N-S
+STR_MOBILE_RAIL_EW                                              :Track E-W
+STR_MOBILE_RAIL_X                                               :Track NE-SW
+STR_MOBILE_RAIL_Y                                               :Track NW-SE
+STR_MOBILE_RAIL_BRIDGE                                          :Bridge
+STR_MOBILE_RAIL_TUNNEL                                          :Tunnel
+STR_MOBILE_BRIDGE_TITLE                                         :{WHITE}Choose a bridge · {COMMA} tile{P "" s}
+STR_MOBILE_BRIDGE_FOOTER                                        :{BLACK}Tap a bridge to build it
+STR_MOBILE_BRIDGE_SPEED                                         :Max. speed: {VELOCITY}
+STR_MOBILE_BRIDGE_SORT_SPEED_DESC                               :Fastest first
+STR_MOBILE_BRIDGE_SORT_SPEED_ASC                                :Slowest first
+STR_MOBILE_BRIDGE_SORT_COST_DESC                                :Most expensive first
+STR_MOBILE_BRIDGE_SORT_COST_ASC                                 :Cheapest first
+STR_MOBILE_BRIDGE_SORT_NAME                                     :By name
+STR_MOBILE_ERROR_TOOLTIP                                        :{BLACK}Dismiss
 
 # News message history
 STR_MESSAGE_HISTORY                                             :{WHITE}Message History
@@ -2136,6 +2186,8 @@ STR_CONFIG_SETTING_MOBILE_LAYOUT                                :Touch-friendly 
 STR_CONFIG_SETTING_MOBILE_LAYOUT_HELPTEXT                       :Replace the main toolbar and the status bar with a layout made for touch screens: a dock with big buttons, a status pill with the date and money, and panels that open from the dock
 STR_CONFIG_SETTING_MOBILE_BUILD_PICKER                          :Mobile layout Build button always opens the category picker: {STRING2}
 STR_CONFIG_SETTING_MOBILE_BUILD_PICKER_HELPTEXT                 :When off, the Build button of the mobile layout reopens the construction toolbar used last. When on, it always asks what to build
+STR_CONFIG_SETTING_MOBILE_CONFIRM_BUILD                         :Mobile layout: review before building: {STRING2}
+STR_CONFIG_SETTING_MOBILE_CONFIRM_BUILD_HELPTEXT                :When on, track and tunnels stay selected on the map after you lift your finger, with their cost, until you tap Build. When off, they are built when you lift your finger. Removing, demolishing and converting always ask
 STR_CONFIG_SETTING_TOOLBAR_POS                                  :Position of main toolbar: {STRING2}
 STR_CONFIG_SETTING_TOOLBAR_POS_HELPTEXT                         :Horizontal position of the main toolbar at the top of the screen
 STR_CONFIG_SETTING_STATUSBAR_POS                                :Position of status bar: {STRING2}

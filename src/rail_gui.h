@@ -20,6 +20,14 @@ void InitializeSignalGui();
 DropDownList GetRailTypeDropDownList(bool for_replacement = false, bool all_option = false);
 void SetDefaultRailGui();
 
+RailType GetCurrentRailType();
+bool IsRailRemoveModeActive();
+void SetRailRemoveMode(bool remove);
+void PostRailTunnel(TileIndex tile);
+struct Window *GetMobileRailToolbar();
+bool IsMobileRailToolbarLandscape(const struct Window *w);
+void RecreateMobileRailToolbar();
+
 /** Settings for which signals are shown by the signal GUI. */
 enum SignalGUISettings : uint8_t {
 	SIGNAL_GUI_PATH = 0, ///< Show path signals only.

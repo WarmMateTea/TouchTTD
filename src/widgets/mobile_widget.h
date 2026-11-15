@@ -34,6 +34,14 @@ enum MobileBuildMenuWidgets : WidgetID {
 	WID_MB_WATER,     ///< Waterways construction.
 	WID_MB_AIR,       ///< Airport construction.
 	WID_MB_LANDSCAPE, ///< Landscaping.
+	WID_MB_SEL_RAILTYPES, ///< Selection showing the rail types only when opened from the rail toolbar.
+	WID_MB_RAILTYPES, ///< List of rail types.
+};
+
+/** Widgets of the #MobileErrorWindow class. */
+enum MobileErrorWidgets : WidgetID {
+	WID_MERR_TEXT,    ///< The error; tapping it dismisses it.
+	WID_MERR_DISMISS, ///< Dismiss the error.
 };
 
 /** Widgets of the #MobileMenuWindow class. */

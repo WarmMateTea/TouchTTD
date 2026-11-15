@@ -23,6 +23,7 @@
 #include "texteff.hpp"
 #include "strings_func.h"
 #include "window_func.h"
+#include "mobile_gui.h"
 #include "querystring_gui.h"
 #include "textbuf_gui.h"
 #include "core/geometry_func.hpp"
@@ -489,6 +490,9 @@ void ShowAboutWindow()
  */
 void ShowEstimatedCostOrIncome(Money cost, int x, int y)
 {
+	/* The mobile layout shows estimates in the construction toolbar's status line instead. */
+	if (IsMobileLayout()) return;
+
 	StringID msg = STR_MESSAGE_ESTIMATED_COST;
 
 	if (cost < 0) {

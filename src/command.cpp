@@ -196,6 +196,23 @@ void CommandHelperBase::InternalDoAfter(CommandCost &res, DoCommandFlags flags, 
  * @param network_command Does this command come from the network?
  * @return error state + do only cost estimation? + send to network only?
  */
+/* static */ CommandResultCapture *CommandResultCapture::active = nullptr;
+
+/**
+ * Start capturing command results.
+ * @param estimate_only Whether commands are only tested, never executed.
+ */
+CommandResultCapture::CommandResultCapture(bool estimate_only) : estimate_only(estimate_only)
+{
+	assert(CommandResultCapture::active == nullptr);
+	CommandResultCapture::active = this;
+}
+
+CommandResultCapture::~CommandResultCapture()
+{
+	CommandResultCapture::active = nullptr;
+}
+
 std::tuple<bool, bool, bool> CommandHelperBase::InternalPostBefore(Commands cmd, CommandFlags flags, TileIndex tile, StringID err_message, bool network_command)
 {
 	/* Cost estimation is generally only done when the
@@ -203,7 +220,8 @@ std::tuple<bool, bool, bool> CommandHelperBase::InternalPostBefore(Commands cmd,
 	 * However, in case of incoming network commands,
 	 * map generation or the pause button we do want
 	 * to execute. */
-	bool estimate_only = IsShiftPressed() && IsLocalCompany() && !_generating_world && !network_command && !flags.Test(CommandFlag::NoEst);
+	bool capture_estimate = !network_command && CommandResultCapture::active != nullptr && CommandResultCapture::active->estimate_only;
+	bool estimate_only = (IsShiftPressed() || capture_estimate) && IsLocalCompany() && !_generating_world && !network_command && !flags.Test(CommandFlag::NoEst);
 
 	/* We're only sending the command, so don't do
 	 * fancy things for 'success'. */
@@ -231,6 +249,24 @@ void CommandHelperBase::InternalPostResult(CommandCost &res, TileIndex tile, boo
 {
 	int x = TileX(tile) * TILE_SIZE;
 	int y = TileY(tile) * TILE_SIZE;
+
+	if (CommandResultCapture *capture = CommandResultCapture::active; capture != nullptr && my_cmd) {
+		capture->any = true;
+		if (res.Failed()) {
+			if (!capture->failed) {
+				capture->failed = true;
+				capture->error_summary = err_message;
+				capture->error = std::move(res.GetEncodedMessage());
+				if (capture->error.empty()) capture->error = GetEncodedStringIfValid(res.GetErrorMessage());
+			}
+		} else {
+			capture->cost += res.GetCost();
+		}
+		/* A captured estimate is never shown to the player. */
+		if (estimate_only) return;
+		/* An executed command keeps its cost animation, but its error goes to the capture's owner. */
+		if (res.Failed()) return;
+	}
 
 	if (res.Failed()) {
 		/* Only show the error when it's for us. */

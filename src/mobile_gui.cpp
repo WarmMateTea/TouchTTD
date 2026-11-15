@@ -38,6 +38,9 @@
 #include "road_gui.h"
 #include "terraform_gui.h"
 #include "toolbar_gui.h"
+#include "rail.h"
+#include "mobile_build.h"
+#include "error.h"
 #include "tilehighlight_func.h"
 #include "smallmap_gui.h"
 #include "graph_gui.h"
@@ -63,7 +66,9 @@
 #include "timer/timer.h"
 #include "timer/timer_window.h"
 #include "timer/timer_game_calendar.h"
+#include "core/backup_type.hpp"
 #include "widgets/mobile_widget.h"
+#include "widgets/rail_widget.h"
 
 #include "table/strings.h"
 #include "table/sprites.h"
@@ -178,6 +183,10 @@ bool IsMobileShellWindow(WindowClass cls)
 		case WindowClass::MobileBuildMenu:
 		case WindowClass::MobileMenu:
 		case WindowClass::MobileHubTabs:
+		case WindowClass::MobileBuildLabel:
+		case WindowClass::MobileError:
+		case WindowClass::MobileSheetFiller:
+		case WindowClass::MobileRailMore:
 			return true;
 		default:
 			return false;
@@ -248,7 +257,7 @@ static void FitWindowTo(Window *w, int width, int height)
  * @param lowered Whether the button is drawn pressed.
  * @param disabled Whether the button is disabled.
  */
-static void DrawIconAboveLabel(const Rect &r, SpriteID sprite, StringID label, bool lowered, bool disabled)
+void DrawMobileIconButton(const Rect &r, SpriteID sprite, StringID label, bool lowered, bool disabled)
 {
 	int offset = lowered ? ScaleGUITrad(1) : 0;
 	Dimension icon = GetSpriteSize(sprite);
@@ -263,6 +272,12 @@ static void CloseMobileFlyouts()
 {
 	CloseWindowById(WindowClass::MobileBuildMenu, 0);
 	CloseWindowById(WindowClass::MobileMenu, 0);
+	CloseWindowById(WindowClass::MobileRailMore, 0);
+}
+
+static bool IsMobileFlyoutOpen()
+{
+	return FindWindowById(WindowClass::MobileBuildMenu, 0) != nullptr || FindWindowById(WindowClass::MobileMenu, 0) != nullptr || FindWindowById(WindowClass::MobileRailMore, 0) != nullptr;
 }
 
 /* --- Sheet slot --- */
@@ -283,6 +298,7 @@ static void CloseSheetContent()
 {
 	if (Window *w = GetSheetOverlay(); w != nullptr) w->Close();
 	if (Window *w = GetSheetContent(); w != nullptr) w->Close();
+	CloseWindowById(WindowClass::MobileSheetFiller, 0);
 	_sheet.overlay_cls = WindowClass::Invalid;
 	_sheet.content_cls = WindowClass::Invalid;
 }
@@ -333,7 +349,9 @@ static Rect GetSheetSlot()
 		return {safe.right + 1 - width, safe.top, safe.right, safe.bottom};
 	}
 
-	int bottom = dock != nullptr ? dock->top : safe.bottom + 1;
+	/* Above the dock, or above the rail toolbar that replaces it in portrait. */
+	const Window *toolbar = GetMobileRailToolbar();
+	int bottom = toolbar != nullptr ? toolbar->top : (dock != nullptr ? dock->top : safe.bottom + 1);
 	int full_height = bottom - safe.top - ScaleGUITrad(MOBILE_MAP_STRIP);
 	int height = _sheet.full ? full_height : std::min(ScaleGUITrad(MOBILE_HALF_SHEET_HEIGHT), full_height);
 	return {safe.left, bottom - height, safe.right, bottom - 1};
@@ -398,6 +416,7 @@ static void OpenBuildCategory(BuildCategory category)
 	}
 	_last_build_category = category;
 	SetWindowDirty(WindowClass::MobileDock, 0);
+	RelocateMobileWindows();
 }
 
 /* --- Status pill --- */
@@ -672,26 +691,94 @@ void MobileStatusWindow::OnClick([[maybe_unused]] Point pt, WidgetID widget, [[m
 
 /** The flyout picking a construction category. */
 struct MobileBuildMenuWindow : Window {
-	MobileBuildMenuWindow(WindowDesc &desc) : Window(desc)
+	static constexpr int RAILTYPE_ROW_HEIGHT = 40; ///< Height of a rail type row, in GUI pixels at 1x.
+	Window *toolbar; ///< The construction toolbar this was opened from, if any.
+	std::vector<RailType> railtypes; ///< Rail types listed.
+
+	MobileBuildMenuWindow(WindowDesc &desc, Window *toolbar = nullptr) : Window(desc), toolbar(toolbar)
 	{
-		this->InitNested(0);
+		if (toolbar != nullptr && toolbar->window_number == TransportType::Rail) {
+			RailTypes used = GetRailTypes(true);
+			used.Reset(_railtypes_hidden_mask);
+			for (RailType rt : _sorted_railtypes) {
+				if (used.Test(rt)) this->railtypes.push_back(rt);
+			}
+		}
+
+		this->CreateNestedTree();
+		this->GetWidget<NWidgetStacked>(WID_MB_SEL_RAILTYPES)->SetDisplayedPlane(this->railtypes.empty() ? SZSP_NONE : 0);
+		this->FinishInitNested(0);
 		this->flags.Reset(WindowFlag::WhiteBorder);
 		for (BuildCategory c = BuildCategory::Rail; c != BuildCategory::End; c = static_cast<BuildCategory>(to_underlying(c) + 1)) {
 			this->SetWidgetDisabledState(WID_MB_RAIL + to_underlying(c), !IsBuildCategoryAvailable(c));
 		}
+		if (toolbar != nullptr) this->LowerWidget(WID_MB_RAIL + to_underlying(_last_build_category == BuildCategory::End ? BuildCategory::Rail : _last_build_category));
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
+	{
+		if (widget != WID_MB_RAILTYPES) return;
+		size.width = std::max<uint>(size.width, ScaleGUITrad(176));
+		size.height = ScaleGUITrad(RAILTYPE_ROW_HEIGHT) * std::max<size_t>(1, this->railtypes.size());
+	}
+
+	/**
+	 * Is a rail type available to the company?
+	 * @param rt The rail type.
+	 * @return \c true when it can be built.
+	 */
+	static bool IsRailTypeAvailable(RailType rt)
+	{
+		const Company *c = Company::GetIfValid(_local_company);
+		return c != nullptr && c->avail_railtypes.Test(rt);
 	}
 
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
 		static const StringID labels[] = {STR_MOBILE_BUILD_RAIL, STR_MOBILE_BUILD_ROAD, STR_MOBILE_BUILD_TRAM, STR_MOBILE_BUILD_WATER, STR_MOBILE_BUILD_AIRPORT, STR_MOBILE_BUILD_LANDSCAPE};
+		if (widget == WID_MB_RAILTYPES) {
+			int row_height = ScaleGUITrad(RAILTYPE_ROW_HEIGHT);
+			Rect row = r.WithHeight(row_height).Shrink(WidgetDimensions::scaled.framerect.left, 0);
+			for (RailType rt : this->railtypes) {
+				const RailTypeInfo *rti = GetRailTypeInfo(rt);
+				bool available = IsRailTypeAvailable(rt);
+				if (rt == GetCurrentRailType()) GfxFillRect(row, GetColourGradient(Colours::Grey, Shade::Lighter));
+				Dimension icon = GetSpriteSize(rti->gui_sprites.build_x_rail);
+				DrawSprite(rti->gui_sprites.build_x_rail, available ? PAL_NONE : PALETTE_TO_GREY, row.left, CentreBounds(row.top, row.bottom, icon.height));
+				Rect text = row.Indent(icon.width + WidgetDimensions::scaled.hsep_wide, false);
+				int y = CentreBounds(row.top, row.bottom, GetCharacterHeight(FontSize::Normal));
+				TextColour colour = available ? TextColour::Black : TextColour::Grey;
+				std::string cost = GetString(STR_JUST_CURRENCY_SHORT, RailBuildCost(rt));
+				int cost_width = DrawString(text.left, text.right, y, cost, colour, AlignmentH::End);
+				DrawString(text.left, cost_width - WidgetDimensions::scaled.hsep_wide, y, rti->strings.menu_text, colour);
+				row = row.Translate(0, row_height);
+			}
+			return;
+		}
 		if (widget < WID_MB_RAIL || widget > WID_MB_LANDSCAPE) return;
-		DrawIconAboveLabel(r, GetBuildCategorySprite(static_cast<BuildCategory>(widget - WID_MB_RAIL)), labels[widget - WID_MB_RAIL], this->IsWidgetLowered(widget), this->IsWidgetDisabled(widget));
+		DrawMobileIconButton(r, GetBuildCategorySprite(static_cast<BuildCategory>(widget - WID_MB_RAIL)), labels[widget - WID_MB_RAIL], this->IsWidgetLowered(widget), this->IsWidgetDisabled(widget));
 	}
 
-	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	void OnClick(Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
+		if (widget == WID_MB_RAILTYPES) {
+			const NWidgetBase *list = this->GetWidget<NWidgetBase>(WID_MB_RAILTYPES);
+			size_t index = (pt.y - list->pos_y) / ScaleGUITrad(RAILTYPE_ROW_HEIGHT);
+			if (index >= this->railtypes.size() || !IsRailTypeAvailable(this->railtypes[index])) return;
+			RailType rt = this->railtypes[index];
+			this->Close();
+			/* Switch the open toolbar to the rail type; the tool and any selection in review stay. */
+			_last_built_railtype = rt;
+			ShowBuildRailToolbar(rt);
+			return;
+		}
 		if (widget < WID_MB_RAIL || widget > WID_MB_LANDSCAPE) return;
-		OpenBuildCategory(static_cast<BuildCategory>(widget - WID_MB_RAIL));
+		BuildCategory category = static_cast<BuildCategory>(widget - WID_MB_RAIL);
+		if (this->toolbar != nullptr && category == BuildCategory::Rail && this->toolbar->window_number == TransportType::Rail) {
+			this->Close();
+			return;
+		}
+		OpenBuildCategory(category);
 	}
 };
 
@@ -707,6 +794,9 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_build_menu_wi
 				NWidget(WWT_PUSHBTN, Colours::Grey, WID_MB_WATER), SetMinimalSize(56, 48), SetToolTip(STR_TOOLBAR_TOOLTIP_BUILD_SHIP_DOCKS),
 				NWidget(WWT_PUSHBTN, Colours::Grey, WID_MB_AIR), SetMinimalSize(56, 48), SetToolTip(STR_TOOLBAR_TOOLTIP_BUILD_AIRPORTS),
 				NWidget(WWT_PUSHBTN, Colours::Grey, WID_MB_LANDSCAPE), SetMinimalSize(56, 48), SetToolTip(STR_TOOLBAR_TOOLTIP_LANDSCAPING),
+			EndContainer(),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_MB_SEL_RAILTYPES),
+				NWidget(WWT_INSET, Colours::Grey, WID_MB_RAILTYPES), SetFill(1, 0), SetToolTip(STR_MOBILE_BUILD_RAILTYPE_TOOLTIP), EndContainer(),
 			EndContainer(),
 		EndContainer(),
 	EndContainer(),
@@ -939,7 +1029,7 @@ struct MobileDockWindow : Window {
 			DrawSprite(sprite, PAL_NONE, CentreBounds(r.left, r.right, d.width) + offset, CentreBounds(r.top, r.bottom, d.height) + offset);
 			return;
 		}
-		DrawIconAboveLabel(r, sprite, label, this->IsWidgetLowered(widget), this->IsWidgetDisabled(widget));
+		DrawMobileIconButton(r, sprite, label, this->IsWidgetLowered(widget), this->IsWidgetDisabled(widget));
 	}
 
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
@@ -1127,6 +1217,65 @@ void ShowMobileVitalWindows()
 	RelocateMobileWindows();
 }
 
+/** Height of the sheet filler's panel; the layout pass resizes it. */
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_sheet_filler_widgets = {
+	NWidget(WWT_PANEL, Colours::Grey, 0), SetMinimalSize(1, 1), SetResize(1, 1), EndContainer(),
+};
+
+/** Fills the strip between a sheet's content and the end of the slot, so the sheet looks attached to the edge. */
+struct MobileSheetFillerWindow : Window {
+	MobileSheetFillerWindow(WindowDesc &desc) : Window(desc)
+	{
+		this->InitNested(0);
+		this->flags.Reset(WindowFlag::WhiteBorder);
+	}
+
+	/** The sheet's content can be closed by its own close box; lay out again when that happens. */
+	const IntervalTimer<TimerWindow> check_interval = {std::chrono::milliseconds(250), [](auto) {
+		if (!IsSheetOpen()) RelocateMobileWindows();
+	}};
+};
+
+static WindowDesc _mobile_sheet_filler_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::MobileSheetFiller, WindowClass::None,
+	{WindowDefaultFlag::NoFocus},
+	_nested_mobile_sheet_filler_widgets
+);
+
+/**
+ * Fill the part of the sheet slot below the content.
+ * @param slot The sheet slot.
+ * @param content_bottom First row below the content.
+ * @param colour Colour of the content.
+ */
+static void PlaceSheetFiller(const Rect &slot, int content_bottom, Colours colour)
+{
+	int gap = slot.bottom + 1 - content_bottom;
+	Window *filler = FindWindowById(WindowClass::MobileSheetFiller, 0);
+	if (gap <= 0) {
+		if (filler != nullptr) filler->Close();
+		return;
+	}
+	if (filler == nullptr) filler = new MobileSheetFillerWindow(_mobile_sheet_filler_desc);
+	filler->GetWidget<NWidgetCore>(0)->colour = colour;
+	FitWindowTo(filler, slot.Width(), gap);
+	MoveWindowTo(filler, slot.left, content_bottom);
+	filler->SetDirty();
+}
+
+/**
+ * Get the colour of a window's outermost panel, to match the filler to it.
+ * @param w The window.
+ * @return Its colour.
+ */
+static Colours GetWindowColour(const Window *w)
+{
+	/* The widget in the bottom left corner is usually the window's background or its list. */
+	const NWidgetCore *core = w->nested_root->GetWidgetFromPos(1, w->height - 2);
+	return (core != nullptr && core->colour != Colours::Invalid) ? core->colour : Colours::Grey;
+}
+
 /**
  * Place all windows of the mobile shell for the current screen size and orientation.
  * Creates the dock in the right orientation when needed.
@@ -1135,11 +1284,15 @@ void RelocateMobileWindows()
 {
 	if (!IsMobileLayout()) return;
 
+	static bool busy = false; ///< Re-creating windows calls back into the layout pass; finish the outer pass only.
+	if (busy) return;
+	AutoRestoreBackup busy_guard(busy, true);
+
 	bool landscape = IsLandscape();
 	const int margin = ScaleGUITrad(MOBILE_MARGIN);
 	const Rect safe = GetSafeArea();
 
-	/* The dock: close it and open the other layout when the orientation changed. */
+	/* The dock and the rail toolbar: open the other layout when the orientation changed. */
 	MobileDockWindow *dock = dynamic_cast<MobileDockWindow *>(FindWindowById(WindowClass::MobileDock, 0));
 	if (dock != nullptr && dock->landscape != landscape) {
 		dock->Close();
@@ -1147,12 +1300,23 @@ void RelocateMobileWindows()
 		CloseMobileFlyouts();
 	}
 	if (dock == nullptr) dock = new MobileDockWindow(landscape ? _mobile_dock_landscape_desc : _mobile_dock_portrait_desc, landscape);
+	Window *toolbar = GetMobileRailToolbar();
+	if (toolbar != nullptr && IsMobileRailToolbarLandscape(toolbar) != landscape) {
+		RecreateMobileRailToolbar();
+		toolbar = GetMobileRailToolbar();
+	}
+
 	if (landscape) {
 		FitWindowTo(dock, dock->width, safe.Height());
 		MoveWindowTo(dock, safe.left, safe.top);
 	} else {
 		FitWindowTo(dock, safe.Width(), dock->height);
-		MoveWindowTo(dock, safe.left, safe.bottom + 1 - dock->height);
+		/* In portrait the rail toolbar replaces the dock. */
+		MoveWindowTo(dock, safe.left, toolbar != nullptr ? _screen.height : safe.bottom + 1 - dock->height);
+	}
+	if (!landscape && toolbar != nullptr) {
+		FitWindowTo(toolbar, safe.Width(), toolbar->height);
+		MoveWindowTo(toolbar, safe.left, safe.bottom + 1 - toolbar->height);
 	}
 	int map_left = landscape ? dock->left + dock->width : safe.left;
 
@@ -1163,17 +1327,32 @@ void RelocateMobileWindows()
 		if (landscape) map_right = slot.left;
 
 		int content_top = slot.top;
-		if (MobileHubTabsWindow *tabs = dynamic_cast<MobileHubTabsWindow *>(FindWindowById(WindowClass::MobileHubTabs, 0)); tabs != nullptr) {
+		Colours colour = Colours::Grey;
+		MobileHubTabsWindow *tabs = dynamic_cast<MobileHubTabsWindow *>(FindWindowById(WindowClass::MobileHubTabs, 0));
+		if (tabs != nullptr) {
 			tabs->UpdateOrientation(true);
 			FitWindowTo(tabs, slot.Width(), tabs->height);
 			MoveWindowTo(tabs, slot.left, slot.top);
 			content_top += tabs->height;
+			colour = _hubs[to_underlying(tabs->hub)].colour;
 		}
+		int content_bottom = content_top;
 		for (Window *w : {GetSheetContent(), GetSheetOverlay()}) {
 			if (w == nullptr) continue;
 			FitWindowTo(w, slot.Width(), slot.bottom + 1 - content_top);
 			MoveWindowTo(w, slot.left, content_top);
+			content_bottom = std::max(content_bottom, w->top + w->height);
+			if (tabs == nullptr) colour = GetWindowColour(w);
 		}
+		PlaceSheetFiller(slot, content_bottom, colour);
+	} else {
+		CloseWindowById(WindowClass::MobileSheetFiller, 0);
+	}
+
+	if (landscape && toolbar != nullptr) {
+		/* Along the bottom of the map, between the dock and the sheet. */
+		FitWindowTo(toolbar, map_right - map_left, toolbar->height);
+		MoveWindowTo(toolbar, map_left, safe.bottom + 1 - toolbar->height);
 	}
 
 	if (Window *status = FindWindowById(WindowClass::MobileStatus, 0); status != nullptr) {
@@ -1184,14 +1363,16 @@ void RelocateMobileWindows()
 		MoveWindowTo(minimap, map_right - minimap->width - margin, safe.top + margin);
 	}
 
-	if (Window *news = FindWindowById(WindowClass::MobileNews, 0); news != nullptr) {
+	for (WindowClass cls : {WindowClass::MobileNews, WindowClass::MobileError}) {
+		Window *banner = FindWindowById(cls, 0);
+		if (banner == nullptr) continue;
 		if (landscape) {
 			int width = std::min(ScaleGUITrad(MOBILE_NEWS_WIDTH), map_right - map_left - ScaleGUITrad(16));
-			FitWindowTo(news, width, news->height);
-			MoveWindowTo(news, CentreBounds(map_left, map_right, news->width), safe.top + margin);
+			FitWindowTo(banner, width, banner->height);
+			MoveWindowTo(banner, CentreBounds(map_left, map_right, banner->width), safe.top + margin);
 		} else {
-			FitWindowTo(news, safe.Width() - 2 * margin, news->height);
-			MoveWindowTo(news, safe.left + margin, safe.top + ScaleGUITrad(MOBILE_NEWS_TOP_PORTRAIT));
+			FitWindowTo(banner, safe.Width() - 2 * margin, banner->height);
+			MoveWindowTo(banner, safe.left + margin, safe.top + ScaleGUITrad(MOBILE_NEWS_TOP_PORTRAIT));
 		}
 	}
 
@@ -1204,17 +1385,182 @@ void RelocateMobileWindows()
 			MoveWindowTo(menu, safe.right + 1 - menu->width - margin, dock->top - menu->height);
 		}
 	}
-	if (Window *build = FindWindowById(WindowClass::MobileBuildMenu, 0); build != nullptr) {
-		const NWidgetBase *button = dock->GetWidget<NWidgetBase>(WID_MD_BUILD);
-		if (landscape) {
-			MoveWindowTo(build, map_left, std::max<int>(safe.top, dock->top + button->pos_y + button->current_y - build->height));
+	if (MobileBuildMenuWindow *build = dynamic_cast<MobileBuildMenuWindow *>(FindWindowById(WindowClass::MobileBuildMenu, 0)); build != nullptr) {
+		if (build->toolbar != nullptr && build->toolbar == toolbar) {
+			/* Above the toolbar's category button, left edges aligned. */
+			const NWidgetBase *button = toolbar->GetWidget<NWidgetBase>(WID_RAT_CATEGORY);
+			int x = toolbar->left + button->pos_x;
+			MoveWindowTo(build, Clamp(x, safe.left, std::max(safe.left, safe.right + 1 - build->width)), std::max(safe.top, toolbar->top + (int)button->pos_y - build->height));
 		} else {
-			int x = dock->left + button->pos_x + (button->current_x - build->width) / 2;
-			MoveWindowTo(build, Clamp(x, safe.left, safe.right + 1 - build->width), dock->top - build->height);
+			const NWidgetBase *button = dock->GetWidget<NWidgetBase>(WID_MD_BUILD);
+			if (landscape) {
+				MoveWindowTo(build, map_left, std::max<int>(safe.top, dock->top + button->pos_y + (int)button->current_y - build->height));
+			} else {
+				int x = dock->left + button->pos_x + ((int)button->current_x - build->width) / 2;
+				MoveWindowTo(build, Clamp(x, safe.left, safe.right + 1 - build->width), dock->top - build->height);
+			}
 		}
 	}
 
 	MarkWholeScreenDirty();
+}
+
+/**
+ * Get the part of the map not covered by the mobile layout: without the dock, the status pill row,
+ * the construction toolbar and the sheet slot.
+ * @return The visible map area, in screen pixels.
+ */
+Rect GetMobileVisibleMapRect()
+{
+	Rect r = GetSafeArea();
+	if (!IsMobileLayout()) return r;
+
+	if (const Window *dock = FindWindowById(WindowClass::MobileDock, 0); dock != nullptr && dock->top < _screen.height) {
+		if (IsLandscape()) {
+			r.left = std::max(r.left, dock->left + dock->width);
+		} else {
+			r.bottom = std::min(r.bottom, dock->top - 1);
+		}
+	}
+	if (const Window *status = FindWindowById(WindowClass::MobileStatus, 0); status != nullptr) {
+		r.top = std::max(r.top, status->top + status->height + ScaleGUITrad(MOBILE_MARGIN));
+	}
+	if (const Window *toolbar = GetMobileRailToolbar(); toolbar != nullptr) {
+		r.bottom = std::min(r.bottom, toolbar->top - 1);
+	}
+	if (IsSheetOpen()) {
+		Rect slot = GetSheetSlot();
+		if (IsLandscape()) {
+			r.right = std::min(r.right, slot.left - 1);
+		} else {
+			r.bottom = std::min(r.bottom, slot.top - 1);
+		}
+	}
+	if (r.right < r.left) r.right = r.left;
+	if (r.bottom < r.top) r.bottom = r.top;
+	return r;
+}
+
+/**
+ * How far the centre of the visible map is from the centre of the screen.
+ * @return The offset in screen pixels; zero outside the mobile layout.
+ */
+Point GetMobileMapCentreOffset()
+{
+	if (!IsMobileLayout()) return {0, 0};
+	Rect r = GetMobileVisibleMapRect();
+	return {(r.left + r.right) / 2 - _screen.width / 2, (r.top + r.bottom) / 2 - _screen.height / 2};
+}
+
+/**
+ * Show a window in the sheet slot, replacing the sheet's content; e.g. the bridge list.
+ * @param w The window.
+ */
+void MobileShowInSheet(Window *w)
+{
+	if (w == nullptr || !IsMobileLayout()) return;
+	CloseWindowById(WindowClass::MobileHubTabs, 0);
+	if (Window *old = GetSheetContent(); old != nullptr && old != w) old->Close();
+	_sheet.content_cls = w->window_class;
+	_sheet.content_num = w->window_number;
+	RelocateMobileWindows();
+}
+
+/**
+ * Open the Build flyout from a construction toolbar's category button; for rail it also lists the rail types.
+ * @param toolbar The toolbar.
+ * @param widget The category button.
+ */
+void ShowMobileBuildFlyoutForToolbar(Window *toolbar, [[maybe_unused]] WidgetID widget)
+{
+	if (FindWindowById(WindowClass::MobileBuildMenu, 0) != nullptr) {
+		CloseMobileFlyouts();
+		return;
+	}
+	CloseMobileFlyouts();
+	new MobileBuildMenuWindow(_mobile_build_menu_desc, toolbar);
+	RelocateMobileWindows();
+}
+
+/* --- Error banner --- */
+
+/** Errors outside construction toolbars: a red banner where the news banner goes. */
+struct MobileErrorWindow : Window {
+	std::string text; ///< The error.
+
+	MobileErrorWindow(WindowDesc &desc, std::string &&text) : Window(desc), text(std::move(text))
+	{
+		this->InitNested(0);
+		this->flags.Reset(WindowFlag::WhiteBorder);
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
+	{
+		if (widget == WID_MERR_TEXT) size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal) * 2 + padding.height);
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (widget != WID_MERR_TEXT) return;
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
+		DrawStringMultiLineWithClipping(tr, this->text, TextColour::White, AlignmentH::Centre);
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		if (widget == WID_MERR_TEXT || widget == WID_MERR_DISMISS) this->Close();
+	}
+
+	/**
+	 * Show another error.
+	 * @param text The error.
+	 */
+	void Replace(std::string &&text)
+	{
+		this->text = std::move(text);
+		this->timeout.Reset();
+		this->SetDirty();
+	}
+
+	/** Hide after the same time the desktop error window stays. */
+	TimeoutTimer<TimerWindow> timeout = {std::chrono::seconds(std::max<int>(1, _settings_client.gui.errmsg_duration)), [this]() {
+		this->Close();
+	}};
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_error_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PUSHBTN, Colours::Red, WID_MERR_TEXT), SetMinimalSize(120, 32), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_ERROR_TOOLTIP),
+		NWidget(WWT_PUSHTXTBTN, Colours::Red, WID_MERR_DISMISS), SetMinimalSize(40, 32), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_ERROR_TOOLTIP),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_error_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::MobileError, WindowClass::None,
+	{WindowDefaultFlag::NoFocus},
+	_nested_mobile_error_widgets
+);
+
+/**
+ * Show an error the mobile way: in the construction toolbar's status line when one is open, otherwise in a red banner.
+ * @param summary The summary ("Can't build ...").
+ * @param detail The reason; may be empty.
+ * @return \c true when the error was shown; \c false to show it in an error window as usual.
+ */
+bool ShowMobileError(const std::string &summary, const std::string &detail)
+{
+	if (!IsMobileLayout()) return false;
+	std::string text = detail.empty() ? summary : (summary.empty() ? detail : summary + " " + detail);
+	if (MobileBuildHandleError(detail.empty() ? summary : detail)) return true;
+
+	if (MobileErrorWindow *w = dynamic_cast<MobileErrorWindow *>(FindWindowById(WindowClass::MobileError, 0)); w != nullptr) {
+		w->Replace(std::move(text));
+		return true;
+	}
+	new MobileErrorWindow(_mobile_error_desc, std::move(text));
+	RelocateMobileWindows();
+	return true;
 }
 
 /**
@@ -1225,8 +1571,8 @@ void RelocateMobileWindows()
 bool MobileConsumeOutsideTap(const Window *w)
 {
 	if (!IsMobileLayout()) return false;
-	if (w == nullptr || w->window_class == WindowClass::MobileMenu || w->window_class == WindowClass::MobileBuildMenu || w->window_class == WindowClass::DropdownMenu) return false;
-	if (FindWindowById(WindowClass::MobileMenu, 0) == nullptr && FindWindowById(WindowClass::MobileBuildMenu, 0) == nullptr) return false;
+	if (w == nullptr || w->window_class == WindowClass::MobileMenu || w->window_class == WindowClass::MobileBuildMenu || w->window_class == WindowClass::MobileRailMore || w->window_class == WindowClass::DropdownMenu) return false;
+	if (!IsMobileFlyoutOpen()) return false;
 
 	CloseMobileFlyouts();
 	SetWindowDirty(WindowClass::MobileDock, 0);
@@ -1241,10 +1587,12 @@ bool MobileHandleBack()
 {
 	if (!IsMobileLayout()) return false;
 
-	if (FindWindowById(WindowClass::MobileMenu, 0) != nullptr || FindWindowById(WindowClass::MobileBuildMenu, 0) != nullptr) {
+	if (IsMobileFlyoutOpen()) {
 		CloseMobileFlyouts();
 		return true;
 	}
+	/* In build mode: cancel the drag, then the selection in review, then drop the tool. */
+	if (MobileBuildBack()) return true;
 	if (Window *overlay = GetSheetOverlay(); overlay != nullptr) {
 		overlay->Close();
 		_sheet.overlay_cls = WindowClass::Invalid;

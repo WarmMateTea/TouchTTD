@@ -785,6 +785,30 @@ enum class WindowClass : uint16_t {
 	 */
 	MobileHubTabs,
 
+	/**
+	 * Mobile layout label above the finger while dragging a construction; %Window numbers:
+	 *   - 0 = only one widget
+	 */
+	MobileBuildLabel,
+
+	/**
+	 * Mobile layout error banner; %Window numbers:
+	 *   - 0 = #MobileErrorWidgets
+	 */
+	MobileError,
+
+	/**
+	 * Mobile layout filler below a sheet's content; %Window numbers:
+	 *   - 0 = only one widget
+	 */
+	MobileSheetFiller,
+
+	/**
+	 * Mobile layout More flyout of the rail toolbar; %Window numbers:
+	 *   - 0 = #MobileRailMoreWidgets
+	 */
+	MobileRailMore,
+
 	Invalid = 0xFFFF, ///< Invalid window.
 };
 

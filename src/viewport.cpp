@@ -80,6 +80,8 @@
 #include "company_func.h"
 #include "waypoint_func.h"
 #include "window_func.h"
+#include "mobile_build.h"
+#include "mobile_gui.h"
 #include "tilehighlight_func.h"
 #include "window_gui.h"
 #include "linkgraph/linkgraph_gui.h"
@@ -1113,11 +1115,25 @@ static void HighlightTownLocalAuthorityTiles(const TileInfo *ti)
 
 }
 
+static void DrawTileSelectionArea(const TileInfo *ti);
+
 /**
  * Checks if the specified tile is selected and if so draws selection using correct selectionstyle.
- * @param *ti TileInfo Tile that is being drawn
+ * @param ti TileInfo Tile that is being drawn
  */
 static void DrawTileSelection(const TileInfo *ti)
+{
+	DrawTileSelectionArea(ti);
+
+	/* The two ends of a selection in review in the mobile layout can be dragged; draw them over the selection. */
+	if (IsMobileBuildHandleTile(ti->tile)) DrawTileSelectionRect(ti, PALETTE_SEL_TILE_BLUE);
+}
+
+/**
+ * Draw the selection, error square and highlights of a tile.
+ * @param ti TileInfo Tile that is being drawn
+ */
+static void DrawTileSelectionArea(const TileInfo *ti)
 {
 	/* Highlight tiles inside local authority of selected towns. */
 	HighlightTownLocalAuthorityTiles(ti);
@@ -2497,6 +2513,13 @@ static void PlaceObject()
 
 bool HandleViewportClicked(const Viewport &vp, int x, int y)
 {
+	/* A construction in review in the mobile layout decides first: drag a handle, or pan. */
+	switch (MobileBuildOnViewportClick(vp, x, y)) {
+		case MobileViewportClick::Consumed: return true;
+		case MobileViewportClick::Pan: return false;
+		case MobileViewportClick::NotHandled: break;
+	}
+
 	const Vehicle *v = CheckClickOnVehicle(vp, x, y);
 
 	if (_thd.place_mode & HT_VEHICLE) {
@@ -2559,6 +2582,12 @@ bool ScrollWindowTo(int x, int y, int z, Window *w, bool instant)
 	}
 
 	Point pt = MapXYZToViewport(*w->viewport, x, y, z);
+	if (w == GetMainWindow()) {
+		/* Centre in the part of the map not covered by the mobile layout's panels. */
+		Point offset = GetMobileMapCentreOffset();
+		pt.x -= ScaleByZoom(offset.x, w->viewport->zoom);
+		pt.y -= ScaleByZoom(offset.y, w->viewport->zoom);
+	}
 	w->viewport->CancelFollow(*w);
 
 	if (w->viewport->dest_scrollpos_x == pt.x && w->viewport->dest_scrollpos_y == pt.y) return false;
@@ -2794,6 +2823,7 @@ void UpdateTileSelection()
 static inline void ShowMeasurementTooltips(EncodedString &&text)
 {
 	if (!_settings_client.gui.measure_tooltip) return;
+	if (!MobileBuildMeasurementTooltipsAllowed()) return;
 	GuiShowTooltips(_thd.GetCallbackWnd(), std::move(text), TooltipCloseCondition::ExitViewport);
 }
 
@@ -3498,6 +3528,7 @@ EventState VpHandlePlaceSizingDrag()
 		}
 
 		w->OnPlaceDrag(_thd.select_method, _thd.select_proc, GetTileBelowCursor());
+		if (_special_mouse_mode == SpecialMouseMode::Sizing) MobileBuildOnSizingUpdate(w);
 		return EventState::Handled;
 	}
 
@@ -3505,23 +3536,41 @@ EventState VpHandlePlaceSizingDrag()
 	_special_mouse_mode = SpecialMouseMode::None;
 	if (_special_mouse_mode == SpecialMouseMode::Dragging) return EventState::Handled;
 
-	/* Keep the selected tool, but reset it to the original mode. */
-	HighLightStyle others = _thd.place_mode & ~(HT_DRAG_MASK | HT_DIR_MASK);
-	if ((_thd.next_drawstyle & HT_DRAG_MASK) == HT_RECT) {
-		_thd.place_mode = HT_RECT | others;
-	} else if (_thd.select_method & VPM_SIGNALDIRS) {
-		_thd.place_mode = HT_RECT | others;
-	} else if (_thd.select_method & VPM_RAILDIRS) {
-		_thd.place_mode = (_thd.select_method & ~VPM_RAILDIRS) ? _thd.next_drawstyle : (HT_RAIL | others);
-	} else {
-		_thd.place_mode = HT_POINT | others;
+	/* In the mobile layout, the selection may be kept for review instead of built now. */
+	if (MobileBuildReviewWanted(w)) {
+		HideMeasurementTooltips();
+		MobileBuildOnRelease(w);
+		return EventState::Handled;
 	}
-	SetTileSelectSize(1, 1);
+
+	/* Keep the selected tool, but reset it to the original mode. */
+	RestorePlaceModeAfterSizing();
 
 	HideMeasurementTooltips();
 	w->OnPlaceMouseUp(_thd.select_method, _thd.select_proc, _thd.selend, TileVirtXY(_thd.selstart.x, _thd.selstart.y), TileVirtXY(_thd.selend.x, _thd.selend.y));
+	MobileBuildOnPlacementReset();
 
 	return EventState::Handled;
+}
+
+/**
+ * Get the placement mode a tool returns to when a sizing drag ends.
+ * @return The placement mode.
+ */
+HighLightStyle GetPlaceModeAfterSizing()
+{
+	HighLightStyle others = _thd.place_mode & ~(HT_DRAG_MASK | HT_DIR_MASK);
+	if ((_thd.next_drawstyle & HT_DRAG_MASK) == HT_RECT) return HT_RECT | others;
+	if (_thd.select_method & VPM_SIGNALDIRS) return HT_RECT | others;
+	if (_thd.select_method & VPM_RAILDIRS) return (_thd.select_method & ~VPM_RAILDIRS) ? _thd.next_drawstyle : (HT_RAIL | others);
+	return HT_POINT | others;
+}
+
+/** Keep the selected tool after a sizing drag, but return it to its original mode. */
+void RestorePlaceModeAfterSizing()
+{
+	_thd.place_mode = GetPlaceModeAfterSizing();
+	SetTileSelectSize(1, 1);
 }
 
 /**
@@ -3548,6 +3597,9 @@ void SetObjectToPlaceWnd(CursorID icon, PaletteID pal, HighLightStyle mode, Wind
  */
 void SetObjectToPlace(CursorID icon, PaletteID pal, HighLightStyle mode, WindowClass window_class, WindowNumber window_num)
 {
+	/* Any change of tool ends a construction in review. */
+	MobileBuildOnPlacementReset();
+
 	if (_thd.window_class != WindowClass::Invalid) {
 		/* Undo clicking on button and drag & drop */
 		Window *w = _thd.GetCallbackWnd();

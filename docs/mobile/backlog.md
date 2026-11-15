@@ -4,7 +4,7 @@ Things to do in a later step, with enough context to start without re-researchin
 
 ## Android
 
-### Keep a running game alive in the background (requested by the user, 15 Nov 2026)
+### Keep a running game alive in the background (requested by the user, 15 Nov 2026; all three parts approved the same day)
 
 **Problem:** when the user switches away from TouchTTD, Android may kill the process to free memory. Anything since the last save is lost. MIUI/HyperOS (the user's Poco X7 Pro) is especially aggressive about this.
 

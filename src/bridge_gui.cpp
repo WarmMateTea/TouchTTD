@@ -25,6 +25,10 @@
 #include "road_gui.h"
 #include "tunnelbridge_cmd.h"
 
+#include "mobile_build.h"
+#include "zoom_func.h"
+#include "mobile_gui.h"
+
 #include "widgets/bridge_widget.h"
 
 #include "table/strings.h"
@@ -83,6 +87,22 @@ private:
 	};
 	static const std::initializer_list<GUIBridgeList::SortFunction * const> sorter_funcs; ///< Functions to sort bridges.
 
+	/** Entries of the mobile sort dropdown, which folds the sort direction into the criteria. */
+	static inline const StringID mobile_sorter_names[] = {
+		STR_MOBILE_BRIDGE_SORT_SPEED_DESC,
+		STR_MOBILE_BRIDGE_SORT_SPEED_ASC,
+		STR_MOBILE_BRIDGE_SORT_COST_DESC,
+		STR_MOBILE_BRIDGE_SORT_COST_ASC,
+		STR_MOBILE_BRIDGE_SORT_NAME,
+	};
+	/** Listing (descending, criteria) of each entry of #mobile_sorter_names. */
+	static inline const Listing mobile_sorter_listings[] = {
+		{true, 2}, {false, 2}, {true, 1}, {false, 1}, {false, 0},
+	};
+	static constexpr int MOBILE_ROW_HEIGHT = 48; ///< Height of a row in the mobile layout, in GUI pixels at 1x.
+
+	const bool mobile; ///< Whether this is the mobile layout, docked in the sheet slot.
+
 	TileIndex start_tile = INVALID_TILE;
 	TileIndex end_tile = INVALID_TILE;
 	TransportType transport_type = TransportType::Invalid;
@@ -117,8 +137,37 @@ private:
 			case TransportType::Road: _last_roadbridge_type = type; break;
 			default: break;
 		}
+		if (this->mobile) {
+			/* The outcome goes to the construction toolbar's status line. */
+			bool success;
+			Money cost;
+			std::string error;
+			{
+				CommandResultCapture capture(false);
+				Command<Commands::BuildBridge>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, CcBuildBridge,
+							this->end_tile, this->start_tile, this->transport_type, type, this->railtype, this->roadtype);
+				success = capture.any && !capture.failed;
+				cost = capture.cost;
+				if (capture.failed) error = capture.error.empty() ? GetString(capture.error_summary) : capture.error.GetDecodedString();
+			}
+			/* Only one capture can be active; reporting the result estimates the undo with another. */
+			MobileBuildBridgeResult(success, cost, this->start_tile, error);
+			return;
+		}
 		Command<Commands::BuildBridge>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, CcBuildBridge,
 					this->end_tile, this->start_tile, this->transport_type, type, this->railtype, this->roadtype);
+	}
+
+	/**
+	 * Get the entry of the mobile sort dropdown matching the current sorting.
+	 * @return Index into #mobile_sorter_names.
+	 */
+	int GetMobileSortIndex() const
+	{
+		for (int i = 0; i < (int)std::size(mobile_sorter_listings); i++) {
+			if (mobile_sorter_listings[i].criteria == this->bridges.SortType() && mobile_sorter_listings[i].order == this->bridges.IsDescSortOrder()) return i;
+		}
+		return 0;
 	}
 
 	/** Sort the builable bridges */
@@ -127,7 +176,7 @@ private:
 		this->bridges.Sort();
 
 		/* Display the current sort variant */
-		this->GetWidget<NWidgetCore>(WID_BBS_DROPDOWN_CRITERIA)->SetString(BuildBridgeWindow::sorter_names[this->bridges.SortType()]);
+		this->GetWidget<NWidgetCore>(WID_BBS_DROPDOWN_CRITERIA)->SetString(this->mobile ? BuildBridgeWindow::mobile_sorter_names[this->GetMobileSortIndex()] : BuildBridgeWindow::sorter_names[this->bridges.SortType()]);
 
 		/* Set the modified widgets dirty */
 		this->SetWidgetDirty(WID_BBS_DROPDOWN_CRITERIA);
@@ -165,7 +214,8 @@ public:
 	 * @param roadtype Road type for a road bridge.
 	 * @param bl List of bridges that can be built.
 	 */
-	BuildBridgeWindow(WindowDesc &desc, TileIndex start, TileIndex end, TransportType transport_type, RailType railtype, RoadType roadtype, GUIBridgeList &&bl) : Window(desc),
+	BuildBridgeWindow(WindowDesc &desc, TileIndex start, TileIndex end, TransportType transport_type, RailType railtype, RoadType roadtype, GUIBridgeList &&bl, bool mobile = false) : Window(desc),
+		mobile(mobile),
 		start_tile(start),
 		end_tile(end),
 		transport_type(transport_type),
@@ -176,7 +226,7 @@ public:
 		this->CreateNestedTree();
 		this->vscroll = this->GetScrollbar(WID_BBS_SCROLLBAR);
 		/* Change the data, or the caption of the gui. Set it to road or rail, accordingly. */
-		this->GetWidget<NWidgetCore>(WID_BBS_CAPTION)->SetString((transport_type == TransportType::Road) ? STR_SELECT_ROAD_BRIDGE_CAPTION : STR_SELECT_RAIL_BRIDGE_CAPTION);
+		if (!mobile) this->GetWidget<NWidgetCore>(WID_BBS_CAPTION)->SetString((transport_type == TransportType::Road) ? STR_SELECT_ROAD_BRIDGE_CAPTION : STR_SELECT_RAIL_BRIDGE_CAPTION);
 		this->FinishInitNested(transport_type); // Initializes 'this->icon_width'.
 
 		this->parent = FindWindowById(WindowClass::BuildToolbar, transport_type);
@@ -192,6 +242,21 @@ public:
 	~BuildBridgeWindow() override
 	{
 		BuildBridgeWindow::last_sorting = this->bridges.GetListing();
+	}
+
+	void Close(int data = 0) override
+	{
+		/* Closing the list without building a bridge cancels the span. */
+		if (this->mobile) MobileBuildBridgeListClosed();
+		this->Window::Close(data);
+		/* Give the toolbar and the map their space back. */
+		if (this->mobile) RelocateMobileWindows();
+	}
+
+	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
+	{
+		if (widget == WID_BBS_TITLE) return GetString(STR_MOBILE_BRIDGE_TITLE, GetTunnelBridgeLength(this->start_tile, this->end_tile) + 2);
+		return this->Window::GetWidgetString(widget, stringid);
 	}
 
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
@@ -212,6 +277,14 @@ public:
 				break;
 			}
 			case WID_BBS_BRIDGE_LIST: {
+				if (this->mobile) {
+					Dimension sprite_dim = {0, 0};
+					for (const BuildBridgeData &bridge_data : this->bridges) sprite_dim = maxdim(sprite_dim, GetScaledSpriteSize(bridge_data.spec->sprite));
+					this->icon_width = sprite_dim.width;
+					fill.height = resize.height = std::max<uint>(ScaleGUITrad(MOBILE_ROW_HEIGHT), std::max(sprite_dim.height, (uint)GetCharacterHeight(FontSize::Normal) * 2) + padding.height);
+					size.height = 4 * resize.height;
+					break;
+				}
 				Dimension sprite_dim = {0, 0}; // Biggest bridge sprite dimension
 				Dimension text_dim   = {0, 0}; // Biggest text dimension
 				for (const BuildBridgeData &bridge_data : this->bridges) {
@@ -230,6 +303,8 @@ public:
 
 	Point OnInitialPosition([[maybe_unused]] int16_t sm_width, [[maybe_unused]] int16_t sm_height, [[maybe_unused]] int window_number) override
 	{
+		/* The mobile layout docks the list in the sheet slot. */
+		if (this->mobile) return {0, 0};
 		/* Position the window so hopefully the first bridge from the list is under the mouse pointer. */
 		NWidgetBase *list = this->GetWidget<NWidgetBase>(WID_BBS_BRIDGE_LIST);
 		Point corner; // point of the top left corner of the window.
@@ -245,7 +320,17 @@ public:
 				this->DrawSortButton(widget, this->bridges.IsDescSortOrder());
 				break;
 
+			case WID_BBS_TITLE: {
+				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
+				DrawString(tr.left, tr.right, CentreBounds(r.top, r.bottom, GetCharacterHeight(FontSize::Normal)), this->GetWidgetString(WID_BBS_TITLE, STR_NULL), TextColour::White);
+				break;
+			}
+
 			case WID_BBS_BRIDGE_LIST: {
+				if (this->mobile) {
+					this->DrawMobileList(r);
+					break;
+				}
 				Rect tr = r.WithHeight(this->resize.step_height).Shrink(WidgetDimensions::scaled.matrix);
 				bool rtl = _current_text_dir == TD_RTL;
 				auto [first, last] = this->vscroll->GetVisibleRangeIterators(this->bridges);
@@ -257,6 +342,33 @@ public:
 				}
 				break;
 			}
+		}
+	}
+
+	/**
+	 * Draw the bridge list of the mobile layout: picture, name and speed, and the total cost of this span.
+	 * @param r The list widget.
+	 */
+	void DrawMobileList(const Rect &r) const
+	{
+		bool rtl = _current_text_dir == TD_RTL;
+		Rect tr = r.WithHeight(this->resize.step_height).Shrink(WidgetDimensions::scaled.framerect);
+		auto [first, last] = this->vscroll->GetVisibleRangeIterators(this->bridges);
+		for (auto it = first; it != last; ++it) {
+			const BridgeSpec *b = it->spec;
+			DrawSpriteIgnorePadding(b->sprite, b->pal, tr.WithWidth(this->icon_width, rtl), {AlignmentH::Centre, AlignmentV::Middle});
+			Rect text = tr.Indent(this->icon_width + WidgetDimensions::scaled.hsep_wide, rtl);
+
+			std::string cost = GetString(STR_JUST_CURRENCY_LONG, it->cost);
+			int line = GetCharacterHeight(FontSize::Normal);
+			int top = CentreBounds(tr.top, tr.bottom, line * 2);
+			DrawString(text.left, text.right, CentreBounds(tr.top, tr.bottom, line), cost, TextColour::Black, AlignmentH::End);
+			text = text.Indent(GetStringBoundingBox(cost).width + WidgetDimensions::scaled.hsep_wide, !rtl);
+			DrawString(text.left, text.right, top, b->material, TextColour::Black);
+			if (b->speed != UINT16_MAX) {
+				DrawString(text.left, text.right, top + line, GetString(STR_MOBILE_BRIDGE_SPEED, PackVelocity(b->speed, static_cast<VehicleType>(this->transport_type))), TextColour::Grey);
+			}
+			tr = tr.Translate(0, this->resize.step_height);
 		}
 	}
 
@@ -291,13 +403,27 @@ public:
 				break;
 
 			case WID_BBS_DROPDOWN_CRITERIA:
+				if (this->mobile) {
+					ShowDropDownMenu(this, BuildBridgeWindow::mobile_sorter_names, this->GetMobileSortIndex(), WID_BBS_DROPDOWN_CRITERIA, 0, 0);
+					break;
+				}
 				ShowDropDownMenu(this, BuildBridgeWindow::sorter_names, this->bridges.SortType(), WID_BBS_DROPDOWN_CRITERIA, 0, 0);
+				break;
+
+			case WID_BBS_CLOSE:
+				this->Close();
 				break;
 		}
 	}
 
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
+		if (this->mobile && widget == WID_BBS_DROPDOWN_CRITERIA) {
+			this->bridges.SetListing(BuildBridgeWindow::mobile_sorter_listings[index]);
+			this->bridges.ForceResort();
+			this->SortBridgeList();
+			return;
+		}
 		if (widget == WID_BBS_DROPDOWN_CRITERIA && this->bridges.SortType() != index) {
 			this->bridges.SetSortType(index);
 
@@ -348,6 +474,29 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_bridge_widgets
 		EndContainer(),
 	EndContainer(),
 };
+
+/** Widgets of the bridge list in the mobile layout; it sits in the sheet slot. */
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_build_bridge_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::DarkGreen, WID_BBS_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_BRIDGE_TITLE), EndContainer(),
+		NWidget(WWT_PUSHTXTBTN, Colours::DarkGreen, WID_BBS_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_BUILD_CANCEL_TOOLTIP),
+	EndContainer(),
+	NWidget(WWT_DROPDOWN, Colours::DarkGreen, WID_BBS_DROPDOWN_CRITERIA), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_TOOLTIP_SORT_CRITERIA),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::DarkGreen, WID_BBS_BRIDGE_LIST), SetFill(1, 1), SetResize(1, 1), SetToolTip(STR_SELECT_BRIDGE_SELECTION_TOOLTIP), SetScrollbar(WID_BBS_SCROLLBAR), EndContainer(),
+		NWidget(NWID_VSCROLLBAR, Colours::DarkGreen, WID_BBS_SCROLLBAR),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::DarkGreen),
+		NWidget(WWT_TEXT, Colours::Invalid, WID_BBS_FOOTER), SetMinimalSize(0, 24), SetPadding(0, 4, 0, 4), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_BRIDGE_FOOTER),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_build_bridge_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::BuildBridge, WindowClass::BuildToolbar,
+	WindowDefaultFlag::Construction,
+	_nested_mobile_build_bridge_widgets
+);
 
 /** Window definition for the rail bridge selection window. */
 static WindowDesc _build_bridge_desc(
@@ -446,7 +595,11 @@ void ShowBuildBridgeWindow(TileIndex start, TileIndex end, TransportType transpo
 	}
 
 	if (!bl.empty()) {
-		new BuildBridgeWindow(_build_bridge_desc, start, end, transport_type, railtype, roadtype, std::move(bl));
+		if (IsMobileLayout()) {
+			MobileShowInSheet(new BuildBridgeWindow(_mobile_build_bridge_desc, start, end, transport_type, railtype, roadtype, std::move(bl), true));
+		} else {
+			new BuildBridgeWindow(_build_bridge_desc, start, end, transport_type, railtype, roadtype, std::move(bl));
+		}
 	} else {
 		ShowErrorMessage(GetEncodedString(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE), TileX(end) * TILE_SIZE, TileY(end) * TILE_SIZE, ret);
 	}

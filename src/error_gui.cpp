@@ -16,6 +16,7 @@
 #include "company_manager_face.h"
 #include "strings_func.h"
 #include "window_func.h"
+#include "mobile_gui.h"
 #include "console_func.h"
 #include "window_gui.h"
 #include "timer/timer.h"
@@ -332,6 +333,9 @@ void ShowErrorMessage(EncodedString &&summary_msg, EncodedString &&detailed_msg,
 
 	if (_game_mode == GameMode::Bootstrap) return;
 	if (_settings_client.gui.errmsg_duration == 0 && !is_critical) return;
+
+	/* The mobile layout shows errors in the construction toolbar's status line, or in a banner. */
+	if (!is_critical && ShowMobileError(summary_msg.GetDecodedString(), detailed_msg.empty() ? std::string{} : detailed_msg.GetDecodedString())) return;
 
 	ErrorMessageData data(std::move(summary_msg), std::move(detailed_msg), is_critical, x, y, std::move(extra_msg), company);
 

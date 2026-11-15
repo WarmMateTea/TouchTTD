@@ -88,6 +88,25 @@ private:
 
 template <Commands TCmd, typename T, bool THasTile> struct CommandHelper;
 
+/**
+ * Collects the results of the commands posted while it exists, instead of showing them to the player.
+ * Used by the mobile layout to estimate a construction before it is confirmed, and to show the outcome
+ * of a confirmed construction in its toolbar instead of in error windows.
+ */
+struct CommandResultCapture {
+	bool estimate_only; ///< Whether commands are only tested (like holding Shift), never executed.
+	Money cost = 0; ///< Summed cost of the successful commands.
+	bool failed = false; ///< Whether any command failed.
+	bool any = false; ///< Whether any command was posted.
+	EncodedString error; ///< Error of the first failed command.
+	StringID error_summary = INVALID_STRING_ID; ///< Summary ("Can't build ...") of the first failed command.
+
+	explicit CommandResultCapture(bool estimate_only);
+	~CommandResultCapture();
+
+	static CommandResultCapture *active; ///< The capture in effect, if any.
+};
+
 class CommandHelperBase {
 protected:
 	static void InternalDoBefore(bool top_level, bool test);
