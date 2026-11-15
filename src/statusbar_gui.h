@@ -10,6 +10,8 @@
 #ifndef STATUSBAR_GUI_H
 #define STATUSBAR_GUI_H
 
+#include "gfx_type.h"
+
 /** What of the statusbar must be invalidated? */
 enum StatusBarInvalidate : uint8_t {
 	SBI_SAVELOAD_START,  ///< started saving
@@ -20,7 +22,10 @@ enum StatusBarInvalidate : uint8_t {
 	SBI_END
 };
 
+struct NewsItem;
+
 bool IsNewsTickerShown();
+bool DrawScrollingStatusText(const NewsItem &ni, int scroll_pos, int left, int right, int top, int bottom, TextColour colour = TextColour::LightBlue);
 void ShowStatusBar();
 
 #endif /* STATUSBAR_GUI_H */

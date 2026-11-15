@@ -22,6 +22,7 @@
 #include "sound_func.h"
 #include "string_func.h"
 #include "statusbar_gui.h"
+#include "mobile_gui.h"
 #include "company_manager_face.h"
 #include "company_func.h"
 #include "engine_base.h"
@@ -34,6 +35,7 @@
 #include "zoom_func.h"
 #include "news_cmd.h"
 #include "news_func.h"
+#include "news_gui.h"
 #include "timer/timer.h"
 #include "timer/timer_window.h"
 #include "timer/timer_game_calendar.h"
@@ -367,7 +369,8 @@ struct NewsWindow : Window {
 		NewsWindow::duration = 16650;
 		const Window *w = FindWindowByClass(WindowClass::NetworkChat);
 		this->chat_height = (w != nullptr) ? w->height : 0;
-		this->status_height = FindWindowById(WindowClass::Statusbar, 0)->height;
+		const Window *status = FindWindowById(WindowClass::Statusbar, 0);
+		this->status_height = (status != nullptr) ? status->height : 0;
 
 		this->flags.Set(WindowFlag::DisableVpScroll);
 
@@ -717,6 +720,16 @@ static void ShowTicker(NewsIterator ni)
 
 	_statusbar_news = ni;
 	InvalidateWindowData(WindowClass::Statusbar, 0, SBI_SHOW_TICKER);
+	if (IsMobileLayout()) ShowMobileNewsBanner();
+}
+
+/**
+ * Is there a status bar, or the mobile layout's equivalent, to show news in?
+ * @return \c true when news can be shown.
+ */
+static bool HasNewsArea()
+{
+	return FindWindowById(WindowClass::Statusbar, 0) != nullptr || FindWindowById(WindowClass::MobileStatus, 0) != nullptr;
 }
 
 /** Initialize the news-items data structures */
@@ -763,7 +776,7 @@ static void MoveToNextTickerItem()
 	/* There is no status bar, so no reason to show news;
 	 * especially important with the end game screen when
 	 * there is no status bar but possible news. */
-	if (FindWindowById(WindowClass::Statusbar, 0) == nullptr) return;
+	if (!HasNewsArea()) return;
 
 	/* No news to move to. */
 	if (std::empty(_news)) return;
@@ -787,7 +800,12 @@ static void MoveToNextTickerItem()
 				return;
 
 			case NewsDisplay::Full: // Show newspaper, skipped here.
-				break;;
+				/* The mobile layout shows every item in the news banner; tapping it opens the newspaper. */
+				if (IsMobileLayout()) {
+					ShowTicker(_statusbar_news);
+					return;
+				}
+				break;
 		}
 	}
 }
@@ -798,7 +816,10 @@ static void MoveToNextNewsItem()
 	/* There is no status bar, so no reason to show news;
 	 * especially important with the end game screen when
 	 * there is no status bar but possible news. */
-	if (FindWindowById(WindowClass::Statusbar, 0) == nullptr) return;
+	if (!HasNewsArea()) return;
+
+	/* The mobile layout shows newspapers only on request, from the news banner. */
+	if (IsMobileLayout()) return;
 
 	CloseWindowById(WindowClass::News, 0); // close the newspapers window if shown
 	_forced_news = std::end(_news);
@@ -864,6 +885,7 @@ static std::list<NewsItem>::iterator DeleteNewsItem(std::list<NewsItem>::iterato
 	if (update_statusbar_news) {
 		/* About to remove the currently displayed item (ticker, or just a reminder) */
 		InvalidateWindowData(WindowClass::Statusbar, 0, SBI_NEWS_DELETED); // invalidate the statusbar
+		CloseMobileNewsBanner();
 		MoveToNextTickerItem();
 	}
 
@@ -1152,6 +1174,16 @@ bool HideActiveNewsMessage()
 	if (w == nullptr) return false;
 	w->Close();
 	return true;
+}
+
+/** Open the newspaper of the item shown in the ticker, or the message history when there is none. */
+void ShowStatusbarNewsMessage()
+{
+	if (_statusbar_news == std::end(_news)) {
+		ShowMessageHistory();
+		return;
+	}
+	ShowNewsMessage(_statusbar_news);
 }
 
 /** Show previous news item */

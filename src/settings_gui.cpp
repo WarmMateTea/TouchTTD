@@ -1863,6 +1863,13 @@ void ShowGameOptions()
 	new GameOptionsWindow(_game_options_desc);
 }
 
+/** Open the game options window on the tab with all the settings. */
+void ShowGameSettings()
+{
+	GameOptionsWindow::active_tab = WID_GO_TAB_ADVANCED;
+	ShowGameOptions();
+}
+
 /**
  * Draw [<][>] boxes.
  * @param x the x position to draw

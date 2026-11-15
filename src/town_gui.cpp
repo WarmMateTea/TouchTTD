@@ -48,6 +48,7 @@
 #include "zoom_func.h"
 #include "hotkeys.h"
 #include "graph_gui.h"
+#include "mobile_gui.h"
 
 #include "widgets/town_widget.h"
 
@@ -716,6 +717,24 @@ static constexpr std::initializer_list<NWidgetPart> _nested_town_directory_widge
 	EndContainer(),
 };
 
+/** Town directory for the mobile layout: it sits in a hub sheet, which provides the caption. */
+static constexpr std::initializer_list<NWidgetPart> _nested_town_directory_mobile_widgets = {
+	NWidget(WWT_PANEL, Colours::Brown),
+		NWidget(NWID_HORIZONTAL), SetPadding(4), SetPIP(0, 4, 0),
+			NWidget(WWT_EDITBOX, Colours::Brown, WID_TD_FILTER), SetMinimalSize(120, 32), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_LIST_FILTER_OSKTITLE, STR_LIST_FILTER_TOOLTIP),
+			NWidget(WWT_DROPDOWN, Colours::Brown, WID_TD_SORT_CRITERIA), SetMinimalSize(100, 32), SetToolTip(STR_TOOLTIP_SORT_CRITERIA),
+		EndContainer(),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Brown, WID_TD_LIST), SetToolTip(STR_TOWN_DIRECTORY_LIST_TOOLTIP),
+						SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_TD_SCROLLBAR), EndContainer(),
+		NWidget(NWID_VSCROLLBAR, Colours::Brown, WID_TD_SCROLLBAR),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Brown),
+		NWidget(WWT_TEXT, Colours::Invalid, WID_TD_WORLD_POPULATION), SetMinimalSize(0, 24), SetPadding(0, 4, 0, 4), SetFill(1, 0), SetResize(1, 0),
+	EndContainer(),
+};
+
 /** Town directory window class. */
 struct TownDirectoryWindow : public Window {
 private:
@@ -729,6 +748,24 @@ private:
 		STR_SORT_BY_RATING,
 	};
 	static const std::initializer_list<GUITownList::SortFunction * const> sorter_funcs; ///< Functions to sort towns.
+
+	/** Entries of the mobile sort dropdown, which folds the sort direction into the criteria. */
+	static inline const StringID mobile_sorter_names[] = {
+		STR_MOBILE_TOWN_SORT_NAME_ASC,
+		STR_MOBILE_TOWN_SORT_NAME_DESC,
+		STR_MOBILE_TOWN_SORT_POPULATION_DESC,
+		STR_MOBILE_TOWN_SORT_POPULATION_ASC,
+		STR_MOBILE_TOWN_SORT_RATING_DESC,
+		STR_MOBILE_TOWN_SORT_RATING_ASC,
+	};
+	/** Listing (descending, criteria) of each entry of #mobile_sorter_names. */
+	static inline const Listing mobile_sorter_listings[] = {
+		{false, 0}, {true, 0}, {true, 1}, {false, 1}, {true, 2}, {false, 2},
+	};
+	static constexpr int MOBILE_ROW_HEIGHT = 40; ///< Height of a row in the mobile layout, in GUI pixels at 1x.
+
+	const bool mobile; ///< Whether this is the mobile layout.
+	TownID selected = TownID::Invalid(); ///< Town last tapped in the mobile layout.
 
 	StringFilter string_filter{}; ///< Filter for towns
 	QueryString townname_editbox; ///< Filter editbox
@@ -799,7 +836,7 @@ private:
 	}
 
 public:
-	TownDirectoryWindow(WindowDesc &desc) : Window(desc), townname_editbox(MAX_LENGTH_TOWN_NAME_CHARS * MAX_CHAR_LENGTH, MAX_LENGTH_TOWN_NAME_CHARS)
+	TownDirectoryWindow(WindowDesc &desc, bool mobile) : Window(desc), mobile(mobile), townname_editbox(MAX_LENGTH_TOWN_NAME_CHARS * MAX_CHAR_LENGTH, MAX_LENGTH_TOWN_NAME_CHARS)
 	{
 		this->CreateNestedTree();
 
@@ -826,6 +863,7 @@ public:
 				return GetString(STR_TOWN_POPULATION, GetWorldPopulation());
 
 			case WID_TD_SORT_CRITERIA:
+				if (this->mobile) return GetString(TownDirectoryWindow::mobile_sorter_names[this->GetMobileSortIndex()]);
 				return GetString(TownDirectoryWindow::sorter_names[this->towns.SortType()]);
 
 			default:
@@ -844,6 +882,65 @@ public:
 		return GetString(t->larger_town ? STR_TOWN_DIRECTORY_CITY : STR_TOWN_DIRECTORY_TOWN, t->index, population);
 	}
 
+	/**
+	 * Get the entry of the mobile sort dropdown matching the current sorting.
+	 * @return Index into #mobile_sorter_names.
+	 */
+	int GetMobileSortIndex() const
+	{
+		for (int i = 0; i < (int)std::size(TownDirectoryWindow::mobile_sorter_listings); i++) {
+			const Listing &l = TownDirectoryWindow::mobile_sorter_listings[i];
+			if (l.criteria == this->towns.SortType() && l.order == this->towns.IsDescSortOrder()) return i;
+		}
+		return 0;
+	}
+
+	/**
+	 * Get the area of the info button of a mobile list row.
+	 * @param row The row.
+	 * @return The button.
+	 */
+	static Rect GetMobileInfoButton(const Rect &row)
+	{
+		return row.WithWidth(std::min(ScaleGUITrad(MOBILE_ROW_HEIGHT), row.Height()), _current_text_dir != TD_RTL);
+	}
+
+	/**
+	 * Draw the town list of the mobile layout: name, population and an info button per row.
+	 * @param r The list widget.
+	 */
+	void DrawMobileList(const Rect &r) const
+	{
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
+		if (this->towns.empty()) {
+			DrawString(tr, STR_TOWN_DIRECTORY_NONE);
+			return;
+		}
+
+		bool rtl = _current_text_dir == TD_RTL;
+		int text_height = GetCharacterHeight(FontSize::Normal);
+		auto [first, last] = this->vscroll->GetVisibleRangeIterators(this->towns);
+		for (auto it = first; it != last; ++it) {
+			const Town *t = *it;
+			Rect row = tr.WithHeight(this->resize.step_height);
+			if (t->index == this->selected) GfxFillRect(row, GetColourGradient(Colours::Brown, Shade::Lighter));
+
+			Rect button = GetMobileInfoButton(row).Shrink(ScaleGUITrad(2));
+			DrawFrameRect(button, Colours::Brown, {});
+			DrawString(button.left, button.right, CentreBounds(button.top, button.bottom, text_height), STR_MOBILE_TOWN_INFO, TextColour::FromString, AlignmentH::Centre);
+
+			Rect text = row.Indent(GetMobileInfoButton(row).Width() + WidgetDimensions::scaled.hsep_wide, !rtl);
+			int y = CentreBounds(row.top, row.bottom, text_height);
+			std::string population = GetString(STR_JUST_COMMA, t->cache.population);
+			int population_width = GetStringBoundingBox(population).width;
+			DrawString(text.left, text.right, y, population, TextColour::Black, AlignmentH::End);
+			text = text.Indent(population_width + WidgetDimensions::scaled.hsep_wide, !rtl);
+			DrawString(text.left, text.right, y, t->GetCachedName(), t->larger_town ? TextColour::Yellow : TextColour::Orange);
+
+			tr.top += this->resize.step_height;
+		}
+	}
+
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
 		switch (widget) {
@@ -852,6 +949,10 @@ public:
 				break;
 
 			case WID_TD_LIST: {
+				if (this->mobile) {
+					this->DrawMobileList(r);
+					break;
+				}
 				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
 				if (this->towns.empty()) { // No towns available.
 					DrawString(tr, STR_TOWN_DIRECTORY_NONE);
@@ -899,7 +1000,7 @@ public:
 				break;
 			}
 			case WID_TD_SORT_CRITERIA: {
-				Dimension d = GetStringListBoundingBox(TownDirectoryWindow::sorter_names);
+				Dimension d = this->mobile ? GetStringListBoundingBox(TownDirectoryWindow::mobile_sorter_names) : GetStringListBoundingBox(TownDirectoryWindow::sorter_names);
 				d.width += padding.width;
 				d.height += padding.height;
 				size = maxdim(size, d);
@@ -918,6 +1019,7 @@ public:
 				Dimension icon_size = GetSpriteSize(SPR_TOWN_RATING_GOOD);
 				d.width += icon_size.width + 2;
 				d.height = std::max(d.height, icon_size.height);
+				if (this->mobile) d.height = std::max<uint>(d.height, ScaleGUITrad(MOBILE_ROW_HEIGHT));
 				fill.height = resize.height = d.height;
 				d.height *= 5;
 				d.width += padding.width;
@@ -953,6 +1055,10 @@ public:
 				break;
 
 			case WID_TD_SORT_CRITERIA: // Click on sort criteria dropdown
+				if (this->mobile) {
+					ShowDropDownMenu(this, TownDirectoryWindow::mobile_sorter_names, this->GetMobileSortIndex(), WID_TD_SORT_CRITERIA, 0, 0);
+					break;
+				}
 				ShowDropDownMenu(this, TownDirectoryWindow::sorter_names, this->towns.SortType(), WID_TD_SORT_CRITERIA, 0, 0);
 				break;
 
@@ -962,6 +1068,19 @@ public:
 
 				const Town *t = *it;
 				assert(t != nullptr);
+				if (this->mobile) {
+					this->selected = t->index;
+					this->SetWidgetDirty(WID_TD_LIST);
+
+					Rect row = this->GetWidget<NWidgetBase>(WID_TD_LIST)->GetCurrentRect().Shrink(WidgetDimensions::scaled.framerect);
+					if (GetMobileInfoButton(row).Contains({pt.x, row.top})) {
+						ShowTownViewWindow(t->index);
+						MobileDockOverlayInSheet(FindWindowById(WindowClass::TownView, t->index));
+					} else {
+						ScrollMainWindowToTile(t->xy);
+					}
+					break;
+				}
 				if (_ctrl_pressed) {
 					ShowExtraViewportWindow(t->xy);
 				} else {
@@ -975,6 +1094,15 @@ public:
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
 		if (widget != WID_TD_SORT_CRITERIA) return;
+
+		if (this->mobile) {
+			this->last_sorting = TownDirectoryWindow::mobile_sorter_listings[index];
+			this->towns.SetListing(this->last_sorting);
+			this->towns.ForceResort();
+			this->BuildSortTownList();
+			this->SetDirty();
+			return;
+		}
 
 		if (this->towns.SortType() != index) {
 			this->towns.SetSortType(index);
@@ -1053,10 +1181,20 @@ static WindowDesc _town_directory_desc(
 	&TownDirectoryWindow::hotkeys
 );
 
+/** Window definition for the town directory in the mobile layout. */
+static WindowDesc _town_directory_mobile_desc(
+	WindowPosition::Manual, {}, 300, 400,
+	WindowClass::TownDirectory, WindowClass::None,
+	{},
+	_nested_town_directory_mobile_widgets,
+	&TownDirectoryWindow::hotkeys
+);
+
 void ShowTownDirectory()
 {
 	if (BringWindowToFrontById(WindowClass::TownDirectory, 0)) return;
-	new TownDirectoryWindow(_town_directory_desc);
+	bool mobile = IsMobileLayout();
+	new TownDirectoryWindow(mobile ? _town_directory_mobile_desc : _town_directory_desc, mobile);
 }
 
 void CcFoundTown(Commands, const CommandCost &result, TileIndex tile)

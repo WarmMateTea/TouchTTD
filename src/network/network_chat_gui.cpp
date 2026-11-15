@@ -353,7 +353,8 @@ struct NetworkChatWindow : public Window {
 
 	Point OnInitialPosition([[maybe_unused]] int16_t sm_width, [[maybe_unused]] int16_t sm_height, [[maybe_unused]] int window_number) override
 	{
-		Point pt = { 0, _screen.height - sm_height - FindWindowById(WindowClass::Statusbar, 0)->height };
+		const Window *status = FindWindowById(WindowClass::Statusbar, 0);
+		Point pt = { 0, _screen.height - sm_height - (status != nullptr ? status->height : 0) };
 		return pt;
 	}
 

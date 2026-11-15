@@ -743,6 +743,48 @@ enum class WindowClass : uint16_t {
 	 */
 	Help,
 
+	/**
+	 * Mobile layout status pill; %Window numbers:
+	 *   - 0 = #MobileStatusWidgets
+	 */
+	MobileStatus,
+
+	/**
+	 * Mobile layout hub dock; %Window numbers:
+	 *   - 0 = #MobileDockWidgets
+	 */
+	MobileDock,
+
+	/**
+	 * Mobile layout minimap button; %Window numbers:
+	 *   - 0 = #MobileMinimapWidgets
+	 */
+	MobileMinimap,
+
+	/**
+	 * Mobile layout news banner; %Window numbers:
+	 *   - 0 = #MobileNewsWidgets
+	 */
+	MobileNews,
+
+	/**
+	 * Mobile layout build category flyout; %Window numbers:
+	 *   - 0 = #MobileBuildMenuWidgets
+	 */
+	MobileBuildMenu,
+
+	/**
+	 * Mobile layout game menu flyout; %Window numbers:
+	 *   - 0 = #MobileMenuWidgets
+	 */
+	MobileMenu,
+
+	/**
+	 * Mobile layout hub sheet tabs; %Window numbers:
+	 *   - 0 = #MobileHubTabsWidgets
+	 */
+	MobileHubTabs,
+
 	Invalid = 0xFFFF, ///< Invalid window.
 };
 

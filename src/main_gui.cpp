@@ -11,6 +11,7 @@
 #include "spritecache.h"
 #include "window_gui.h"
 #include "window_func.h"
+#include "mobile_gui.h"
 #include "viewport_func.h"
 #include "command_func.h"
 #include "console_gui.h"
@@ -577,6 +578,11 @@ void SetupColoursAndInitialWindow()
  */
 void ShowVitalWindows()
 {
+	if (IsMobileLayout()) {
+		ShowMobileVitalWindows();
+		return;
+	}
+
 	AllocateToolbar();
 
 	/* Status bad only for normal games */

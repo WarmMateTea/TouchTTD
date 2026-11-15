@@ -26,6 +26,7 @@ void InitializeGUI();
 
 /* settings_gui.cpp */
 void ShowGameOptions();
+void ShowGameSettings();
 
 /* train_gui.cpp */
 void ShowOrdersWindow(const Vehicle *v);

@@ -29,6 +29,7 @@ add_files(
     link_graph_legend_widget.h
     main_widget.h
     misc_widget.h
+    mobile_widget.h
     music_widget.h
     network_chat_widget.h
     network_content_widget.h

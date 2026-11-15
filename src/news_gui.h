@@ -13,6 +13,7 @@
 #include "news_type.h"
 
 void ShowLastNewsMessage();
+void ShowStatusbarNewsMessage();
 void ShowMessageHistory();
 bool HideActiveNewsMessage();
 

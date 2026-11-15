@@ -273,6 +273,8 @@ add_files(
     misc_gui.cpp
     mixer.cpp
     mixer.h
+    mobile_gui.cpp
+    mobile_gui.h
     music.cpp
     music_gui.cpp
     newgrf.cpp

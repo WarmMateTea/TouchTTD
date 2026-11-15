@@ -860,6 +860,58 @@ STR_STATUSBAR_SAVING_GAME                                       :{RED}*  *  SAVI
 STR_STATUSBAR_SPECTATOR                                         :{WHITE}(spectator)
 STR_STATUSBAR_INFINITE_MONEY                                    :{WHITE}(infinite money)
 
+# Mobile layout
+STR_MOBILE_DOCK_MENU                                            :Menu
+STR_MOBILE_DOCK_COMPANY                                         :Company
+STR_MOBILE_DOCK_WORLD                                           :World
+STR_MOBILE_DOCK_VEHICLES                                        :Vehicles
+STR_MOBILE_DOCK_BUILD                                           :Build
+STR_MOBILE_DOCK_MENU_TOOLTIP                                    :{BLACK}Game menu: options, settings, save, load and help
+STR_MOBILE_DOCK_COMPANY_TOOLTIP                                 :{BLACK}Finances, stations, companies, league table and graphs
+STR_MOBILE_DOCK_WORLD_TOOLTIP                                   :{BLACK}Towns, industries, subsidies, story book and goals
+STR_MOBILE_DOCK_VEHICLES_TOOLTIP                                :{BLACK}Lists of your trains, road vehicles, ships and aircraft
+STR_MOBILE_DOCK_BUILD_TOOLTIP                                   :{BLACK}Reopen the last construction toolbar, or pick what to build
+STR_MOBILE_STATUS_INFO_TOOLTIP                                  :{BLACK}Date and company money. Tap to show the finances
+STR_MOBILE_MINIMAP_TOOLTIP                                      :{BLACK}Show the map of the world
+STR_MOBILE_CROSS                                                :{BLACK}X
+STR_MOBILE_NEWS_TOOLTIP                                         :{BLACK}Show this news item
+STR_MOBILE_NEWS_DISMISS_TOOLTIP                                 :{BLACK}Hide the news banner
+STR_MOBILE_HUB_EXPAND_TOOLTIP                                   :{BLACK}Switch between a half and a full height panel
+STR_MOBILE_HUB_CLOSE_TOOLTIP                                    :{BLACK}Close this panel
+STR_MOBILE_TAB_TOWNS                                            :Towns
+STR_MOBILE_TAB_INDUSTRIES                                       :Industries
+STR_MOBILE_TAB_SUBSIDIES                                        :Subsidies
+STR_MOBILE_TAB_STORY                                            :Story
+STR_MOBILE_TAB_GOALS                                            :Goals
+STR_MOBILE_TAB_TRAINS                                           :Trains
+STR_MOBILE_TAB_ROAD                                             :Road
+STR_MOBILE_TAB_SHIPS                                            :Ships
+STR_MOBILE_TAB_AIRCRAFT                                         :Aircraft
+STR_MOBILE_TAB_FINANCES                                         :Finances
+STR_MOBILE_TAB_STATIONS                                         :Stations
+STR_MOBILE_TAB_COMPANIES                                        :Companies
+STR_MOBILE_TAB_LEAGUE                                           :League
+STR_MOBILE_TAB_GRAPHS                                           :Graphs
+STR_MOBILE_BUILD_RAIL                                           :Rail
+STR_MOBILE_BUILD_ROAD                                           :Road
+STR_MOBILE_BUILD_TRAM                                           :Tram
+STR_MOBILE_BUILD_WATER                                          :Water
+STR_MOBILE_BUILD_AIRPORT                                        :Airport
+STR_MOBILE_BUILD_LANDSCAPE                                      :Landscape
+STR_MOBILE_MENU_MESSAGES                                        :Messages and news history
+STR_MOBILE_MENU_SETTINGS                                        :Settings
+STR_MOBILE_MENU_SCRIPTS                                         :AI / game script settings
+STR_MOBILE_MENU_MAP_TOOLS                                       :Map tools {RIGHT_ARROW}
+STR_MOBILE_MENU_MUSIC                                           :Music and sound
+STR_MOBILE_MENU_QUIT                                            :Quit to main menu
+STR_MOBILE_TOWN_SORT_NAME_ASC                                   :Name (A-Z)
+STR_MOBILE_TOWN_SORT_NAME_DESC                                  :Name (Z-A)
+STR_MOBILE_TOWN_SORT_POPULATION_DESC                            :Largest first
+STR_MOBILE_TOWN_SORT_POPULATION_ASC                             :Smallest first
+STR_MOBILE_TOWN_SORT_RATING_DESC                                :Best rating first
+STR_MOBILE_TOWN_SORT_RATING_ASC                                 :Worst rating first
+STR_MOBILE_TOWN_INFO                                            :{BLACK}i
+
 # News message history
 STR_MESSAGE_HISTORY                                             :{WHITE}Message History
 STR_MESSAGE_HISTORY_TOOLTIP                                     :{BLACK}A list of the recent news messages
@@ -2071,6 +2123,10 @@ STR_CONFIG_SETTING_EXTRA_TREE_PLACEMENT_SPREAD_RAINFOREST       :Grow but only s
 STR_CONFIG_SETTING_EXTRA_TREE_PLACEMENT_SPREAD_ALL              :Grow and spread everywhere
 STR_CONFIG_SETTING_EXTRA_TREE_PLACEMENT_NO_GROWTH_NO_SPREAD     :Don't grow, don't spread {RED}(breaks lumber mill)
 
+STR_CONFIG_SETTING_MOBILE_LAYOUT                                :Touch-friendly mobile layout: {STRING2}
+STR_CONFIG_SETTING_MOBILE_LAYOUT_HELPTEXT                       :Replace the main toolbar and the status bar with a layout made for touch screens: a dock with big buttons, a status pill with the date and money, and panels that open from the dock
+STR_CONFIG_SETTING_MOBILE_BUILD_PICKER                          :Mobile layout Build button always opens the category picker: {STRING2}
+STR_CONFIG_SETTING_MOBILE_BUILD_PICKER_HELPTEXT                 :When off, the Build button of the mobile layout reopens the construction toolbar used last. When on, it always asks what to build
 STR_CONFIG_SETTING_TOOLBAR_POS                                  :Position of main toolbar: {STRING2}
 STR_CONFIG_SETTING_TOOLBAR_POS_HELPTEXT                         :Horizontal position of the main toolbar at the top of the screen
 STR_CONFIG_SETTING_STATUSBAR_POS                                :Position of status bar: {STRING2}

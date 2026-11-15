@@ -19,6 +19,7 @@
 #include "vehicle_base.h"
 #include "depot_func.h"
 #include "window_func.h"
+#include "mobile_gui.h"
 #include "tilehighlight_func.h"
 #include "network/network.h"
 #include "querystring_gui.h"
@@ -1352,6 +1353,13 @@ static uint GetWindowZPriority(WindowClass wc)
 
 		case WindowClass::MainToolbar:
 		case WindowClass::Statusbar:
+		case WindowClass::MobileStatus:
+		case WindowClass::MobileDock:
+		case WindowClass::MobileMinimap:
+		case WindowClass::MobileNews:
+		case WindowClass::MobileBuildMenu:
+		case WindowClass::MobileMenu:
+		case WindowClass::MobileHubTabs:
 			++z_priority;
 			[[fallthrough]];
 
@@ -1694,6 +1702,7 @@ restart:
 Point GetToolbarAlignedWindowPosition(int window_width)
 {
 	const Window *w = FindWindowById(WindowClass::MainToolbar, 0);
+	if (w == nullptr && IsMobileLayout()) return GetMobileToolbarAlignedWindowPosition(window_width);
 	assert(w != nullptr);
 	Point pt = { _current_text_dir == TD_RTL ? w->left : (w->left + w->width) - window_width, w->top + w->height };
 	return pt;
@@ -2705,6 +2714,9 @@ void HandleKeypress(uint keycode, char32_t key)
 		}
 	}
 
+	/* In the mobile layout Escape (the Android back button) closes the topmost flyout, sheet or toolbar. */
+	if (keycode == WKC_ESC && MobileHandleBack()) return;
+
 	/* Call the event, start with the uppermost window, but ignore the toolbar. */
 	for (Window *w : Window::IterateFromFront()) {
 		if (w->window_class == WindowClass::MainToolbar) continue;
@@ -2911,6 +2923,9 @@ static void MouseLoop(MouseClick click, int mousewheel)
 	int y = _cursor.pos.y;
 	Window *w = FindWindowFromPt(x, y);
 	if (w == nullptr) return;
+
+	/* In the mobile layout a tap outside an open flyout only closes the flyout. */
+	if ((click == MouseClick::Left || click == MouseClick::DoubleLeft) && MobileConsumeOutsideTap(w)) return;
 
 	if (click != MouseClick::Hover && !MaybeBringWindowToFront(w)) return;
 	Viewport *vp = IsPtInWindowViewport(w, x, y);
@@ -3604,7 +3619,11 @@ void RelocateAllWindows(int neww, int newh)
 			case WindowClass::NetworkChat:
 				ResizeWindow(w, std::min<uint>(neww, _toolbar_width) - w->width, 0, false);
 
-				top = newh - w->height - FindWindowById(WindowClass::Statusbar, 0)->height;
+				if (const Window *ws = FindWindowById(WindowClass::Statusbar, 0); ws != nullptr) {
+					top = newh - w->height - ws->height;
+				} else {
+					top = newh - w->height;
+				}
 				left = PositionNetworkChatWindow(w);
 				break;
 
@@ -3631,6 +3650,8 @@ void RelocateAllWindows(int neww, int newh)
 
 		EnsureVisibleCaption(w, left, top);
 	}
+
+	RelocateMobileWindows();
 }
 
 /**

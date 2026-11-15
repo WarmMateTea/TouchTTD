@@ -655,6 +655,8 @@ SettingsContainer &GetSettingsTree()
 				construction->Add(new SettingEntry("gui.auto_remove_signals"));
 			}
 
+			interface->Add(new SettingEntry("gui.mobile_layout"));
+			interface->Add(new SettingEntry("gui.mobile_build_picker"));
 			interface->Add(new SettingEntry("gui.toolbar_pos"));
 			interface->Add(new SettingEntry("gui.statusbar_pos"));
 			interface->Add(new SettingEntry("gui.prefer_teamchat"));

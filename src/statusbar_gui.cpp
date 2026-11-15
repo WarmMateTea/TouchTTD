@@ -23,6 +23,7 @@
 #include "window_func.h"
 #include "statusbar_gui.h"
 #include "toolbar_gui.h"
+#include "mobile_gui.h"
 #include "core/geometry_func.hpp"
 #include "zoom_func.h"
 #include "timer/timer.h"
@@ -36,7 +37,18 @@
 
 #include "safeguards.h"
 
-static bool DrawScrollingStatusText(const NewsItem &ni, int scroll_pos, int left, int right, int top, int bottom)
+/**
+ * Draw the scrolling news ticker text.
+ * @param ni The news item.
+ * @param scroll_pos How far the text has scrolled.
+ * @param left Left edge of the area.
+ * @param right Right edge of the area.
+ * @param top Top of the text.
+ * @param bottom Bottom of the area.
+ * @param colour Colour of the text.
+ * @return \c true while the text is still visible.
+ */
+bool DrawScrollingStatusText(const NewsItem &ni, int scroll_pos, int left, int right, int top, int bottom, TextColour colour)
 {
 	/* Replace newlines and the likes with spaces. */
 	std::string message = StrMakeValid(ni.GetStatusText(), StringValidationSetting::ReplaceTabCrNlWithSpace);
@@ -48,7 +60,7 @@ static bool DrawScrollingStatusText(const NewsItem &ni, int scroll_pos, int left
 	int pos = (_current_text_dir == TD_RTL) ? (scroll_pos - width) : (right - scroll_pos - left);
 
 	AutoRestoreBackup dpi_backup(_cur_dpi, &tmp_dpi);
-	DrawString(pos, INT16_MAX, 0, message, TextColour::LightBlue, AlignmentH::ForceLeft);
+	DrawString(pos, INT16_MAX, 0, message, colour, AlignmentH::ForceLeft);
 
 	return (_current_text_dir == TD_RTL) ? (pos < right - left) : (pos + width > 0);
 }
@@ -232,6 +244,7 @@ static WindowDesc _main_status_desc(
  */
 bool IsNewsTickerShown()
 {
+	if (IsMobileLayout()) return IsMobileNewsBannerShown();
 	const StatusBarWindow *w = dynamic_cast<StatusBarWindow*>(FindWindowById(WindowClass::Statusbar, 0));
 	return w != nullptr && w->ticker_scroll < StatusBarWindow::TICKER_STOP;
 }

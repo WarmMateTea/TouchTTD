@@ -240,6 +240,8 @@ struct GUISettings {
 	DefaultRailRoadType default_rail_road_type; ///< the default rail type for the rail/road/tram GUI
 	uint8_t toolbar_pos; ///< position of toolbars, 0=left, 1=center, 2=right
 	uint8_t statusbar_pos; ///< position of statusbar, 0=left, 1=center, 2=right
+	bool mobile_layout; ///< use the touch-first mobile layout instead of the main toolbar and status bar
+	bool mobile_build_picker; ///< in the mobile layout, the Build button always opens the category picker
 	uint8_t window_snap_radius; ///< windows snap at each other if closer than this
 	uint8_t window_soft_limit; ///< soft limit of maximum number of non-stickied non-vital windows (0 = no limit)
 	ZoomLevel zoom_min; ///< minimum zoom out level
