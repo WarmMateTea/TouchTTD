@@ -243,9 +243,15 @@ include_directories(${CMAKE_SOURCE_DIR}/src/3rdparty/squirrel/include)
 include(MSVCFilters)
 
 add_library(openttd_lib OBJECT ${GENERATED_SOURCE_FILES})
-add_executable(openttd WIN32)
+if(ANDROID)
+    # On Android, SDL's Java activity loads the game as libmain.so and calls its SDL_main().
+    add_library(openttd SHARED)
+    set_target_properties(openttd PROPERTIES OUTPUT_NAME "main")
+else()
+    add_executable(openttd WIN32)
+    set_target_properties(openttd PROPERTIES OUTPUT_NAME "${BINARY_NAME}")
+endif()
 add_executable(openttd_test)
-set_target_properties(openttd PROPERTIES OUTPUT_NAME "${BINARY_NAME}")
 # All other files are added via target_sources()
 
 if(MSVC)
@@ -464,6 +470,11 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 endif()
 
 enable_testing()
+
+# The Android build is packaged by Gradle (os/android), and can't run the game on the build machine.
+if(ANDROID)
+    return()
+endif()
 
 add_subdirectory(regression)
 

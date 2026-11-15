@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "touchttd-android",
+  "description": "Dependencies of the Android build. The root vcpkg.json limits SDL3 and FreeType to Linux, which does not include Android.",
+  "dependencies": [
+    "freetype",
+    "liblzma",
+    "libpng",
+    "lzo",
+    "sdl3",
+    "zlib"
+  ],
+  "builtin-baseline": "9eec002df1cd109f8f104cd966a763daf9751489"
+}

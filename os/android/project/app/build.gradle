@@ -1,0 +1,42 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The native libraries (libmain.so = OpenTTD, libSDL3.so, libc++_shared.so) and the game data
+// are not built by Gradle: os/android/build.sh builds them with CMake and stages them in
+// app/libs/<abi>/ and app/src/main/assets/ before running Gradle.
+def touchttdVersionCode = (project.findProperty('touchttdVersionCode') ?: '1') as int
+def touchttdVersionName = project.findProperty('touchttdVersionName') ?: 'dev'
+
+android {
+    namespace = "io.github.warmmatetea.touchttd"
+    compileSdk 36
+    defaultConfig {
+        applicationId "io.github.warmmatetea.touchttd"
+        minSdkVersion 28
+        targetSdkVersion 36
+        versionCode touchttdVersionCode
+        versionName touchttdVersionName
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Signed with the debug key until a release key exists; fine for sideloading.
+            signingConfig signingConfigs.debug
+        }
+    }
+    sourceSets.main {
+        jniLibs.srcDir 'libs'
+    }
+    androidResources {
+        // Keep the data files (e.g. .grf, .tar) uncompressed in the APK, so extraction is a plain copy.
+        noCompress += ['grf', 'tar', 'obg', 'obs', 'obm', 'dat', 'lng', 'nut', 'ttf']
+    }
+    lint {
+        abortOnError = false
+    }
+}

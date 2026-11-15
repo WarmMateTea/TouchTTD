@@ -1,0 +1,8 @@
+# Staged by os/android/build.sh
+/app/libs/
+/app/src/main/assets/
+# Gradle
+/.gradle/
+/build/
+/app/build/
+/local.properties

@@ -16,6 +16,13 @@
 #include <time.h>
 #include <signal.h>
 
+#ifdef __ANDROID__
+#	include <unistd.h>
+#	include <SDL3/SDL.h>
+/* Renames main() below to SDL_main(), which SDL's Java activity calls. */
+#	include <SDL3/SDL_main.h>
+#endif
+
 #include "../../safeguards.h"
 
 int CDECL main(int argc, char *argv[])
@@ -26,6 +33,12 @@ int CDECL main(int argc, char *argv[])
 		StrMakeValidInPlace(argv[i]);
 		params.emplace_back(argv[i]);
 	}
+
+#ifdef __ANDROID__
+	/* The app's data (language files, base sets, ...) is extracted into its internal storage by
+	 * the Java activity. Run from there, so OpenTTD finds it through its working-directory search path. */
+	if (const char *storage = SDL_GetAndroidInternalStoragePath(); storage != nullptr) chdir(storage);
+#endif
 
 	CrashLog::InitialiseCrashLog();
 

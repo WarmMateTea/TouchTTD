@@ -345,6 +345,7 @@ static constexpr SDLVkMapping _vk_mapping[] = {
 	{ SDLK_DELETE, WKC_DELETE, true },
 
 	{ SDLK_ESCAPE, WKC_ESC, true },
+	{ SDLK_AC_BACK, WKC_ESC, true }, // Android back button; the mobile layout treats Escape as "back".
 	{ SDLK_PAUSE, WKC_PAUSE, true },
 	{ SDLK_BACKSPACE, WKC_BACKSPACE, true },
 

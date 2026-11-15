@@ -8,7 +8,7 @@ Upstream's list is in `COMPILING.md`. The project server already had the build l
 
 ```bash
 sudo apt-get install build-essential cmake pkg-config \
-    libsdl2-dev zlib1g-dev liblzma-dev libpng-dev libfreetype-dev libfontconfig-dev \
+    libsdl3-dev zlib1g-dev liblzma-dev libpng-dev libfreetype-dev libfontconfig-dev \
     libharfbuzz-dev libicu-dev libcurl4-openssl-dev
 # For headless runs and screenshots (section 4):
 sudo apt-get install xvfb xdotool imagemagick
@@ -74,7 +74,14 @@ tools/mobile/run_headless.sh 1222 2714          # portrait
 tools/mobile/run_headless.sh 1920 1080 200 false # desktop layout at 200%
 ```
 
-## 5. Tips
+## 5. Android
+
+`os/android/build.sh` builds the APK into `build-android/out/`. One-time setup (JDK 17, Android SDK/NDK, vcpkg) is in [`03-android-build-log.md`](03-android-build-log.md), steps 2 and 4.
+
+## 6. Tips
+
+- **Pushing to GitHub from the server:** the server's SSH key isn't on the GitHub account. Use HTTPS with `gh`'s token (`gh auth setup-git` once).
+- **Upstream moved to SDL3** (Nov 2026). On Linux, install `libsdl3-dev`; CMake fails with "SDL3 or Allegro is required" otherwise.
 
 - **Coordinates for xdotool** are screen pixels. Take a screenshot, find the button in it, and multiply by the inverse of any scaling you applied. A button at (35, 410) in a 50% copy is at (70, 820).
 - **Hover tooltips** show up in screenshots if the pointer stays on a button. Move it to empty map before shooting (`xdotool mousemove 1000 1150`).

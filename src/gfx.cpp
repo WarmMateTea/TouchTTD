@@ -1827,6 +1827,12 @@ int GetAutomaticScale()
  */
 int GetMaximumScale()
 {
+	/* The mobile layout is designed for screens down to 320 GUI pixels on the short side,
+	 * so phones can use the large scales they need in both orientations. */
+	if (_settings_client.gui.mobile_layout) {
+		int short_side = std::min(_screen.width, _screen.height);
+		return Clamp((short_side * 100 / 320 / 25) * 25, MIN_INTERFACE_SCALE, MAX_INTERFACE_SCALE);
+	}
 	return GetTargetScale(480, 360);
 }
 

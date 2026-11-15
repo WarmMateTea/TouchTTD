@@ -1,6 +1,6 @@
 # Android build: research and plan
 
-Status: **researched, not set up yet.** Several steps need decisions from the user (section 5). Researched on 14 Nov 2026.
+Status: **set up 15 Nov 2026**, first APK built; see [`03-android-build-log.md`](03-android-build-log.md). The user's answers: Poco X7 Pro / Android 16, licences accepted, APKs on GitHub, Tailscale available later, app ID `io.github.warmmatetea.touchttd`. Upstream has since moved to **SDL3**, so the build uses SDL3's Android template, not SDL2's.
 
 ## 1. What exists
 
