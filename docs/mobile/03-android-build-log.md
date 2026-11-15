@@ -128,3 +128,20 @@ gh release create android-<code> build-android/out/TouchTTD-*.apk --repo WarmMat
 - [ ] Sound plays.
 
 If it crashes: `adb logcat -s SDL TouchTTD DEBUG` over Tailscale (see the plan) gives the native backtrace, and `ndk-stack -sym build-android/arm64-v8a` symbolises it.
+
+## Step 12: First run on the phone (15 Nov 2026)
+
+**Report from the user:** the app launches and runs (the main menu works), but "the UI disappears upon loading the map".
+
+**Ruled out so far:**
+- **The menu → New Game → Generate path itself.** Reproduced on the server with `START=menu tools/mobile/run_headless.sh 1220 2712` (the phone's portrait size): the game loads with the full shell. So it's Android-specific.
+- **The shell being closed on the mode switch.** `CloseNonVitalWindows()` keeps windows flagged `NoClose`, and the dock, status pill and minimap button have that flag.
+
+**Candidates to check on the device** (needs `adb logcat` or a screenshot):
+- **The window size at startup.** There is no `resolution` in the first-start config, so OpenTTD opens a 640×480 window, and Android then resizes it to full screen. The new scale cap (step 5) is computed from the screen size *at that moment* (480 short side → 150%), and may not be recomputed after the resize.
+- **Presenting frames.** `VideoDriver_SDL_Default::Paint` updates only the dirty rectangle (`SDL_UpdateWindowSurfaceRects`). On Android, SDL backs the window surface with a GLES texture. The intro game redraws the whole screen all the time, but a paused-looking in-game screen only redraws small parts.
+- **Safe-area or cutout offsets** pushing the docked windows off-screen.
+
+**Blocked:** wireless `adb` needs the server on the user's tailnet. Installing Tailscale on the server was refused by the permission system (it joins the machine to a private network), so the user installs it: `curl -fsSL https://tailscale.com/install.sh | sh && tailscale up`.
+
+**Tip:** `START=menu` makes `tools/mobile/run_headless.sh` start at the main menu, to test the same path a phone user takes.
