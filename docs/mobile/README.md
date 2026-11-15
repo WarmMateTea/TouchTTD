@@ -8,6 +8,7 @@ Work notes for the touch-first mobile layout of this OpenTTD fork. The project r
 | [`01-shell-implementation-log.md`](01-shell-implementation-log.md) | Round 1 (app shell): steps, findings, bugs, verification |
 | [`02-android-build-plan.md`](02-android-build-plan.md) | Android: what exists, how the build works, delivery options, what's needed from the user |
 | [`03-android-build-log.md`](03-android-build-log.md) | Android: toolchain install, upstream merge, vcpkg, Gradle project, first APK, publishing |
+| [`backlog.md`](backlog.md) | Things for later steps, with context (e.g. keeping a game alive in the background on Android) |
 | [`teaching-resume.md`](teaching-resume.md) | Where the learning stands and how to continue it with the new code |
 | `handoffs/` | Documents passed between sessions (mentor, design, implementation), numbered in order |
 | `screenshots/round1/` | The built shell (L = landscape, P = portrait, D = desktop) |

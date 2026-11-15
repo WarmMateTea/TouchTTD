@@ -15,6 +15,7 @@ How:
 - Toolchain and setup changes go in `docs/mobile/00-toolchain.md`. Keep its commands copy-pasteable and verified.
 - Keep `docs/mobile/README.md` (the index) up to date when adding a file.
 - Design handoffs (to and from the design session) go in `docs/mobile/handoffs/`.
+- Work deferred to a later step goes in `docs/mobile/backlog.md`, with enough context to start it cold.
 - Teaching notes for the user (what to learn next, which new code makes a good example) go in `docs/mobile/teaching-resume.md`.
 
 A task is not finished until its notes are written.
