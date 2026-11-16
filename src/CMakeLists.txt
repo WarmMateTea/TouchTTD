@@ -277,6 +277,8 @@ add_files(
     mobile_build.h
     mobile_gui.cpp
     mobile_gui.h
+    mobile_touch.cpp
+    mobile_touch.h
     music.cpp
     music_gui.cpp
     newgrf.cpp

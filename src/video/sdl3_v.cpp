@@ -20,6 +20,7 @@
 #include "../framerate_type.h"
 #include "../window_func.h"
 #include "../window_gui.h"
+#include "../mobile_touch.h"
 #include "sdl3_v.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
@@ -553,6 +554,25 @@ bool VideoDriver_SDL_Base::PollEvent()
 			HandleExitGameRequest();
 			break;
 
+#ifdef __ANDROID__
+		/* Finger positions are normalised to the window; the window is the screen. */
+		case SDL_EVENT_FINGER_DOWN:
+			TouchDown(ev.tfinger.fingerID, static_cast<int>(ev.tfinger.x * _screen.width), static_cast<int>(ev.tfinger.y * _screen.height));
+			break;
+
+		case SDL_EVENT_FINGER_MOTION:
+			TouchMove(ev.tfinger.fingerID, static_cast<int>(ev.tfinger.x * _screen.width), static_cast<int>(ev.tfinger.y * _screen.height));
+			break;
+
+		case SDL_EVENT_FINGER_UP:
+			TouchUp(ev.tfinger.fingerID, static_cast<int>(ev.tfinger.x * _screen.width), static_cast<int>(ev.tfinger.y * _screen.height));
+			break;
+
+		case SDL_EVENT_FINGER_CANCELED:
+			TouchCancel();
+			break;
+#endif
+
 		case SDL_EVENT_KEY_DOWN: // Toggle full-screen on ALT + ENTER/F
 			if ((ev.key.mod & (SDL_KMOD_ALT | SDL_KMOD_GUI)) &&
 					(ev.key.key == SDLK_RETURN || ev.key.key == SDLK_F)) {
@@ -644,6 +664,10 @@ static std::optional<std::string_view> InitializeSDL()
 #ifdef SDL_HINT_APP_NAME
 	SDL_SetHint(SDL_HINT_APP_NAME, "OpenTTD");
 #endif
+#ifdef __ANDROID__
+	/* Touches go through the gesture layer (mobile_touch.cpp) instead of being turned into mouse events. */
+	SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+#endif
 
 	if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) return SDL_GetError();
 	return std::nullopt;
@@ -720,6 +744,10 @@ void VideoDriver_SDL_Base::Stop()
 
 void VideoDriver_SDL_Base::InputLoop()
 {
+#ifdef __ANDROID__
+	TouchTick();
+#endif
+
 	uint32_t mod = SDL_GetModState();
 	const bool *key_states = SDL_GetKeyboardState(nullptr);
 
