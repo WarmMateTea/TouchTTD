@@ -809,6 +809,12 @@ enum class WindowClass : uint16_t {
 	 */
 	MobileRailMore,
 
+	/**
+	 * Mobile layout button stopping the selected construction tool; %Window numbers:
+	 *   - 0 = #MobileToolCancelWidgets
+	 */
+	MobileToolCancel,
+
 	Invalid = 0xFFFF, ///< Invalid window.
 };
 

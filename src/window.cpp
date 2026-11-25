@@ -1402,6 +1402,7 @@ static uint GetWindowZPriority(WindowClass wc)
 		case WindowClass::MobileError:
 		case WindowClass::MobileSheetFiller:
 		case WindowClass::MobileRailMore:
+		case WindowClass::MobileToolCancel:
 			++z_priority;
 			[[fallthrough]];
 

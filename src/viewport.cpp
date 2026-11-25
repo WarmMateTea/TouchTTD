@@ -82,6 +82,7 @@
 #include "window_func.h"
 #include "mobile_build.h"
 #include "mobile_gui.h"
+#include "mobile_touch.h"
 #include "tilehighlight_func.h"
 #include "window_gui.h"
 #include "linkgraph/linkgraph_gui.h"
@@ -2748,7 +2749,8 @@ void UpdateTileSelection()
 			}
 			new_drawstyle = _thd.next_drawstyle;
 		}
-	} else if ((_thd.place_mode & HT_DRAG_MASK) != HT_NONE) {
+	} else if ((_thd.place_mode & HT_DRAG_MASK) != HT_NONE && !(IsTouchInputActive() && !_cursor.in_window)) {
+		/* With touch, nothing is highlighted once the finger has lifted. */
 		Point pt = GetTileBelowCursor();
 		x1 = pt.x;
 		y1 = pt.y;

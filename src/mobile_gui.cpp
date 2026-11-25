@@ -67,6 +67,9 @@
 #include "timer/timer_window.h"
 #include "timer/timer_game_calendar.h"
 #include "core/backup_type.hpp"
+#ifdef __ANDROID__
+#	include "os/android/android_bridge.h"
+#endif
 #include "widgets/mobile_widget.h"
 #include "widgets/rail_widget.h"
 
@@ -187,6 +190,7 @@ bool IsMobileShellWindow(WindowClass cls)
 		case WindowClass::MobileError:
 		case WindowClass::MobileSheetFiller:
 		case WindowClass::MobileRailMore:
+		case WindowClass::MobileToolCancel:
 			return true;
 		default:
 			return false;
@@ -199,10 +203,10 @@ static bool IsLandscape()
 }
 
 /**
- * Get the part of the screen the shell may use: not under the system bars, the camera cutout or rounded corners.
+ * Get the part of the screen not covered by system bars, the camera cutout or rounded corners, as the system reports it now.
  * @return The safe area, within the screen.
  */
-static Rect GetSafeArea()
+static Rect GetSystemSafeArea()
 {
 	Rect screen{0, 0, _screen.width - 1, _screen.height - 1};
 	Rect safe = VideoDriver::GetInstance() != nullptr ? VideoDriver::GetInstance()->GetSafeArea() : screen;
@@ -212,6 +216,62 @@ static Rect GetSafeArea()
 	safe.bottom = Clamp(safe.bottom, safe.top, screen.bottom);
 	return safe;
 }
+
+/** The safe area the shell is laid out in: it follows the system's safe area, sliding when system bars appear or disappear. */
+static struct {
+	bool valid = false; ///< Whether there was a first layout.
+	Dimension screen{}; ///< Screen size of the last layout; a new size (rotation) moves without sliding.
+	Rect from{}; ///< Where the slide started.
+	Rect target{}; ///< Where the slide ends.
+	Rect shown{}; ///< Where the shell is now.
+	std::chrono::steady_clock::time_point start{}; ///< When the slide started.
+	bool sliding = false; ///< Whether a slide is in progress.
+} _safe;
+
+static constexpr std::chrono::milliseconds SAFE_AREA_SLIDE_TIME{150}; ///< How long the shell takes to follow a system bar.
+
+/** Follow the system's safe area: snap the first time and after a rotation, otherwise start a slide. */
+static void UpdateSafeAreaTarget()
+{
+	Rect target = GetSystemSafeArea();
+	Dimension screen{(uint)_screen.width, (uint)_screen.height};
+	if (!_safe.valid || screen.width != _safe.screen.width || screen.height != _safe.screen.height) {
+		_safe = {true, screen, target, target, target, {}, false};
+		return;
+	}
+	if (target.left == _safe.target.left && target.top == _safe.target.top && target.right == _safe.target.right && target.bottom == _safe.target.bottom) return;
+	_safe.from = _safe.shown;
+	_safe.target = target;
+	_safe.start = std::chrono::steady_clock::now();
+	_safe.sliding = true;
+}
+
+/**
+ * Get the part of the screen the shell may use: not under the system bars, the camera cutout or rounded corners.
+ * While a system bar slides in or out, this slides along.
+ * @return The safe area, within the screen.
+ */
+static Rect GetSafeArea()
+{
+	return _safe.valid ? _safe.shown : GetSystemSafeArea();
+}
+
+/** Advance the slide of the safe area, and move the shell with it. */
+static const IntervalTimer<TimerWindow> _safe_area_slide = {std::chrono::milliseconds(15), [](auto) {
+	if (!_safe.sliding) return;
+	float t = std::chrono::duration<float>(std::chrono::steady_clock::now() - _safe.start) / SAFE_AREA_SLIDE_TIME;
+	if (t >= 1.0f) {
+		_safe.shown = _safe.target;
+		_safe.sliding = false;
+	} else {
+		/* Ease out: fast at first, settling at the end. */
+		float e = 1.0f - (1.0f - t) * (1.0f - t);
+		auto lerp = [e](int a, int b) { return a + static_cast<int>(std::lround((b - a) * e)); };
+		_safe.shown = {lerp(_safe.from.left, _safe.target.left), lerp(_safe.from.top, _safe.target.top),
+				lerp(_safe.from.right, _safe.target.right), lerp(_safe.from.bottom, _safe.target.bottom)};
+	}
+	RelocateMobileWindows();
+}};
 
 /**
  * Move a window, keeping its viewport (if any) in place relative to the window.
@@ -975,6 +1035,42 @@ static void OnMobileMenuClick()
 	RelocateMobileWindows();
 }
 
+/** Stops the selected construction tool of toolbars without a Cancel of their own (road, landscaping, ...). */
+struct MobileToolCancelWindow : Window {
+	MobileToolCancelWindow(WindowDesc &desc) : Window(desc)
+	{
+		this->InitNested(0);
+		this->flags.Reset(WindowFlag::WhiteBorder);
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		if (widget == WID_MTC_CANCEL) ResetObjectToPlace();
+	}
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_tool_cancel_widgets = {
+	NWidget(WWT_PUSHTXTBTN, Colours::Red, WID_MTC_CANCEL), SetMinimalSize(96, 40), SetStringTip(STR_MOBILE_TOOL_CANCEL, STR_MOBILE_TOOL_CANCEL_TOOLTIP),
+};
+
+static WindowDesc _mobile_tool_cancel_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::MobileToolCancel, WindowClass::None,
+	{WindowDefaultFlag::NoFocus, WindowDefaultFlag::NoClose},
+	_nested_mobile_tool_cancel_widgets
+);
+
+/**
+ * Should the floating Cancel show: a construction tool is selected, from a toolbar without a Cancel of its own.
+ * @return \c true when it should show.
+ */
+static bool WantToolCancel()
+{
+	if ((_thd.place_mode & HT_DRAG_MASK) == HT_NONE) return false;
+	const Window *w = _thd.GetCallbackWnd();
+	return w != nullptr && w != GetMobileRailToolbar() && w->window_class != WindowClass::MainWindow;
+}
+
 /** The hub dock: a left rail in landscape and a bottom bar in portrait, with the same widgets. */
 struct MobileDockWindow : Window {
 	const bool landscape; ///< Which of the two layouts this is.
@@ -1001,6 +1097,17 @@ struct MobileDockWindow : Window {
 		set_lowered(WID_MD_VEHICLES, hub != nullptr && hub->hub == MobileHub::Vehicles);
 		set_lowered(WID_MD_COMPANY, hub != nullptr && hub->hub == MobileHub::Company);
 		set_lowered(WID_MD_BUILD, FindWindowById(WindowClass::MobileBuildMenu, 0) != nullptr || IsConstructionToolbarOpen());
+
+		/* The floating Cancel follows the selected tool. */
+		Window *cancel = FindWindowById(WindowClass::MobileToolCancel, 0);
+		if (WantToolCancel() != (cancel != nullptr)) {
+			if (cancel != nullptr) {
+				cancel->Close();
+			} else {
+				new MobileToolCancelWindow(_mobile_tool_cancel_desc);
+			}
+			RelocateMobileWindows();
+		}
 
 		bool spectator = !Company::IsValidID(_local_company);
 		if (this->IsWidgetDisabled(WID_MD_BUILD) != spectator) {
@@ -1290,6 +1397,7 @@ void RelocateMobileWindows()
 
 	bool landscape = IsLandscape();
 	const int margin = ScaleGUITrad(MOBILE_MARGIN);
+	UpdateSafeAreaTarget();
 	const Rect safe = GetSafeArea();
 
 	/* The dock and the rail toolbar: open the other layout when the orientation changed. */
@@ -1374,6 +1482,12 @@ void RelocateMobileWindows()
 			FitWindowTo(banner, safe.Width() - 2 * margin, banner->height);
 			MoveWindowTo(banner, safe.left + margin, safe.top + ScaleGUITrad(MOBILE_NEWS_TOP_PORTRAIT));
 		}
+	}
+
+	/* The floating Cancel: bottom right of the visible map. */
+	if (Window *cancel = FindWindowById(WindowClass::MobileToolCancel, 0); cancel != nullptr) {
+		Rect map = GetMobileVisibleMapRect();
+		MoveWindowTo(cancel, map.right + 1 - cancel->width - margin, map.bottom + 1 - cancel->height - margin);
 	}
 
 	/* The flyouts open next to their button. */
@@ -1634,6 +1748,14 @@ Point GetMobileToolbarAlignedWindowPosition(int window_width)
 	Rect safe = GetSafeArea();
 	int map_left = (dock != nullptr && IsLandscape()) ? dock->left + dock->width : safe.left;
 	return {std::max(map_left, CentreBounds(map_left, safe.right + 1, window_width)), safe.top + ScaleGUITrad(MOBILE_MAP_STRIP)};
+}
+
+/** Show or hide Android's navigation bar after the setting changed. */
+void ApplyMobileSystemBars()
+{
+#ifdef __ANDROID__
+	AndroidApplySystemBars(_settings_client.gui.mobile_show_navigation_bar);
+#endif
 }
 
 /** Switch between the desktop and the mobile layout after the setting changed. */

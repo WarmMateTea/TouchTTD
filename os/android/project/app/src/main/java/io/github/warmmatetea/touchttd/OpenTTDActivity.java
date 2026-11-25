@@ -7,12 +7,19 @@
 
 package io.github.warmmatetea.touchttd;
 
+import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.res.AssetManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 
 import org.libsdl.app.SDLActivity;
+import org.libsdl.app.SDLSurface;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -42,6 +49,57 @@ public class OpenTTDActivity extends SDLActivity {
             Log.e(TAG, "Could not prepare game data", e);
         }
         super.onCreate(savedInstanceState);
+    }
+
+    /** Whether the navigation bar stays on screen; set by the game through #applySystemBars. */
+    private volatile boolean showNavigationBar = true;
+
+    @Override
+    protected SDLSurface createSDLSurface(Context context) {
+        return new OpenTTDSurface(context);
+    }
+
+    /**
+     * Called by the game (os/android/android_bridge.cpp): hide the status bar, and show or hide the navigation bar.
+     * Hidden bars can still be swiped in for a moment.
+     * @param showNavigation Whether the navigation bar stays on screen.
+     */
+    public void applySystemBars(boolean showNavigation) {
+        showNavigationBar = showNavigation;
+        runOnUiThread(this::applySystemBarsNow);
+        /* SDL may still be applying its own window style; apply ours again after it. */
+        View decor = getWindow() != null ? getWindow().getDecorView() : null;
+        if (decor != null) decor.postDelayed(this::applySystemBarsNow, 300);
+    }
+
+    private void applySystemBarsNow() {
+        Window window = getWindow();
+        if (window == null) return;
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller == null) return;
+            controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            controller.hide(WindowInsets.Type.statusBars());
+            if (showNavigationBar) {
+                controller.show(WindowInsets.Type.navigationBars());
+            } else {
+                controller.hide(WindowInsets.Type.navigationBars());
+            }
+        } else {
+            int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+            if (!showNavigationBar) flags |= View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
+            window.getDecorView().setSystemUiVisibility(flags);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        /* SDL resets the bars when the window regains focus; put ours back. */
+        if (hasFocus) {
+            applySystemBarsNow();
+            getWindow().getDecorView().postDelayed(this::applySystemBarsNow, 300);
+        }
     }
 
     @Override

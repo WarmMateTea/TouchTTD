@@ -21,6 +21,9 @@
 #include "../window_func.h"
 #include "../window_gui.h"
 #include "../mobile_touch.h"
+#ifdef __ANDROID__
+#	include "../os/android/android_bridge.h"
+#endif
 #include "sdl3_v.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
@@ -203,10 +206,6 @@ bool VideoDriver_SDL_Base::CreateMainWindow(uint w, uint h, uint flags)
 	if (_fullscreen) {
 		flags |= SDL_WINDOW_FULLSCREEN;
 	}
-#ifdef __ANDROID__
-	/* A window on a phone is always full screen; this also hides the system bars. */
-	flags |= SDL_WINDOW_FULLSCREEN;
-#endif
 
 	std::string caption = VideoDriver::GetCaption();
 	this->sdl_window = SDL_CreateWindow(caption.c_str(), w, h, flags);
@@ -215,6 +214,11 @@ bool VideoDriver_SDL_Base::CreateMainWindow(uint w, uint h, uint flags)
 		Debug(Facility::Driver, Severity::Critical, "SDL3: Couldn't allocate a window to draw on: {}", SDL_GetError());
 		return false;
 	}
+
+#ifdef __ANDROID__
+	/* The window covers the whole screen anyway; the activity decides which system bars show over it. */
+	AndroidApplySystemBars(_settings_client.gui.mobile_show_navigation_bar);
+#endif
 
 	std::string icon_path = FioFindFullPath(Subdirectory::Baseset, "openttd.32.bmp");
 	if (!icon_path.empty()) {

@@ -24,6 +24,7 @@ bool MobileHandleBack();
 void MobileDockOverlayInSheet(Window *w);
 Point GetMobileToolbarAlignedWindowPosition(int window_width);
 void ApplyMobileLayoutSetting();
+void ApplyMobileSystemBars();
 Rect GetMobileVisibleMapRect();
 Point GetMobileMapCentreOffset();
 void MobileShowInSheet(Window *w);

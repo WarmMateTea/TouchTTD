@@ -584,6 +584,7 @@ struct BuildRailToolbarWindow : Window {
 	MobileBuildKind GetToolKind() const
 	{
 		if (GetMobileBuildState() == MobileBuildState::Pending) return GetMobileBuildKind();
+		if (_thd.GetCallbackWnd() != this) return MobileBuildKind::Build;
 		switch (this->last_user_action) {
 			case WID_RAT_DEMOLISH: return MobileBuildKind::Demolish;
 			case WID_RAT_CONVERT_RAIL: return MobileBuildKind::Convert;
@@ -613,7 +614,8 @@ struct BuildRailToolbarWindow : Window {
 		static const StringID labels[] = {STR_MOBILE_BUILD_CONFIRM_BUILD, STR_MOBILE_BUILD_CONFIRM_REMOVE, STR_MOBILE_BUILD_CONFIRM_DEMOLISH, STR_MOBILE_BUILD_CONFIRM_CONVERT};
 		confirm->SetString(labels[to_underlying(kind)]);
 		this->SetWidgetDisabledState(WID_RAT_CONFIRM, !MobileBuildCanConfirm());
-		this->SetWidgetDisabledState(WID_RAT_CANCEL, !MobileBuildCanCancel());
+		/* Cancel drops the selection in review, or else the selected tool. */
+		this->SetWidgetDisabledState(WID_RAT_CANCEL, !MobileBuildCanCancel() && _thd.GetCallbackWnd() != this);
 
 		auto more = this->GetMoreTools();
 		this->SetWidgetLoweredState(WID_RAT_MORE, std::ranges::find(more, this->last_user_action) != more.end() && this->IsWidgetLowered(this->last_user_action));
@@ -838,7 +840,13 @@ struct BuildRailToolbarWindow : Window {
 		switch (widget) {
 			case WID_RAT_CATEGORY: ShowMobileBuildFlyoutForToolbar(this, widget); return;
 			case WID_RAT_MORE: ShowMobileRailMoreFlyout(this); return;
-			case WID_RAT_CANCEL: MobileBuildCancel(); return;
+			case WID_RAT_CANCEL:
+				if (MobileBuildCanCancel()) {
+					MobileBuildCancel();
+				} else if (_thd.GetCallbackWnd() == this) {
+					ResetObjectToPlace();
+				}
+				return;
 			case WID_RAT_CONFIRM: MobileBuildConfirm(); return;
 			case WID_RAT_UNDO: MobileBuildUndo(); return;
 			case WID_RAT_EXIT: this->Close(); return;

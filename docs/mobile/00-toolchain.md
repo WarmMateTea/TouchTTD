@@ -90,3 +90,4 @@ tools/mobile/run_headless.sh 1920 1080 200 false # desktop layout at 200%
 - **Screenshots in git:** OpenTTD draws with a 256-colour palette, so `convert in.png PNG8:out.png` shrinks screenshots several-fold with no visible loss.
 - **Widget enum names are global.** The script API imports every `src/widgets/*_widget.h` into one namespace, so a new prefix that clashes with an existing one (e.g. `WID_MH_`, already the message history's) fails the build in `script_window.hpp`.
 - `unzip` isn't installed on the server; `python3 -m zipfile -e` does the same.
+- **Never wait on a build with `pgrep -f "<text>"` or `pkill -f "<text>"` from a shell command that itself contains `<text>`.** `-f` matches full command lines, including the waiting shell's own, so the loop waits forever (or `pkill` kills itself). Run the build itself in the background and wait for it to exit, or match something only the build has (`pgrep -x cc1plus`).

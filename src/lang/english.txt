@@ -934,7 +934,7 @@ STR_MOBILE_BUILD_CONFIRM_REMOVE                                 :{WHITE}Remove
 STR_MOBILE_BUILD_CONFIRM_DEMOLISH                               :{WHITE}Demolish
 STR_MOBILE_BUILD_CONFIRM_CONVERT                                :{WHITE}Convert
 STR_MOBILE_BUILD_CONFIRM_TOOLTIP                                :{BLACK}Do what is selected on the map
-STR_MOBILE_BUILD_CANCEL_TOOLTIP                                 :{BLACK}Cancel the selection
+STR_MOBILE_BUILD_CANCEL_TOOLTIP                                 :{BLACK}Cancel the selection, or stop using the tool
 STR_MOBILE_BUILD_UNDO                                           :Undo · {CURRENCY_SHORT}
 STR_MOBILE_BUILD_UNDO_REFUND                                    :Undo · +{CURRENCY_SHORT}
 STR_MOBILE_BUILD_UNDO_TOOLTIP                                   :{BLACK}Remove what was just built
@@ -960,6 +960,8 @@ STR_MOBILE_BRIDGE_SORT_SPEED_ASC                                :Slowest first
 STR_MOBILE_BRIDGE_SORT_COST_DESC                                :Most expensive first
 STR_MOBILE_BRIDGE_SORT_COST_ASC                                 :Cheapest first
 STR_MOBILE_BRIDGE_SORT_NAME                                     :By name
+STR_MOBILE_TOOL_CANCEL                                          :{WHITE}X Cancel
+STR_MOBILE_TOOL_CANCEL_TOOLTIP                                  :{BLACK}Stop placing; the toolbar stays open
 STR_MOBILE_ERROR_TOOLTIP                                        :{BLACK}Dismiss
 
 # News message history
@@ -2188,6 +2190,8 @@ STR_CONFIG_SETTING_MOBILE_BUILD_PICKER                          :Mobile layout B
 STR_CONFIG_SETTING_MOBILE_BUILD_PICKER_HELPTEXT                 :When off, the Build button of the mobile layout reopens the construction toolbar used last. When on, it always asks what to build
 STR_CONFIG_SETTING_MOBILE_CONFIRM_BUILD                         :Mobile layout: review before building: {STRING2}
 STR_CONFIG_SETTING_MOBILE_CONFIRM_BUILD_HELPTEXT                :When on, track and tunnels stay selected on the map after you lift your finger, with their cost, until you tap Build. When off, they are built when you lift your finger. Removing, demolishing and converting always ask
+STR_CONFIG_SETTING_MOBILE_SHOW_NAVIGATION_BAR                   :Android: keep the navigation bar on screen: {STRING2}
+STR_CONFIG_SETTING_MOBILE_SHOW_NAVIGATION_BAR_HELPTEXT          :Keep Android's navigation bar (back, home and recent apps) visible below the game. When off, the bar is hidden and can be swiped in from the bottom edge. Only has an effect on Android
 STR_CONFIG_SETTING_TOOLBAR_POS                                  :Position of main toolbar: {STRING2}
 STR_CONFIG_SETTING_TOOLBAR_POS_HELPTEXT                         :Horizontal position of the main toolbar at the top of the screen
 STR_CONFIG_SETTING_STATUSBAR_POS                                :Position of status bar: {STRING2}

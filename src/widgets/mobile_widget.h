@@ -44,6 +44,11 @@ enum MobileErrorWidgets : WidgetID {
 	WID_MERR_DISMISS, ///< Dismiss the error.
 };
 
+/** Widgets of the #MobileToolCancelWindow class. */
+enum MobileToolCancelWidgets : WidgetID {
+	WID_MTC_CANCEL, ///< Stop placing with the selected tool.
+};
+
 /** Widgets of the #MobileMenuWindow class. */
 enum MobileMenuWidgets : WidgetID {
 	WID_MM_MESSAGES,     ///< Message history.

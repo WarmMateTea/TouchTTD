@@ -242,6 +242,7 @@ struct GUISettings {
 	uint8_t statusbar_pos; ///< position of statusbar, 0=left, 1=center, 2=right
 	bool mobile_layout; ///< use the touch-first mobile layout instead of the main toolbar and status bar
 	bool mobile_build_picker; ///< in the mobile layout, the Build button always opens the category picker
+	bool mobile_show_navigation_bar; ///< on Android, keep the navigation bar (back, home, recent apps) on screen
 	bool mobile_confirm_build; ///< in the mobile layout, keep track and tunnels selected for review until Build is tapped
 	uint8_t window_snap_radius; ///< windows snap at each other if closer than this
 	uint8_t window_soft_limit; ///< soft limit of maximum number of non-stickied non-vital windows (0 = no limit)
