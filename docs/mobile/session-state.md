@@ -13,7 +13,7 @@ Last updated: 26 Nov 2026 (evening). Read this first, then `README.md` (the inde
   - **Device polish (user requests of 25 Nov):** navigation bar setting, tool Cancel (✕ and the floating red Cancel), the sliding safe area, and a swiped-in bar moving the dock. Log: `05-device-polish-log.md`. The user confirmed it's "perfect".
   - **Background survival (26 Nov):** foreground service + notification while a game runs, pause and save when leaving the app, resume after a kill. Verified on the phone. Log: `06-round3-implementation-log.md` part A.
   - **Round 3 (26 Nov):** stations (tap/drag footprint, picker in the sheet, join, move, Undo), depots (auto-facing, Turn), waypoints, mobile town/station windows and minimap, edge-to-edge chrome, design fixes. Verified headless and on the phone (pinch on the minimap untested). Log: `06-round3-implementation-log.md` part B.
-  - **Android build:** `os/android/build.sh`, APK published as GitHub pre-releases (`android-<commit count>`); latest: `android-33327` (commit `b3471b1b13`, 26 Nov). Logs: `02-android-build-plan.md`, `03-android-build-log.md`.
+  - **Android build:** `os/android/build.sh`, APK published as GitHub pre-releases (`android-<commit count>`); latest: `android-33329` (commit `2ade79d992`, 26 Nov, round 3 + background survival). Logs: `02-android-build-plan.md`, `03-android-build-log.md`.
 
 ## Waiting on
 
