@@ -82,7 +82,10 @@ public class OpenTTDActivity extends SDLActivity {
         if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController controller = window.getInsetsController();
             if (controller == null) return;
-            controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            /* Not BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE: bars swiped in that way overlay the app without telling it,
+             * so the game could not move out of their way. With the default behaviour a swipe brings the bars back
+             * for real; the app is told, and hides them again after a moment (see #onSystemBarsChanged). */
+            controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_DEFAULT);
             controller.hide(WindowInsets.Type.statusBars());
             if (showNavigationBar) {
                 controller.show(WindowInsets.Type.navigationBars());
@@ -101,6 +104,24 @@ public class OpenTTDActivity extends SDLActivity {
         /* Keep SDL from hiding the bars again two seconds after they appear. */
         mFullscreenModeActive = false;
         super.onSystemUiVisibilityChange(visibility);
+    }
+
+    /** How long bars brought back by a swipe stay before they are hidden again. */
+    private static final long REHIDE_DELAY_MS = 3000;
+    private final Runnable rehideBars = this::applySystemBarsNow;
+
+    /**
+     * Called by {@link OpenTTDSurface} when the window insets change: when a swipe brought back bars that should be
+     * hidden, hide them again after a moment, as Android does for its own transient bars.
+     * @param insets The new insets.
+     */
+    void onSystemBarsChanged(WindowInsets insets) {
+        if (Build.VERSION.SDK_INT < 30 || getWindow() == null) return;
+        boolean unwanted = insets.isVisible(WindowInsets.Type.statusBars())
+                || (!showNavigationBar && insets.isVisible(WindowInsets.Type.navigationBars()));
+        View decor = getWindow().getDecorView();
+        decor.removeCallbacks(rehideBars);
+        if (unwanted) decor.postDelayed(rehideBars, REHIDE_DELAY_MS);
     }
 
     @Override

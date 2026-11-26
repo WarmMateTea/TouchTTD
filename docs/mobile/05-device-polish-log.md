@@ -36,7 +36,17 @@ The 150 ms slide is too quick for `adb exec-out screencap` (about 300 ms per fra
 1. **SDL re-hides the bars.** SDL treats every Android window as full screen (`mFullscreenModeActive`), and its `onSystemUiVisibilityChange` re-hides any bar that appears, 2 s later. `OpenTTDActivity` clears that flag when it applies the bars, and before SDL's listener runs.
 2. **The setting was read too early.** The bridge was called when the window was created, before `LoadFromConfig(false)` had loaded the GUI settings, so it always asked for `false`. It's now also applied in `SetupColoursAndInitialWindow()`, which runs after the settings are loaded and on every menu/game switch.
 
+### (c) Follow-up: a swiped-in bar didn't move the dock (user report, 26 Nov)
+
+With the bar hidden, a swipe up showed it *over* the dock, which stayed put. Diagnosed with logging on the phone:
+- **Bars revealed with `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE` are "transient":** they overlay the app, and Android sends **no** insets callback, not even a `WindowInsetsAnimation`. That's by design, so the app can't follow them. (`getInsetsIgnoringVisibility()` doesn't help either: nothing calls the app.)
+- **Fix:** use `BEHAVIOR_DEFAULT`. A swipe then brings the bars back for real, `OpenTTDSurface.onApplyWindowInsets()` fires (the dock slides up), and `OpenTTDActivity.onSystemBarsChanged()` hides them again after 3 s (the dock slides down). The status bar gets the same treatment.
+
+Verified on the phone (`A13`–`A15`): hidden → swiped in with the dock above it → re-hidden with the dock back.
+
 ### Tips
+- **Install over a flaky Wi-Fi/VPN link:** `adb push app.apk /data/local/tmp/x.apk && adb shell pm install -r /data/local/tmp/x.apk`. The streamed `adb install` stalled for minutes; the push took 1.4 s.
+- **Java-only changes:** `ANDROID_HOME=/opt/android-sdk ./gradlew assembleRelease` in `os/android/project` repackages in about 30 s, reusing the native libraries already staged by `build.sh`.
 - **Typing into the game over adb:** `adb shell input keyevent 68` (the backquote key) opens the console; `adb shell input text "setting%sNAME%sVALUE"` (`%s` = space); `keyevent 66` (Enter).
 - **Read only the app's own log:** `adb logcat -d -s TouchTTD:* SDL:*`. A broad `grep` over the whole log picks up other apps' data from the user's phone.
 - **Native logging on Android:** `__android_log_print(ANDROID_LOG_INFO, "TouchTTD", ...)` (link `log`); OpenTTD's `Debug()` goes to stderr, which Android drops.

@@ -19,8 +19,8 @@ import org.libsdl.app.SDLSurface;
 /**
  * SDL's surface, except for what counts as the unsafe edge of the screen. SDL also counts the areas
  * reserved for system gestures, which stay reserved even while the bars are hidden; the game's layout
- * only needs to keep clear of bars that are actually showing and of the camera cutout. So the layout
- * follows the bars as they appear and disappear.
+ * only needs to keep clear of bars that are actually showing (also when swiped in for a moment) and of
+ * the camera cutout. So the layout follows the bars as they appear and disappear.
  */
 public class OpenTTDSurface extends SDLSurface {
     public OpenTTDSurface(Context context) {
@@ -32,8 +32,15 @@ public class OpenTTDSurface extends SDLSurface {
         /* Keep SDL's handling of the on-screen keyboard. */
         WindowInsets result = super.onApplyWindowInsets(v, insets);
         if (Build.VERSION.SDK_INT >= 30) {
-            Insets visible = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-            SDLActivity.onNativeInsetsChanged(visible.left, visible.right, visible.top, visible.bottom);
+            /* A bar swiped in while hidden ("transient") overlays the app and takes no space, so getInsets()
+             * reports nothing for it. The layout should still move out of its way, so count every bar that
+             * is visible at its full size. */
+            Insets edges = insets.getInsets(WindowInsets.Type.displayCutout());
+            for (int type : new int[] {WindowInsets.Type.statusBars(), WindowInsets.Type.navigationBars(), WindowInsets.Type.captionBar()}) {
+                if (insets.isVisible(type)) edges = Insets.max(edges, insets.getInsetsIgnoringVisibility(type));
+            }
+            SDLActivity.onNativeInsetsChanged(edges.left, edges.right, edges.top, edges.bottom);
+            if (getContext() instanceof OpenTTDActivity) ((OpenTTDActivity) getContext()).onSystemBarsChanged(insets);
         }
         return result;
     }
