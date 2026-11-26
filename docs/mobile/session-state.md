@@ -11,7 +11,7 @@ Last updated: 26 Nov 2026. Read this first, then `README.md` (the index) and `CL
   - **Round 2 (track laying with review before building):** rail toolbar, pending selection with handles, live estimate, bridges, tunnels, undo, error routing. Log: `04-round2-implementation-log.md`.
   - **Touch gesture layer** (`src/mobile_touch.cpp`): tap on lift, pan, list scroll, long-press tooltips and land info, pinch and two-finger zoom. Verified on the phone; pinch tested by the user.
   - **Device polish (user requests of 25 Nov):** navigation bar setting, tool Cancel (✕ and the floating red Cancel), the sliding safe area, and a swiped-in bar moving the dock. Log: `05-device-polish-log.md`. The user confirmed it's "perfect".
-  - **Android build:** `os/android/build.sh`, APK published as GitHub pre-releases (`android-<commit count>`). Logs: `02-android-build-plan.md`, `03-android-build-log.md`.
+  - **Android build:** `os/android/build.sh`, APK published as GitHub pre-releases (`android-<commit count>`); latest: `android-33327` (commit `b3471b1b13`, 26 Nov). Logs: `02-android-build-plan.md`, `03-android-build-log.md`.
 
 ## Waiting on
 
