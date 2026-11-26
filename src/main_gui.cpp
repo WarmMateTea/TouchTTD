@@ -559,6 +559,9 @@ void SetupColoursAndInitialWindow()
 
 	new MainWindow(_main_window_desc);
 
+	/* The settings are loaded by now, unlike when the video driver made its window. */
+	ApplyMobileSystemBars();
+
 	/* XXX: these are not done */
 	switch (_game_mode) {
 		default: NOT_REACHED();

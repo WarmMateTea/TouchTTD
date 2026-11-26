@@ -11,6 +11,7 @@
 #include "android_bridge.h"
 
 #include <jni.h>
+#include <android/log.h>
 #include <SDL3/SDL_system.h>
 
 #include "../../safeguards.h"
@@ -24,6 +25,7 @@ void AndroidApplySystemBars(bool show_navigation_bar)
 {
 	JNIEnv *env = static_cast<JNIEnv *>(SDL_GetAndroidJNIEnv());
 	jobject activity = static_cast<jobject>(SDL_GetAndroidActivity());
+	__android_log_print(ANDROID_LOG_INFO, "TouchTTD", "AndroidApplySystemBars(%d) env=%p activity=%p", show_navigation_bar, (void *)env, (void *)activity);
 	if (env == nullptr || activity == nullptr) return;
 
 	jclass cls = env->GetObjectClass(activity);
@@ -31,6 +33,7 @@ void AndroidApplySystemBars(bool show_navigation_bar)
 	if (method != nullptr) {
 		env->CallVoidMethod(activity, method, static_cast<jboolean>(show_navigation_bar));
 	} else {
+		__android_log_print(ANDROID_LOG_WARN, "TouchTTD", "applySystemBars not found on the activity");
 		env->ExceptionClear();
 	}
 	env->DeleteLocalRef(cls);

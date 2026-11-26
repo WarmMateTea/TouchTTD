@@ -65,6 +65,7 @@ public class OpenTTDActivity extends SDLActivity {
      * @param showNavigation Whether the navigation bar stays on screen.
      */
     public void applySystemBars(boolean showNavigation) {
+        Log.i(TAG, "applySystemBars(" + showNavigation + ")");
         showNavigationBar = showNavigation;
         runOnUiThread(this::applySystemBarsNow);
         /* SDL may still be applying its own window style; apply ours again after it. */
@@ -75,6 +76,9 @@ public class OpenTTDActivity extends SDLActivity {
     private void applySystemBarsNow() {
         Window window = getWindow();
         if (window == null) return;
+        /* SDL treats every window as full screen and re-hides any system bar that appears; the bars are ours to manage. */
+        mFullscreenModeActive = false;
+        Log.i(TAG, "applying system bars, navigation bar shown: " + showNavigationBar);
         if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController controller = window.getInsetsController();
             if (controller == null) return;
@@ -90,6 +94,13 @@ public class OpenTTDActivity extends SDLActivity {
             if (!showNavigationBar) flags |= View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
             window.getDecorView().setSystemUiVisibility(flags);
         }
+    }
+
+    @Override
+    public void onSystemUiVisibilityChange(int visibility) {
+        /* Keep SDL from hiding the bars again two seconds after they appear. */
+        mFullscreenModeActive = false;
+        super.onSystemUiVisibilityChange(visibility);
     }
 
     @Override

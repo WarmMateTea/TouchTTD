@@ -26,7 +26,22 @@ Requests from the user (25 Nov 2026), worked on while the design session does ro
 - `GetSafeArea()` in `mobile_gui.cpp` returns a *shown* safe area. `UpdateSafeAreaTarget()` (start of every layout pass) compares it with the system's. The first layout and any screen-size change (rotation) **teleport**; any other change starts a **150 ms ease-out slide**, advanced by a 15 ms timer that re-runs the layout pass.
 - `SDL_EVENT_WINDOW_SAFE_AREA_CHANGED` was already re-running the layout pass (round 1 fix), so a transient bar swiped in or out starts a slide.
 
-**Status:** (b) verified on the server (screenshots `device-polish/`). (a) and (c) need the phone, which was offline (Tailscale last seen 9 days ago) when this was built.
+**Status:** (b) verified on the server (`B01`–`B04`). (a) and (c) verified on the phone (`A10`–`A12`, 26 Nov):
+- the navigation bar stays visible with the dock above it;
+- `setting gui.mobile_show_navigation_bar false/true` (typed into the game console over adb) hides and shows it at runtime, and the dock follows.
+
+The 150 ms slide is too quick for `adb exec-out screencap` (about 300 ms per frame) to catch mid-way; the user checks it by eye.
+
+### Two device bugs found on the way (a)
+1. **SDL re-hides the bars.** SDL treats every Android window as full screen (`mFullscreenModeActive`), and its `onSystemUiVisibilityChange` re-hides any bar that appears, 2 s later. `OpenTTDActivity` clears that flag when it applies the bars, and before SDL's listener runs.
+2. **The setting was read too early.** The bridge was called when the window was created, before `LoadFromConfig(false)` had loaded the GUI settings, so it always asked for `false`. It's now also applied in `SetupColoursAndInitialWindow()`, which runs after the settings are loaded and on every menu/game switch.
+
+### Tips
+- **Typing into the game over adb:** `adb shell input keyevent 68` (the backquote key) opens the console; `adb shell input text "setting%sNAME%sVALUE"` (`%s` = space); `keyevent 66` (Enter).
+- **Read only the app's own log:** `adb logcat -d -s TouchTTD:* SDL:*`. A broad `grep` over the whole log picks up other apps' data from the user's phone.
+- **Native logging on Android:** `__android_log_print(ANDROID_LOG_INFO, "TouchTTD", ...)` (link `log`); OpenTTD's `Debug()` goes to stderr, which Android drops.
+- **Restart the adb server** (`adb kill-server`) when `adb connect` fails with "protocol fault" right after pairing.
+- **An offline phone on Tailscale:** MIUI puts Tailscale to sleep; set its battery saver to "No restrictions". `tailscale ping` sometimes wakes the path.
 
 ## Mistake worth remembering
 
