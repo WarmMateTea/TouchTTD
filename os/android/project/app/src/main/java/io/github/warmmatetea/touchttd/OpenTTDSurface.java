@@ -36,8 +36,16 @@ public class OpenTTDSurface extends SDLSurface {
              * reports nothing for it. The layout should still move out of its way, so count every bar that
              * is visible at its full size. */
             Insets edges = insets.getInsets(WindowInsets.Type.displayCutout());
-            for (int type : new int[] {WindowInsets.Type.statusBars(), WindowInsets.Type.navigationBars(), WindowInsets.Type.captionBar()}) {
+            for (int type : new int[] {WindowInsets.Type.statusBars(), WindowInsets.Type.captionBar()}) {
                 if (insets.isVisible(type)) edges = Insets.max(edges, insets.getInsetsIgnoringVisibility(type));
+            }
+            if (insets.isVisible(WindowInsets.Type.navigationBars())) {
+                /* Only the part of the navigation bar that takes taps: the buttons of three-button navigation, but
+                 * not the gesture handle, where a tap still reaches the app (only the edge swipe is the system's).
+                 * The game's chrome reaches the screen edge anyway, under the bar; only its buttons keep clear.
+                 * The navigation bar is never at the top, so the top of the tappable inset is the status bar's. */
+                Insets tappable = insets.getInsetsIgnoringVisibility(WindowInsets.Type.tappableElement());
+                edges = Insets.max(edges, Insets.of(tappable.left, 0, tappable.right, tappable.bottom));
             }
             SDLActivity.onNativeInsetsChanged(edges.left, edges.right, edges.top, edges.bottom);
             if (getContext() instanceof OpenTTDActivity) ((OpenTTDActivity) getContext()).onSystemBarsChanged(insets);

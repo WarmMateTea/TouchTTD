@@ -33,6 +33,8 @@
 #include "core/enum_type.hpp"
 
 #include "widgets/smallmap_widget.h"
+#include "mobile_gui.h"
+#include "dropdown_func.h"
 
 #include "table/strings.h"
 
@@ -657,6 +659,14 @@ protected:
 	int zoom = 0; ///< Zoom level. Bigger number means more zoom-out (further away).
 
 	std::unique_ptr<LinkGraphOverlay> overlay{};
+
+	bool mobile = false; ///< Uses the mobile layout, in the sheet slot: a mode dropdown and toggles instead of the buttons.
+
+	/** What the mobile mode dropdown lists, in #SmallMapType order. */
+	static inline const StringID mobile_mode_names[] = {
+		STR_SMALLMAP_TYPE_CONTOURS, STR_SMALLMAP_TYPE_VEHICLES, STR_SMALLMAP_TYPE_INDUSTRIES, STR_SMALLMAP_TYPE_ROUTEMAP,
+		STR_SMALLMAP_TYPE_ROUTES, STR_SMALLMAP_TYPE_VEGETATION, STR_SMALLMAP_TYPE_OWNERS,
+	};
 
 	/** Notify the industry chain window to stop sending newly selected industries. */
 	static void BreakIndustryChainLink()
@@ -1460,11 +1470,15 @@ protected:
 public:
 	friend class NWidgetSmallmapDisplay;
 
-	SmallMapWindow(WindowDesc &desc, int window_number) : Window(desc)
+	SmallMapWindow(WindowDesc &desc, int window_number, bool mobile = false) : Window(desc), mobile(mobile)
 	{
 		_smallmap_industry_highlight = IT_INVALID;
 		this->overlay = std::make_unique<LinkGraphOverlay>(this, WID_SM_MAP, CargoTypes{}, this->GetOverlayCompanyMask(), 1);
 		this->CreateNestedTree();
+		if (mobile) {
+			this->GetWidget<NWidgetStacked>(WID_SM_MOBILE_SEL_HIDDEN)->SetDisplayedPlane(SZSP_HORIZONTAL);
+			this->GetWidget<NWidgetStacked>(WID_SM_MOBILE_SEL_VIEW)->SetDisplayedPlane(0);
+		}
 		this->LowerWidget(WID_SM_CONTOUR + to_underlying(this->map_type));
 
 		this->RebuildColourIndexIfNecessary();
@@ -1526,6 +1540,9 @@ public:
 		switch (widget) {
 			case WID_SM_CAPTION:
 				return GetString(STR_SMALLMAP_CAPTION, STR_SMALLMAP_TYPE_CONTOURS + to_underlying(this->map_type));
+
+			case WID_SM_MOBILE_MODE:
+				return GetString(mobile_mode_names[to_underlying(this->map_type)]);
 
 			default:
 				return this->Window::GetWidgetString(widget, stringid);
@@ -1628,6 +1645,10 @@ public:
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
 		switch (widget) {
+			case WID_SM_CAPTION:
+				if (this->mobile) DrawMobileTitle(r, GetString(STR_MOBILE_MAP_TITLE));
+				break;
+
 			case WID_SM_MAP: {
 				Rect ir = r.Shrink(WidgetDimensions::scaled.bevel);
 				DrawPixelInfo new_dpi;
@@ -1702,9 +1723,34 @@ public:
 		}
 	}
 
+	void OnDropdownSelect(WidgetID widget, int index, int) override
+	{
+		if (widget == WID_SM_MOBILE_MODE && index >= 0 && index < to_underlying(SmallMapType::End)) {
+			this->SwitchMapType(static_cast<SmallMapType>(index));
+		}
+	}
+
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
 		switch (widget) {
+			case WID_SM_MOBILE_CLOSE:
+				this->Close(0);
+				break;
+
+			case WID_SM_MOBILE_MODE:
+				ShowDropDownMenu(this, mobile_mode_names, to_underlying(this->map_type), WID_SM_MOBILE_MODE, 0, 0);
+				break;
+
+			case WID_SM_MOBILE_LEGEND: {
+				/* A 300 pixel wide panel has no room for both: the legend replaces the map. */
+				NWidgetStacked *view = this->GetWidget<NWidgetStacked>(WID_SM_MOBILE_SEL_VIEW);
+				bool legend = view->shown_plane == 0;
+				view->SetDisplayedPlane(legend ? 1 : 0);
+				this->SetWidgetLoweredState(WID_SM_MOBILE_LEGEND, legend);
+				this->ReInit();
+				break;
+			}
+
 			case WID_SM_MAP: { // Map window
 				if (click_count > 0) this->mouse_capture_widget = widget;
 
@@ -2140,6 +2186,65 @@ static constexpr std::initializer_list<NWidgetPart> _nested_smallmap_widgets = {
 	EndContainer(),
 };
 
+/** The minimap in the mobile layout's sheet slot; see the round 3 design, section 6.3. */
+static constexpr std::initializer_list<NWidgetPart> _nested_smallmap_mobile_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Brown, WID_SM_CAPTION), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHTXTBTN, Colours::Brown, WID_SM_MOBILE_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Brown),
+		NWidget(NWID_HORIZONTAL), SetPadding(4), SetPIP(0, 4, 0),
+			NWidget(WWT_DROPDOWN, Colours::Brown, WID_SM_MOBILE_MODE), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_MAP_MODE_TOOLTIP),
+			NWidget(WWT_TEXTBTN, Colours::Brown, WID_SM_TOGGLETOWNNAME), SetMinimalSize(60, 32), SetStringTip(STR_MOBILE_MAP_NAMES, STR_SMALLMAP_TOOLTIP_TOGGLE_TOWN_NAMES_ON_OFF),
+			NWidget(WWT_TEXTBTN, Colours::Brown, WID_SM_MOBILE_LEGEND), SetMinimalSize(60, 32), SetStringTip(STR_MOBILE_MAP_LEGEND, STR_MOBILE_MAP_LEGEND_TOOLTIP),
+		EndContainer(),
+	EndContainer(),
+	NWidget(NWID_SELECTION, Colours::Invalid, WID_SM_MOBILE_SEL_VIEW),
+		NWidget(WWT_PANEL, Colours::Brown, WID_SM_MAP_BORDER),
+			NWidget(WWT_INSET, Colours::Brown, WID_SM_MAP), SetMinimalSize(100, 100), SetFill(1, 1), SetResize(1, 1), SetPadding(2, 2, 2, 2), EndContainer(),
+		EndContainer(),
+		NWidget(WWT_PANEL, Colours::Brown, WID_SM_LEGEND), SetFill(1, 1), SetResize(1, 1), EndContainer(),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Brown),
+		NWidget(WWT_TEXT, Colours::Invalid, WID_SM_MOBILE_HINT), SetMinimalSize(0, 24), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET),
+				SetStringTip(STR_MOBILE_MAP_HINT), SetTextStyle(TextColour::White, FontSize::Small),
+	EndContainer(),
+	/* The desktop buttons the window's code uses; never shown (SZSP_HORIZONTAL keeps the window resizable). */
+	NWidget(NWID_SELECTION, Colours::Invalid, WID_SM_MOBILE_SEL_HIDDEN),
+		NWidget(NWID_HORIZONTAL),
+			NWidget(WWT_IMGBTN, Colours::Brown, WID_SM_BLANK),
+			NWidget(WWT_PUSHIMGBTN, Colours::Brown, WID_SM_ZOOM_IN), SetSpriteTip(SPR_IMG_ZOOMIN, STR_NULL),
+			NWidget(WWT_PUSHIMGBTN, Colours::Brown, WID_SM_ZOOM_OUT), SetSpriteTip(SPR_IMG_ZOOMOUT, STR_NULL),
+			NWidget(WWT_IMGBTN, Colours::Brown, WID_SM_CONTOUR),
+			NWidget(WWT_IMGBTN, Colours::Brown, WID_SM_VEHICLES),
+			NWidget(WWT_IMGBTN, Colours::Brown, WID_SM_INDUSTRIES),
+			NWidget(WWT_IMGBTN, Colours::Brown, WID_SM_LINKSTATS),
+			NWidget(WWT_IMGBTN, Colours::Brown, WID_SM_ROUTES),
+			NWidget(WWT_IMGBTN, Colours::Brown, WID_SM_VEGETATION),
+			NWidget(WWT_IMGBTN, Colours::Brown, WID_SM_OWNERS),
+			NWidget(WWT_PUSHIMGBTN, Colours::Brown, WID_SM_CENTERMAP), SetSpriteTip(SPR_IMG_SMALLMAP, STR_NULL),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_SM_SELECT_BUTTONS),
+				NWidget(NWID_HORIZONTAL),
+					NWidget(WWT_PUSHTXTBTN, Colours::Brown, WID_SM_ENABLE_ALL), SetStringTip(STR_SMALLMAP_ENABLE_ALL),
+					NWidget(WWT_PUSHTXTBTN, Colours::Brown, WID_SM_DISABLE_ALL), SetStringTip(STR_SMALLMAP_DISABLE_ALL),
+					NWidget(WWT_TEXTBTN, Colours::Brown, WID_SM_SHOW_HEIGHT), SetStringTip(STR_SMALLMAP_SHOW_HEIGHT),
+					NWidget(NWID_SELECTION, Colours::Invalid, WID_SM_SHOW_IND_NAMES_SEL),
+						NWidget(WWT_TEXTBTN, Colours::Brown, WID_SM_SHOW_IND_NAMES), SetStringTip(STR_SMALLMAP_SHOW_INDUSTRY_NAMES),
+					EndContainer(),
+				EndContainer(),
+				NWidget(WWT_PANEL, Colours::Brown), EndContainer(),
+			EndContainer(),
+		EndContainer(),
+	EndContainer(),
+};
+
+static WindowDesc _smallmap_mobile_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::SmallMap, WindowClass::None,
+	{},
+	_nested_smallmap_mobile_widgets
+);
+
 /** Window definition for the smallmap window. */
 static WindowDesc _smallmap_desc(
 	WindowPosition::Automatic, "smallmap", 0, 0,
@@ -2153,6 +2258,10 @@ static WindowDesc _smallmap_desc(
  */
 void ShowSmallMap()
 {
+	if (IsMobileLayout()) {
+		AllocateWindowDescFront<SmallMapWindow>(_smallmap_mobile_desc, 0, true);
+		return;
+	}
 	AllocateWindowDescFront<SmallMapWindow>(_smallmap_desc, 0);
 }
 

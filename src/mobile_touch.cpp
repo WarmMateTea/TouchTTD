@@ -31,6 +31,8 @@
 #include "tile_map.h"
 #include "openttd.h"
 
+#include "widgets/smallmap_widget.h"
+
 #include "table/strings.h"
 
 #include "safeguards.h"
@@ -47,6 +49,7 @@ enum class TouchMode : uint8_t {
 	Pressed, ///< One finger down, not moved past the slop yet.
 	Dragging, ///< One finger dragging with the (emulated) left button down.
 	ListScroll, ///< One finger dragging over a scrollable list.
+	MapPan, ///< One finger dragging over the minimap, which pans it.
 	LongPress, ///< One finger held still; a tooltip or land information is shown.
 	Multi, ///< Two or more fingers: pan and zoom.
 	Ignore, ///< The gesture was finished or cancelled; wait until all fingers lift.
@@ -71,6 +74,10 @@ static struct {
 	WidgetID list_scrollbar = INVALID_WIDGET; ///< Scrollbar of the list.
 	int list_start_pos = 0; ///< Scroll position when the drag started.
 	int list_step = 1; ///< Pixels per row.
+
+	/* Panning or zooming the minimap rather than the main map. */
+	bool on_minimap = false; ///< The one- or two-finger gesture started on the minimap.
+	Point last{}; ///< Finger position at the last minimap pan step.
 
 	/* Two fingers. */
 	Point mid{}; ///< Midpoint of the fingers.
@@ -141,8 +148,55 @@ static float GetFingerSpread(Point &mid)
  * Start a one-finger drag: scroll the list under the finger, or press the emulated left button where the drag started.
  * @param current Where the finger is now.
  */
+/**
+ * The minimap window, when a point is on its map.
+ * @param pt The point.
+ * @return The minimap window, or \c nullptr.
+ */
+static Window *GetMinimapAt(Point pt)
+{
+	Window *w = FindWindowFromPt(pt.x, pt.y);
+	if (w == nullptr || w->window_class != WindowClass::SmallMap) return nullptr;
+	const NWidgetCore *nw = w->nested_root->GetWidgetFromPos(pt.x - w->left, pt.y - w->top);
+	return (nw != nullptr && nw->GetIndex() == WID_SM_MAP) ? w : nullptr;
+}
+
+/**
+ * Pan the minimap by the movement of a finger: the map follows the finger.
+ * @param from Previous finger position.
+ * @param to New finger position.
+ */
+static void PanMinimap(Point from, Point to)
+{
+	Window *w = FindWindowById(WindowClass::SmallMap, 0);
+	if (w == nullptr || (from.x == to.x && from.y == to.y)) return;
+	w->OnScroll({from.x - to.x, from.y - to.y});
+}
+
+/**
+ * Zoom the minimap one step around a point, as its mouse wheel does.
+ * @param in Zoom in rather than out.
+ * @param around The point.
+ */
+static void ZoomMinimap(bool in, Point around)
+{
+	Window *w = FindWindowById(WindowClass::SmallMap, 0);
+	if (w == nullptr) return;
+	_cursor.UpdateCursorPosition(around.x, around.y);
+	w->OnMouseWheel(in ? -1 : 1, WID_SM_MAP);
+}
+
 static void StartDrag(Point current)
 {
+	/* On the minimap a finger pans it (a tap still moves the main map there). */
+	if (GetMinimapAt(_touch.start) != nullptr) {
+		_touch.mode = TouchMode::MapPan;
+		_touch.last = _touch.start;
+		PanMinimap(_touch.last, current);
+		_touch.last = current;
+		return;
+	}
+
 	Window *w = FindWindowFromPt(_touch.start.x, _touch.start.y);
 	if (w != nullptr && w->window_class != WindowClass::MainWindow) {
 		const NWidgetCore *nw = w->nested_root->GetWidgetFromPos(_touch.start.x - w->left, _touch.start.y - w->top);
@@ -197,6 +251,8 @@ void TouchDown(int64_t finger, int x, int y)
 		_touch.start_time = std::chrono::steady_clock::now();
 		_touch.baseline = GetFingerSpread(_touch.mid);
 		_touch.moved = false;
+		/* Two fingers on the minimap pan and zoom the minimap instead of the main map. */
+		_touch.on_minimap = GetMinimapAt(_touch.mid) != nullptr;
 	}
 }
 
@@ -221,6 +277,11 @@ void TouchMove(int64_t finger, int x, int y)
 			MoveCursor({x, y});
 			break;
 
+		case TouchMode::MapPan:
+			PanMinimap(_touch.last, {x, y});
+			_touch.last = {x, y};
+			break;
+
 		case TouchMode::ListScroll: {
 			Window *w = FindWindowById(_touch.list_cls, _touch.list_num);
 			Scrollbar *sb = w != nullptr ? w->GetScrollbar(_touch.list_scrollbar) : nullptr;
@@ -234,6 +295,18 @@ void TouchMove(int64_t finger, int x, int y)
 			if (_touch.fingers.size() < 2) break;
 			Point mid;
 			float spread = GetFingerSpread(mid);
+
+			if (_touch.on_minimap) {
+				if (Distance(mid, _touch.mid) > 0) _touch.moved = true;
+				PanMinimap(_touch.mid, mid);
+				_touch.mid = mid;
+				if (_touch.baseline > 0 && (spread >= _touch.baseline * PINCH_STEP || spread <= _touch.baseline / PINCH_STEP)) {
+					ZoomMinimap(spread > _touch.baseline, mid);
+					_touch.baseline = spread;
+					_touch.moved = true;
+				}
+				break;
+			}
 
 			/* Pan by the movement of the midpoint. */
 			Window *main = GetMainWindow();
@@ -293,7 +366,9 @@ void TouchUp(int64_t finger, int x, int y)
 		case TouchMode::Multi:
 			if (std::chrono::steady_clock::now() - _touch.start_time < TWO_FINGER_TAP_TIME && !_touch.moved) {
 				/* Two-finger tap: zoom out around the fingers. */
-				if (Window *main = GetMainWindow(); main != nullptr) {
+				if (_touch.on_minimap) {
+					ZoomMinimap(false, _touch.mid);
+				} else if (Window *main = GetMainWindow(); main != nullptr) {
 					_cursor.UpdateCursorPosition(_touch.mid.x, _touch.mid.y);
 					ZoomInOrOutToCursorWindow(false, main);
 				}

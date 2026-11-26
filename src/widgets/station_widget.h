@@ -30,6 +30,12 @@ enum StationViewWidgets : WidgetID {
 	WID_SV_SHIPS,              ///< List of scheduled ships button.
 	WID_SV_PLANES,             ///< List of scheduled planes button.
 	WID_SV_CATCHMENT,          ///< Toggle catchment area highlight.
+	WID_SV_MOBILE_CLOSE,       ///< Mobile layout: close.
+	WID_SV_TAB_WAITING,        ///< Mobile layout: tab showing the waiting cargo.
+	WID_SV_TAB_ACCEPTS,        ///< Mobile layout: tab showing the accepted cargo.
+	WID_SV_TAB_RATINGS,        ///< Mobile layout: tab showing the cargo ratings.
+	WID_SV_SEL_CONTENT,        ///< Mobile layout: selection between the waiting cargo and the accepts/ratings list.
+	WID_SV_SEL_HIDDEN,         ///< Mobile layout: never shown; holds the desktop controls the window's code expects.
 };
 
 /** Widgets of the #CompanyStationsWindow class. */

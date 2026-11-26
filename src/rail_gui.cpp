@@ -150,7 +150,8 @@ void CcRailDepot(Commands, const CommandCost &result, TileIndex tile, RailType, 
 	if (result.Failed()) return;
 
 	if (_settings_client.sound.confirm) SndPlayTileFx(SND_20_CONSTRUCTION_RAIL, tile);
-	if (!_settings_client.gui.persistent_buildingtools) ResetObjectToPlace();
+	/* The mobile layout keeps the tool, for the next depot is one tap away. */
+	if (!_settings_client.gui.persistent_buildingtools && !IsMobileLayout()) ResetObjectToPlace();
 
 	tile += TileOffsByDiagDir(dir);
 
@@ -195,7 +196,7 @@ void CcStation(Commands, const CommandCost &result, TileIndex tile)
 
 	if (_settings_client.sound.confirm) SndPlayTileFx(SND_20_CONSTRUCTION_RAIL, tile);
 	/* Only close the station builder window if the default station and non persistent building is chosen. */
-	if (_station_gui.sel_class == STAT_CLASS_DFLT && _station_gui.sel_type == 0 && !_settings_client.gui.persistent_buildingtools) ResetObjectToPlace();
+	if (_station_gui.sel_class == STAT_CLASS_DFLT && _station_gui.sel_type == 0 && !_settings_client.gui.persistent_buildingtools && !IsMobileLayout()) ResetObjectToPlace();
 }
 
 /**
@@ -207,7 +208,8 @@ static void PlaceRail_Station(TileIndex tile)
 	if (_remove_button_clicked) {
 		VpStartPlaceSizing(tile, VPM_X_AND_Y_LIMITED, DDSP_REMOVE_STATION);
 		VpSetPlaceSizingLimit(-1);
-	} else if (_settings_client.gui.station_dragdrop) {
+	} else if (_settings_client.gui.station_dragdrop || IsMobileLayout()) {
+		/* The mobile layout reviews every station; a tap becomes a footprint of the picker's size there. */
 		VpStartPlaceSizing(tile, VPM_X_AND_Y_LIMITED, DDSP_BUILD_STATION);
 		VpSetPlaceSizingLimit(_settings_game.station.station_spread);
 	} else {
@@ -348,6 +350,65 @@ bool IsRailRemoveModeActive()
 void SetRailRemoveMode(bool remove)
 {
 	_remove_button_clicked = remove;
+}
+
+/**
+ * Size of the station footprint the picker describes, in map directions.
+ * @param[out] x Tiles along the map's X axis.
+ * @param[out] y Tiles along the map's Y axis.
+ */
+void GetRailStationFootprintSize(uint &x, uint &y)
+{
+	x = _settings_client.gui.station_numtracks;
+	y = _settings_client.gui.station_platlength;
+	if (_station_gui.axis == Axis::X) std::swap(x, y);
+}
+
+/**
+ * Convert a station footprint to tracks and platform length, for the picker's orientation.
+ * @param x Tiles along the map's X axis.
+ * @param y Tiles along the map's Y axis.
+ * @param[out] tracks Number of tracks.
+ * @param[out] length Platform length.
+ */
+void GetRailStationTracksAndLength(uint x, uint y, uint &tracks, uint &length)
+{
+	tracks = x;
+	length = y;
+	if (_station_gui.axis == Axis::X) std::swap(tracks, length);
+}
+
+/**
+ * Make the picker match a dragged station footprint, when the picker's buttons can show it.
+ * @param x Tiles along the map's X axis.
+ * @param y Tiles along the map's Y axis.
+ */
+void SetRailStationSizeFromFootprint(uint x, uint y)
+{
+	uint tracks, length;
+	GetRailStationTracksAndLength(x, y, tracks, length);
+	if (tracks <= 7 && length <= 7) {
+		_settings_client.gui.station_numtracks = tracks;
+		_settings_client.gui.station_platlength = length;
+	}
+	InvalidateWindowData(WindowClass::BuildStation, TransportType::Rail);
+}
+
+/** @return The direction new depots face. */
+DiagDirection GetRailDepotDirection()
+{
+	return _build_depot_direction;
+}
+
+/**
+ * Build a rail depot (or, under an estimating #CommandResultCapture, test it).
+ * @param tile The tile.
+ * @param dir The direction its entrance faces.
+ */
+void PostRailDepot(TileIndex tile, DiagDirection dir)
+{
+	_build_depot_direction = dir;
+	Command<Commands::BuildRailDepot>::Post(STR_ERROR_CAN_T_BUILD_TRAIN_DEPOT, CcRailDepot, tile, _cur_railtype, dir);
 }
 
 /**
@@ -551,6 +612,12 @@ struct BuildRailToolbarWindow : Window {
 		}
 	}
 
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
+	{
+		/* The mobile toolbar reaches the bottom edge of the screen; this spacer fills the inset there. */
+		if (widget == WID_RAT_GAP_BOTTOM) size = {0, static_cast<uint>(GetMobileEdgeGaps().bottom)};
+	}
+
 	/** Show the hint of the selected tool in the status line. */
 	void UpdateMobileHint()
 	{
@@ -567,9 +634,9 @@ struct BuildRailToolbarWindow : Window {
 				case WID_RAT_BUILD_BRIDGE: hint = STR_MOBILE_BUILD_HINT_BRIDGE; break;
 				case WID_RAT_BUILD_TUNNEL: hint = STR_MOBILE_BUILD_HINT_TUNNEL; break;
 				case WID_RAT_CONVERT_RAIL: hint = STR_MOBILE_BUILD_HINT_CONVERT; break;
-				case WID_RAT_BUILD_DEPOT:
-				case WID_RAT_BUILD_WAYPOINT:
-				case WID_RAT_BUILD_STATION:
+				case WID_RAT_BUILD_DEPOT: hint = STR_MOBILE_BUILD_HINT_DEPOT; break;
+				case WID_RAT_BUILD_WAYPOINT: hint = STR_MOBILE_BUILD_HINT_WAYPOINT; break;
+				case WID_RAT_BUILD_STATION: hint = STR_MOBILE_BUILD_HINT_STATION; break;
 				case WID_RAT_BUILD_SIGNALS: hint = STR_MOBILE_BUILD_HINT_PLACE; break;
 				default: break;
 			}
@@ -596,7 +663,12 @@ struct BuildRailToolbarWindow : Window {
 	void UpdateMobileWidgets()
 	{
 		MobileBuildState state = GetMobileBuildState();
-		bool picking = state == MobileBuildState::BridgePicking;
+		/* While a picker fills the sheet slot, the toolbar shows only its status line, Cancel and Build. */
+		bool picking = state == MobileBuildState::BridgePicking || FindWindowById(WindowClass::BuildStation, TransportType::Rail) != nullptr;
+		/* In landscape the tools don't fit beside an open sheet either (an info window, say). */
+		if (this->landscape && IsMobileSheetOpen()) picking = true;
+		DiagDirection depot_dir;
+		bool depot_pending = state == MobileBuildState::Pending && GetMobileBuildDepotArrow(GetMobileBuildPendingTile(), depot_dir);
 
 		bool reinit = false;
 		auto set_plane = [&](WidgetID widget, int plane) {
@@ -605,12 +677,15 @@ struct BuildRailToolbarWindow : Window {
 			sel->SetDisplayedPlane(plane);
 			reinit = true;
 		};
-		set_plane(WID_RAT_SEL_TOOLS, picking ? SZSP_NONE : 0);
-		set_plane(WID_RAT_SEL_CONFIRM, picking ? SZSP_NONE : (MobileBuildHasUndo() ? 1 : 0));
+		/* Portrait stacks the tool row under row A: hidden, it must still resize horizontally (SZSP_HORIZONTAL). */
+		set_plane(WID_RAT_SEL_TOOLS, picking ? (this->landscape ? SZSP_NONE : SZSP_HORIZONTAL) : 0);
+		set_plane(WID_RAT_SEL_CONFIRM, MobileBuildHasUndo() ? 1 : (state == MobileBuildState::BridgePicking ? SZSP_NONE : 0));
+		set_plane(WID_RAT_SEL_ROTATE, depot_pending ? 0 : SZSP_NONE);
 
 		MobileBuildKind kind = this->GetToolKind();
 		NWidgetCore *confirm = this->GetWidget<NWidgetCore>(WID_RAT_CONFIRM);
-		confirm->colour = kind == MobileBuildKind::Build ? Colours::Green : Colours::Red;
+		/* Disabled, it's grey like the disabled Cancel: dark green read as nearly active. */
+		confirm->colour = !MobileBuildCanConfirm() ? Colours::Grey : (kind == MobileBuildKind::Build ? Colours::Green : Colours::Red);
 		static const StringID labels[] = {STR_MOBILE_BUILD_CONFIRM_BUILD, STR_MOBILE_BUILD_CONFIRM_REMOVE, STR_MOBILE_BUILD_CONFIRM_DEMOLISH, STR_MOBILE_BUILD_CONFIRM_CONVERT};
 		confirm->SetString(labels[to_underlying(kind)]);
 		this->SetWidgetDisabledState(WID_RAT_CONFIRM, !MobileBuildCanConfirm());
@@ -701,6 +776,13 @@ struct BuildRailToolbarWindow : Window {
 				TextColour colour;
 				std::string status = GetMobileBuildStatus(colour);
 				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
+				if (colour == TextColour::Red) {
+					/* Errors start with a warning sign. */
+					Dimension d = GetSpriteSize(SPR_WARNING_SIGN);
+					bool rtl = _current_text_dir == TD_RTL;
+					DrawSprite(SPR_WARNING_SIGN, PAL_NONE, rtl ? tr.right - d.width + 1 : tr.left, CentreBounds(r.top, r.bottom, d.height));
+					tr = tr.Indent(d.width + WidgetDimensions::scaled.hsep_normal, rtl);
+				}
 				int lines_height = std::min<int>(tr.Height(), GetCharacterHeight(FontSize::Normal) * 2);
 				tr.top = CentreBounds(r.top, r.bottom, std::min(lines_height, GetStringHeight(status, tr.Width())));
 				DrawStringMultiLineWithClipping(tr.WithHeight(lines_height), status, colour);
@@ -849,6 +931,7 @@ struct BuildRailToolbarWindow : Window {
 				return;
 			case WID_RAT_CONFIRM: MobileBuildConfirm(); return;
 			case WID_RAT_UNDO: MobileBuildUndo(); return;
+			case WID_RAT_ROTATE: MobileBuildRotateDepot(); return;
 			case WID_RAT_EXIT: this->Close(); return;
 			case WID_RAT_STATUS: return;
 			default: break;
@@ -869,7 +952,8 @@ struct BuildRailToolbarWindow : Window {
 
 		switch (widget) {
 			case WID_RAT_BUILD_DEPOT:
-				if (started) {
+				/* The mobile layout has no depot picker: the depot faces the track, and Turn rotates it. */
+				if (started && !this->mobile) {
 					ShowBuildTrainDepotPicker(this);
 				}
 				break;
@@ -935,6 +1019,7 @@ struct BuildRailToolbarWindow : Window {
 				break;
 
 			case WID_RAT_BUILD_DEPOT:
+				if (MobileBuildDepotTap(this, tile)) break;
 				Command<Commands::BuildRailDepot>::Post(STR_ERROR_CAN_T_BUILD_TRAIN_DEPOT, CcRailDepot, tile, _cur_railtype, _build_depot_direction);
 				break;
 
@@ -1226,7 +1311,10 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_rail_landscap
 				EndContainer(),
 			EndContainer(),
 			NWidget(WWT_INSET, Colours::Grey, WID_RAT_STATUS), SetMinimalSize(120, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
-			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_CANCEL), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_BUILD_CANCEL_TOOLTIP),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_ROTATE),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_ROTATE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_BUILD_ROTATE, STR_MOBILE_BUILD_ROTATE_TOOLTIP),
+			EndContainer(),
+NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_CANCEL), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_BUILD_CANCEL_TOOLTIP),
 			NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_CONFIRM),
 				NWidget(WWT_PUSHTXTBTN, Colours::Green, WID_RAT_CONFIRM), SetMinimalSize(56, 40), SetStringTip(STR_MOBILE_BUILD_CONFIRM_BUILD, STR_MOBILE_BUILD_CONFIRM_TOOLTIP),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_UNDO), SetMinimalSize(100, 40), SetStringTip(STR_MOBILE_BUILD_UNDO, STR_MOBILE_BUILD_UNDO_TOOLTIP),
@@ -1238,6 +1326,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_rail_landscap
 				EndContainer(),
 			EndContainer(),
 		EndContainer(),
+		/* The toolbar reaches the screen edge; its buttons stay inside the safe area. */
+		NWidget(WWT_EMPTY, Colours::Invalid, WID_RAT_GAP_BOTTOM), SetFill(1, 0), SetResize(1, 0),
 	EndContainer(),
 };
 
@@ -1248,6 +1338,9 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_rail_portrait
 			NWidget(NWID_HORIZONTAL), SetPIP(0, 4, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Green, WID_RAT_EXIT), SetMinimalSize(56, 40), SetStringTip(STR_MOBILE_BUILD_EXIT, STR_MOBILE_BUILD_EXIT_TOOLTIP),
 				NWidget(WWT_INSET, Colours::Grey, WID_RAT_STATUS), SetMinimalSize(120, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+				NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_ROTATE),
+					NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_ROTATE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_BUILD_ROTATE, STR_MOBILE_BUILD_ROTATE_TOOLTIP),
+				EndContainer(),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_CANCEL), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_BUILD_CANCEL_TOOLTIP),
 				NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_CONFIRM),
 					NWidget(WWT_PUSHTXTBTN, Colours::Green, WID_RAT_CONFIRM), SetMinimalSize(56, 40), SetStringTip(STR_MOBILE_BUILD_CONFIRM_BUILD, STR_MOBILE_BUILD_CONFIRM_TOOLTIP),
@@ -1276,6 +1369,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_rail_portrait
 				EndContainer(),
 			EndContainer(),
 		EndContainer(),
+		/* The toolbar reaches the screen edge; its buttons stay inside the safe area. */
+		NWidget(WWT_EMPTY, Colours::Invalid, WID_RAT_GAP_BOTTOM), SetFill(1, 0), SetResize(1, 0),
 	EndContainer(),
 };
 
@@ -1312,10 +1407,10 @@ struct MobileRailMoreWindow : Window {
 
 	Point OnInitialPosition(int16_t sm_width, int16_t sm_height, [[maybe_unused]] int window_number) override
 	{
-		/* Above the More button, right edges aligned. */
+		/* Above the whole toolbar (so the status line, Cancel and Build stay visible), right edge aligned with More. */
 		const NWidgetBase *more = this->toolbar->GetWidget<NWidgetBase>(WID_RAT_MORE);
 		int right = this->toolbar->left + more->pos_x + more->current_x;
-		return {Clamp(right - sm_width, 0, std::max(0, _screen.width - sm_width)), std::max(0, this->toolbar->top + (int)more->pos_y - sm_height)};
+		return {Clamp(right - sm_width, 0, std::max(0, _screen.width - sm_width)), std::max(0, this->toolbar->top - sm_height)};
 	}
 
 	/**
@@ -1371,7 +1466,8 @@ struct MobileRailMoreWindow : Window {
 };
 
 /** One button of the More flyout. */
-#define MOBILE_RAIL_MORE_BUTTON(index) NWidget(WWT_PANEL, Colours::Grey, WID_RMORE_FIRST + (index)), SetMinimalSize(56, 48), EndContainer()
+/* Every cell the same 56x48, left-aligned: panels fill by default, which stretched the cells of the shorter row. */
+#define MOBILE_RAIL_MORE_BUTTON(index) NWidget(WWT_PANEL, Colours::Grey, WID_RMORE_FIRST + (index)), SetMinimalSize(56, 48), SetFill(0, 0), EndContainer()
 
 static constexpr std::initializer_list<NWidgetPart> _nested_mobile_rail_more_widgets = {
 	NWidget(WWT_PANEL, Colours::Grey),
@@ -1490,6 +1586,13 @@ static void HandleStationPlacement(TileIndex start, TileIndex end)
 	RailType rt = _cur_railtype;
 	bool adjacent = IsCtrlPressed();
 
+	/* The mobile picker chooses the station to join before Build; the desktop's join window never shows. */
+	StationID mobile_join = StationID::Invalid();
+	if (IsMobileLayout() && GetMobileStationJoin(mobile_join, adjacent)) {
+		Command<Commands::BuildRailStation>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION, CcStation, ta.tile, rt, params.axis, numtracks, platlength, params.sel_class, params.sel_type, mobile_join, adjacent);
+		return;
+	}
+
 	auto proc = [=](bool test, StationID to_join) -> bool {
 		if (test) {
 			return Command<Commands::BuildRailStation>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildRailStation>()), ta.tile, rt, params.axis, numtracks, platlength, params.sel_class, params.sel_type, StationID::Invalid(), adjacent).Succeeded();
@@ -1601,6 +1704,93 @@ public:
 struct BuildRailStationWindow : public PickerWindow {
 private:
 	uint coverage_height = 0; ///< Height of the coverage texts.
+	bool mobile = false; ///< Uses the mobile layout, in the sheet slot.
+
+	/**
+	 * The size the mobile picker shows: the pending footprint's, or the picker's own.
+	 * @param[out] tracks Number of tracks.
+	 * @param[out] length Platform length.
+	 */
+	void GetShownSize(uint &tracks, uint &length) const
+	{
+		uint x, y;
+		if (GetMobilePendingStationSize(x, y)) {
+			GetRailStationTracksAndLength(x, y, tracks, length);
+		} else {
+			tracks = _settings_client.gui.station_numtracks;
+			length = _settings_client.gui.station_platlength;
+		}
+	}
+
+	/**
+	 * Mobile layout: a click on the picker. Changes resize a pending footprint in place.
+	 * @param widget The widget.
+	 * @return \c true when handled.
+	 */
+	bool OnMobileClick(WidgetID widget)
+	{
+		uint tracks, length;
+		this->GetShownSize(tracks, length);
+
+		switch (widget) {
+			case WID_BRAS_CLOSE:
+				/* Drops the station tool, which closes this picker. */
+				ResetObjectToPlace();
+				return true;
+
+			case WID_BRAS_PLATFORM_DIR_X:
+			case WID_BRAS_PLATFORM_DIR_Y:
+				_station_gui.axis = static_cast<Axis>(widget - WID_BRAS_PLATFORM_DIR_X);
+				break;
+
+			case WID_BRAS_PLATFORM_NUM_1: case WID_BRAS_PLATFORM_NUM_2: case WID_BRAS_PLATFORM_NUM_3: case WID_BRAS_PLATFORM_NUM_4:
+			case WID_BRAS_PLATFORM_NUM_5: case WID_BRAS_PLATFORM_NUM_6: case WID_BRAS_PLATFORM_NUM_7:
+				tracks = widget - WID_BRAS_PLATFORM_NUM_BEGIN;
+				break;
+
+			case WID_BRAS_PLATFORM_LEN_1: case WID_BRAS_PLATFORM_LEN_2: case WID_BRAS_PLATFORM_LEN_3: case WID_BRAS_PLATFORM_LEN_4:
+			case WID_BRAS_PLATFORM_LEN_5: case WID_BRAS_PLATFORM_LEN_6: case WID_BRAS_PLATFORM_LEN_7:
+				length = widget - WID_BRAS_PLATFORM_LEN_BEGIN;
+				break;
+
+			case WID_BRAS_COVERAGE_TOGGLE:
+				_settings_client.gui.station_show_coverage = !_settings_client.gui.station_show_coverage;
+				SndClickBeep();
+				SetViewportCatchmentStation(nullptr, true);
+				MobileBuildStationResize(); // Shows or hides the catchment of a pending footprint.
+				this->SetDirty();
+				return true;
+
+			case WID_BRAS_JOIN: {
+				DropDownList list;
+				const std::vector<StationID> &candidates = GetMobileStationJoinCandidates();
+				for (size_t i = 0; i < candidates.size(); i++) {
+					list.push_back(MakeDropDownListStringItem(GetString(STR_MOBILE_STATION_JOIN, candidates[i]), static_cast<int>(i)));
+				}
+				list.push_back(MakeDropDownListStringItem(STR_MOBILE_STATION_NEW, -1));
+				StationID shown = GetMobileStationJoinShown();
+				auto it = std::ranges::find(candidates, shown);
+				ShowDropDownList(this, std::move(list), it == candidates.end() ? -1 : static_cast<int>(it - candidates.begin()), widget);
+				return true;
+			}
+
+			default:
+				return false;
+		}
+
+		/* Orientation, tracks or length changed. Sizes the buttons can't show stay with the footprint only. */
+		if (tracks <= 7 && length <= 7) {
+			_settings_client.gui.station_numtracks = tracks;
+			_settings_client.gui.station_platlength = length;
+		}
+		_settings_client.gui.station_dragdrop = false;
+		uint x, y;
+		GetRailStationTracksAndLength(tracks, length, x, y); // The conversion is its own inverse.
+		MobileBuildStationResize(x, y);
+		SndClickBeep();
+		this->SetDirty();
+		return true;
+	}
 
 	/**
 	 * Verify whether the currently selected station size is allowed after selecting a new station class/type.
@@ -1636,7 +1826,7 @@ private:
 	}
 
 public:
-	BuildRailStationWindow(WindowDesc &desc, Window *parent) : PickerWindow(desc, parent, TransportType::Rail, StationPickerCallbacks::instance)
+	BuildRailStationWindow(WindowDesc &desc, Window *parent, bool mobile = false) : PickerWindow(desc, parent, TransportType::Rail, StationPickerCallbacks::instance), mobile(mobile)
 	{
 		this->coverage_height = 2 * GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal;
 		this->ConstructWindow();
@@ -1644,6 +1834,12 @@ public:
 
 	void OnInit() override
 	{
+		if (this->mobile) {
+			/* The mobile layout sets its buttons' state when drawing, and has no class or type lists, so no badge
+			 * filters either (PickerWindow::OnInit() would add them to a container this layout doesn't have). */
+			this->GetWidget<NWidgetStacked>(WID_BRAS_SEL_JOIN)->SetDisplayedPlane(GetMobileStationJoinCandidates().empty() ? SZSP_HORIZONTAL : 0);
+			return;
+		}
 		this->LowerWidget(WID_BRAS_PLATFORM_DIR_X + to_underlying(_station_gui.axis));
 		if (_settings_client.gui.station_dragdrop) {
 			this->LowerWidget(WID_BRAS_PLATFORM_DRAG_N_DROP);
@@ -1677,7 +1873,28 @@ public:
 	{
 		const StationSpec *statspec = StationClass::Get(_station_gui.sel_class)->GetSpec(_station_gui.sel_type);
 
-		if (_settings_client.gui.station_dragdrop) {
+		if (this->mobile) {
+			/* A touch doesn't hover; the highlight starts with the tap. Lowered buttons follow the pending footprint. */
+			SetTileSelectSize(1, 1);
+			uint tracks, length;
+			this->GetShownSize(tracks, length);
+			for (uint i = 1; i <= 7; i++) {
+				this->SetWidgetLoweredState(WID_BRAS_PLATFORM_NUM_BEGIN + i, i == tracks);
+				this->SetWidgetLoweredState(WID_BRAS_PLATFORM_LEN_BEGIN + i, i == length);
+			}
+			this->SetWidgetLoweredState(WID_BRAS_PLATFORM_DIR_X, _station_gui.axis == Axis::X);
+			this->SetWidgetLoweredState(WID_BRAS_PLATFORM_DIR_Y, _station_gui.axis == Axis::Y);
+			this->SetWidgetLoweredState(WID_BRAS_COVERAGE_TOGGLE, _settings_client.gui.station_show_coverage);
+			NWidgetStacked *join = this->GetWidget<NWidgetStacked>(WID_BRAS_SEL_JOIN);
+			/* Hidden as SZSP_HORIZONTAL, not SZSP_NONE: a child of a vertical container that can't resize horizontally
+			 * stops the whole picker from resizing to the sheet's width. */
+			int join_plane = GetMobileStationJoinCandidates().empty() ? SZSP_HORIZONTAL : 0;
+			if (join->shown_plane != join_plane) {
+				join->SetDisplayedPlane(join_plane);
+				this->ReInit();
+				return;
+			}
+		} else if (_settings_client.gui.station_dragdrop) {
 			SetTileSelectSize(1, 1);
 		} else {
 			int x = _settings_client.gui.station_numtracks;
@@ -1710,9 +1927,15 @@ public:
 		Rect r = this->GetWidget<NWidgetBase>(WID_BRAS_COVERAGE_TEXTS)->GetCurrentRect();
 		const int bottom = r.bottom;
 		r.bottom = INT_MAX; // Allow overflow as we want to know the required height.
+		if (this->mobile) r = r.Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
 		if (statspec != nullptr) r.top = DrawBadgeNameList(r, statspec->badges, GrfSpecFeature::Stations);
-		r.top = DrawStationCoverageAreaText(r, SCT_ALL, rad, false) + WidgetDimensions::scaled.vsep_normal;
-		r.top = DrawStationCoverageAreaText(r, SCT_ALL, rad, true);
+		if (this->mobile && !GetMobilePendingStationSize()) {
+			/* Without hovering there is nothing to describe until the station is placed. */
+			r.top = DrawStringMultiLine(r, STR_MOBILE_STATION_COVERAGE_LATER);
+		} else {
+			r.top = DrawStationCoverageAreaText(r, SCT_ALL, rad, false) + WidgetDimensions::scaled.vsep_normal;
+			r.top = DrawStationCoverageAreaText(r, SCT_ALL, rad, true);
+		}
 		/* Resize background if the window is too small.
 		 * Never make the window smaller to avoid oscillating if the size change affects the acceptance.
 		 * (This is the case, if making the window bigger moves the mouse into the window.) */
@@ -1727,6 +1950,7 @@ public:
 		switch (widget) {
 			case WID_BRAS_PLATFORM_DIR_X:
 			case WID_BRAS_PLATFORM_DIR_Y:
+				if (this->mobile) break; // Sprite and label side by side, as wide as the layout makes them.
 				size.width  = ScaleGUITrad(PREVIEW_WIDTH) + WidgetDimensions::scaled.fullbevel.Horizontal();
 				size.height = ScaleGUITrad(PREVIEW_HEIGHT) + WidgetDimensions::scaled.fullbevel.Vertical();
 				break;
@@ -1735,15 +1959,59 @@ public:
 				size.height = this->coverage_height;
 				break;
 
+			case WID_BRAS_TITLE:
+				size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal));
+				break;
+
 			default:
 				this->PickerWindow::UpdateWidgetSize(widget, size, padding, fill, resize);
 				break;
 		}
 	}
 
+	/**
+	 * Mobile layout: an orientation button, with the station tile on the left and a label on the right.
+	 * @param r The button.
+	 * @param axis The orientation it selects.
+	 */
+	void DrawMobileOrientation(const Rect &r, Axis axis) const
+	{
+		Rect ir = r.Shrink(WidgetDimensions::scaled.bevel);
+		int sprite_width = std::min<int>(ir.Width() / 2, ScaleSpriteTrad(PREVIEW_WIDTH));
+		Rect sr = ir.WithWidth(sprite_width, false);
+		DrawPixelInfo tmp_dpi;
+		if (FillDrawPixelInfo(&tmp_dpi, sr)) {
+			AutoRestoreBackup dpi_backup(_cur_dpi, &tmp_dpi);
+			/* Scaled down so the tile fits the 40 pixel high button. */
+			int x = (sr.Width() - ScaleSpriteTrad(PREVIEW_WIDTH)) / 2 + ScaleSpriteTrad(PREVIEW_LEFT);
+			int y = (sr.Height() + ScaleSpriteTrad(PREVIEW_HEIGHT)) / 2 - ScaleSpriteTrad(PREVIEW_BOTTOM) + ScaleSpriteTrad(8);
+			if (!DrawStationTile(x, y, _cur_railtype, axis, _station_gui.sel_class, _station_gui.sel_type)) {
+				StationPickerDrawSprite(x, y, StationType::Rail, _cur_railtype, INVALID_ROADTYPE, axis == Axis::X ? 2 : 3);
+			}
+		}
+		Rect tr = ir.Indent(sprite_width, false);
+		DrawString(tr.left, tr.right, CentreBounds(tr.top, tr.bottom, GetCharacterHeight(FontSize::Normal)), axis == Axis::X ? STR_MOBILE_STATION_ALONG_X : STR_MOBILE_STATION_ALONG_Y, TextColour::Black, AlignmentH::Centre);
+	}
+
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
 		DrawPixelInfo tmp_dpi;
+
+		if (this->mobile) {
+			switch (widget) {
+				case WID_BRAS_PLATFORM_DIR_X: this->DrawMobileOrientation(r, Axis::X); return;
+				case WID_BRAS_PLATFORM_DIR_Y: this->DrawMobileOrientation(r, Axis::Y); return;
+				case WID_BRAS_TITLE: DrawMobileTitle(r, GetString(STR_MOBILE_STATION_TITLE)); return;
+				case WID_BRAS_COVERAGE_TOGGLE: {
+					Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+					int y = CentreBounds(r.top, r.bottom, GetCharacterHeight(FontSize::Normal));
+					DrawString(tr.left, tr.right, y, STR_MOBILE_STATION_SHOW_CATCHMENT, TextColour::Black);
+					DrawString(tr.left, tr.right, y, _settings_client.gui.station_show_coverage ? STR_MOBILE_ON : STR_MOBILE_OFF, TextColour::Black, AlignmentH::End);
+					return;
+				}
+				default: break;
+			}
+		}
 
 		switch (widget) {
 			case WID_BRAS_PLATFORM_DIR_X: {
@@ -1780,8 +2048,39 @@ public:
 		}
 	}
 
+	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
+	{
+		if (this->mobile) {
+			uint tracks, length;
+			this->GetShownSize(tracks, length);
+			switch (widget) {
+				case WID_BRAS_TRACKS_LABEL: return tracks > 7 ? GetString(STR_MOBILE_STATION_TRACKS_VALUE, tracks) : GetString(STR_MOBILE_STATION_TRACKS);
+				case WID_BRAS_LENGTH_LABEL: return length > 7 ? GetString(STR_MOBILE_STATION_LENGTH_VALUE, length) : GetString(STR_MOBILE_STATION_LENGTH);
+				case WID_BRAS_JOIN: {
+					StationID shown = GetMobileStationJoinShown();
+					return shown == NEW_STATION ? GetString(STR_MOBILE_STATION_NEW) : GetString(STR_MOBILE_STATION_JOIN, shown);
+				}
+				default: break;
+			}
+		}
+		return this->PickerWindow::GetWidgetString(widget, stringid);
+	}
+
+	void OnDropdownSelect(WidgetID widget, int index, int click_result) override
+	{
+		if (this->mobile && widget == WID_BRAS_JOIN) {
+			const std::vector<StationID> &candidates = GetMobileStationJoinCandidates();
+			MobileBuildSetStationJoin(index >= 0 && static_cast<size_t>(index) < candidates.size() ? candidates[index] : NEW_STATION);
+			this->SetDirty();
+			return;
+		}
+		this->PickerWindow::OnDropdownSelect(widget, index, click_result);
+	}
+
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
+		if (this->mobile && this->OnMobileClick(widget)) return;
+
 		switch (widget) {
 			case WID_BRAS_PLATFORM_DIR_X:
 			case WID_BRAS_PLATFORM_DIR_Y:
@@ -1986,6 +2285,60 @@ static constexpr std::initializer_list<NWidgetPart> _nested_station_builder_widg
 	EndContainer(),
 };
 
+/** The station picker in the mobile layout's sheet slot; see the round 3 design, section 3.2. */
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_station_builder_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::DarkGreen, WID_BRAS_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHTXTBTN, Colours::DarkGreen, WID_BRAS_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_STATION_CLOSE_TOOLTIP),
+	EndContainer(),
+	/* Every row resizes horizontally (the buttons rows through their spacers), so the picker fills a wide portrait sheet. */
+	NWidget(WWT_PANEL, Colours::DarkGreen), SetResize(1, 1),
+		NWidget(NWID_VERTICAL), SetPIP(0, 4, 0), SetPadding(0, 4, 4, 4),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, 4, 0),
+				NWidget(WWT_PANEL, Colours::Grey, WID_BRAS_PLATFORM_DIR_X), SetMinimalSize(120, 40), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_STATION_BUILD_RAILROAD_ORIENTATION_TOOLTIP), EndContainer(),
+				NWidget(WWT_PANEL, Colours::Grey, WID_BRAS_PLATFORM_DIR_Y), SetMinimalSize(120, 40), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_STATION_BUILD_RAILROAD_ORIENTATION_TOOLTIP), EndContainer(),
+			EndContainer(),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_BRAS_TRACKS_LABEL), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET), SetTextStyle(TextColour::Black, FontSize::Small),
+			NWidget(NWID_HORIZONTAL),
+				NWidget(NWID_SPACER), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_NUM_1), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_1, STR_STATION_BUILD_NUMBER_OF_TRACKS_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_NUM_2), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_2, STR_STATION_BUILD_NUMBER_OF_TRACKS_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_NUM_3), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_3, STR_STATION_BUILD_NUMBER_OF_TRACKS_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_NUM_4), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_4, STR_STATION_BUILD_NUMBER_OF_TRACKS_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_NUM_5), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_5, STR_STATION_BUILD_NUMBER_OF_TRACKS_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_NUM_6), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_6, STR_STATION_BUILD_NUMBER_OF_TRACKS_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_NUM_7), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_7, STR_STATION_BUILD_NUMBER_OF_TRACKS_TOOLTIP),
+				NWidget(NWID_SPACER), SetFill(1, 0), SetResize(1, 0),
+			EndContainer(),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_BRAS_LENGTH_LABEL), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET), SetTextStyle(TextColour::Black, FontSize::Small),
+			NWidget(NWID_HORIZONTAL),
+				NWidget(NWID_SPACER), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_LEN_1), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_1, STR_STATION_BUILD_PLATFORM_LENGTH_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_LEN_2), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_2, STR_STATION_BUILD_PLATFORM_LENGTH_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_LEN_3), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_3, STR_STATION_BUILD_PLATFORM_LENGTH_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_LEN_4), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_4, STR_STATION_BUILD_PLATFORM_LENGTH_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_LEN_5), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_5, STR_STATION_BUILD_PLATFORM_LENGTH_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_LEN_6), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_6, STR_STATION_BUILD_PLATFORM_LENGTH_TOOLTIP),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_LEN_7), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_7, STR_STATION_BUILD_PLATFORM_LENGTH_TOOLTIP),
+				NWidget(NWID_SPACER), SetFill(1, 0), SetResize(1, 0),
+			EndContainer(),
+			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_COVERAGE_TOGGLE), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_STATION_BUILD_COVERAGE_AREA_ON_TOOLTIP),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_BRAS_SEL_JOIN),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_BRAS_JOIN), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_STATION_JOIN_TOOLTIP),
+			EndContainer(),
+			NWidget(WWT_EMPTY, Colours::Invalid, WID_BRAS_COVERAGE_TEXTS), SetFill(1, 1), SetResize(1, 1), SetMinimalTextLines(2, 0),
+		EndContainer(),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_station_builder_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::BuildStation, WindowClass::BuildToolbar,
+	WindowDefaultFlag::Construction,
+	_nested_mobile_station_builder_widgets,
+	&BuildRailStationWindow::hotkeys
+);
+
 /** High level window description of the station-build window (default & newGRF) */
 static WindowDesc _station_builder_desc(
 	WindowPosition::Automatic, "build_station_rail", 0, 0,
@@ -2002,6 +2355,11 @@ static WindowDesc _station_builder_desc(
  */
 static Window *ShowStationBuilder(Window *parent)
 {
+	if (IsMobileLayout()) {
+		Window *w = new BuildRailStationWindow(_mobile_station_builder_desc, parent, true);
+		MobileShowInSheet(w);
+		return w;
+	}
 	return new BuildRailStationWindow(_station_builder_desc, parent);
 }
 

@@ -1,6 +1,6 @@
 # Session state (for resuming after a context reset)
 
-Last updated: 26 Nov 2026. Read this first, then `README.md` (the index) and `CLAUDE.md` (the project rules).
+Last updated: 26 Nov 2026 (evening). Read this first, then `README.md` (the index) and `CLAUDE.md` (the project rules).
 
 ## Where the project is
 
@@ -11,16 +11,20 @@ Last updated: 26 Nov 2026. Read this first, then `README.md` (the index) and `CL
   - **Round 2 (track laying with review before building):** rail toolbar, pending selection with handles, live estimate, bridges, tunnels, undo, error routing. Log: `04-round2-implementation-log.md`.
   - **Touch gesture layer** (`src/mobile_touch.cpp`): tap on lift, pan, list scroll, long-press tooltips and land info, pinch and two-finger zoom. Verified on the phone; pinch tested by the user.
   - **Device polish (user requests of 25 Nov):** navigation bar setting, tool Cancel (✕ and the floating red Cancel), the sliding safe area, and a swiped-in bar moving the dock. Log: `05-device-polish-log.md`. The user confirmed it's "perfect".
+  - **Background survival (26 Nov):** foreground service + notification while a game runs, pause and save when leaving the app, resume after a kill. Verified on the phone. Log: `06-round3-implementation-log.md` part A.
+  - **Round 3 (26 Nov):** stations (tap/drag footprint, picker in the sheet, join, move, Undo), depots (auto-facing, Turn), waypoints, mobile town/station windows and minimap, edge-to-edge chrome, design fixes. Verified headless and on the phone (pinch on the minimap untested). Log: `06-round3-implementation-log.md` part B.
   - **Android build:** `os/android/build.sh`, APK published as GitHub pre-releases (`android-<commit count>`); latest: `android-33327` (commit `b3471b1b13`, 26 Nov). Logs: `02-android-build-plan.md`, `03-android-build-log.md`.
 
 ## Waiting on
 
-- **Design session, round 3** (stations and depots). Our handoff to it: `handoffs/05-impl-to-design-round3.md`, plus the screenshots in `screenshots/round2/`. Its reply goes in `handoffs/06-…`.
-- **Background survival on Android:** persistent notification, autosave when backgrounded, optional pause. Approved by the user; not started. Details: `backlog.md`.
+- **Design session, round 4** (trains, depot window, orders) **plus the menus**. Our handoff: `handoffs/07-impl-to-design-round4.md` with `screenshots/round3/`. Its reply goes in `handoffs/08-…`.
+- **User's request for later:** the top chrome (status pill, minimap button) should slide with the safe area like the dock and maybe sit closer to the top edge (`backlog.md`).
 
 ## Working with the user's phone (Poco X7 Pro, Android 16)
 
 - Reached over Tailscale: the phone is `100.65.145.31`, the server `100.91.245.74`. MIUI often puts Tailscale to sleep, so the phone shows "offline". Ask the user to open Tailscale; `tailscale ping 100.65.145.31` confirms the link.
+- **Use short timeouts** on adb commands (`timeout 10 adb ...`) and say "LINK-DOWN" fast when Tailscale drops (the user asked). When adb says "protocol fault": `adb kill-server`, start it, rescan the connect port.
+- **Floating windows of other apps** (Tailscale's bubble) take the taps; ask the user to close them. **Crop screenshots below the status bar**; delete any that show notifications or other apps.
 - **Pairing:** the user sends a pairing port and code → `adb pair IP:PORT CODE`. The connect port differs: find it with a TCP scan of ports 30000–50000 (Python asyncio), then `adb connect IP:PORT`. Restart the adb server on "protocol fault". The connect port has been 40389 recently.
 - **Install:** `adb push app.apk /data/local/tmp/x.apk && adb shell pm install -r /data/local/tmp/x.apk`. Plain `adb install` stalls over this link. Check with `dumpsys package io.github.warmmatetea.touchttd | grep lastUpdateTime` (phone clock is UTC−3).
 - **Drive it:** `adb shell input tap/swipe`, `adb exec-out screencap -p`. Console: `input keyevent 68`, `input text "setting%sNAME%sVALUE"`, `keyevent 66`. Portrait coordinates: the dock is at y≈2510 (bar shown) or ≈2650 (hidden); New Game at (400,1000); Generate at (610,1660).
@@ -36,6 +40,7 @@ Last updated: 26 Nov 2026. Read this first, then `README.md` (the index) and `CL
 ## Gotchas learned the hard way
 
 - Never wait on or kill processes with `pgrep -f`/`pkill -f` using text from the waiting command's own command line: it matches itself.
+- In a vertical NWidget container, hide with `SZSP_HORIZONTAL`, not `SZSP_NONE`, or the window can't widen.
 - `CommandResultCapture` can't nest (an assert); close its scope before calling code that may capture.
 - Unsigned widget sizes (`current_x`) underflow in position math; cast to `int`.
 - A vertical NWidget container with a non-resizable child can't resize horizontally (the LCM of resize steps is 0).

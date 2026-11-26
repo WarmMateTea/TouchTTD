@@ -228,6 +228,16 @@ std::tuple<bool, bool, bool> CommandHelperBase::InternalPostBefore(Commands cmd,
 	bool only_sending = _networking && !network_command;
 
 	if (_pause_mode.Any() && !IsCommandAllowedWhilePaused(cmd) && !estimate_only) {
+		if (CommandResultCapture *capture = CommandResultCapture::active; capture != nullptr && !network_command && !(capture->first_only && capture->any)) {
+			/* The capture's owner reports the error; without this the command would look like it did nothing successfully. */
+			capture->any = true;
+			if (!capture->failed) {
+				capture->failed = true;
+				capture->error_summary = err_message;
+				capture->error = GetEncodedString(STR_ERROR_NOT_ALLOWED_WHILE_PAUSED);
+			}
+			return { true, estimate_only, only_sending };
+		}
 		ShowErrorMessage(GetEncodedString(err_message), GetEncodedString(STR_ERROR_NOT_ALLOWED_WHILE_PAUSED),
 			WarningLevel::Info, TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE);
 		return { true, estimate_only, only_sending };
@@ -250,7 +260,10 @@ void CommandHelperBase::InternalPostResult(CommandCost &res, TileIndex tile, boo
 	int x = TileX(tile) * TILE_SIZE;
 	int y = TileY(tile) * TILE_SIZE;
 
-	if (CommandResultCapture *capture = CommandResultCapture::active; capture != nullptr && my_cmd) {
+	if (CommandResultCapture *capture = CommandResultCapture::active; capture != nullptr && my_cmd && capture->first_only && capture->any) {
+		/* A follow-up of the captured command, like the track a new depot connects to: keep quiet about it. */
+		if (estimate_only || res.Failed()) return;
+	} else if (capture != nullptr && my_cmd) {
 		capture->any = true;
 		if (res.Failed()) {
 			if (!capture->failed) {

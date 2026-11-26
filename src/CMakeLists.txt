@@ -273,6 +273,8 @@ add_files(
     misc_gui.cpp
     mixer.cpp
     mixer.h
+    mobile_app.cpp
+    mobile_app.h
     mobile_build.cpp
     mobile_build.h
     mobile_gui.cpp

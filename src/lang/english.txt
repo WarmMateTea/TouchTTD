@@ -925,7 +925,7 @@ STR_MOBILE_BUILD_STATUS_REMOVE                                  :Remove {COMMA} 
 STR_MOBILE_BUILD_STATUS_DEMOLISH                                :Demolish {COMMA} tile{P "" s} · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_CONVERT                                 :Convert {COMMA} tile{P "" s} · {RAW_STRING}
 STR_MOBILE_BUILD_REFUND                                         :+{CURRENCY_LONG}
-STR_MOBILE_BUILD_STATUS_ERROR                                   :! {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_ERROR                                   :{RAW_STRING}
 STR_MOBILE_BUILD_STATUS_BUILT                                   :Built {COMMA} tile{P "" s} · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_PICK_BRIDGE                             :Pick a bridge for {COMMA} tile{P "" s}
 STR_MOBILE_BUILD_LABEL_TILES                                    :{COMMA} tile{P "" s}
@@ -941,6 +941,57 @@ STR_MOBILE_BUILD_UNDO_TOOLTIP                                   :{BLACK}Remove w
 STR_MOBILE_BUILD_EXIT                                           :{WHITE}Exit
 STR_MOBILE_BUILD_EXIT_TOOLTIP                                   :{BLACK}Leave build mode
 STR_MOBILE_BUILD_RAILTYPE_TOOLTIP                               :{BLACK}Rail type to build
+STR_MOBILE_BUILD_HINT_STATION                                   :Tap to place · drag for any size
+STR_MOBILE_BUILD_HINT_DEPOT                                     :Tap to place a depot
+STR_MOBILE_BUILD_HINT_WAYPOINT                                  :Tap or drag along a straight track
+STR_MOBILE_BUILD_STATUS_STATION                                 :Station {NUM}×{NUM} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_STATION_JOIN                            :Station {NUM}×{NUM} · joins {STATION} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_BUILT_STATION                           :Built station · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_DEPOT_FACES_TRACK                       :Depot faces the track · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_DEPOT_CHECK                             :Depot · {RAW_STRING} · check the entrance
+STR_MOBILE_BUILD_STATUS_BUILT_DEPOT                             :Built depot · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_WAYPOINT                                :Waypoint {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_BUILT_WAYPOINT                          :Built waypoint · {RAW_STRING}
+STR_MOBILE_BUILD_ROTATE                                         :{BLACK}Turn
+STR_MOBILE_BUILD_ROTATE_TOOLTIP                                 :{BLACK}Turn the depot's entrance clockwise
+STR_MOBILE_STATION_TITLE                                        :Station
+STR_MOBILE_STATION_CLOSE_TOOLTIP                                :{BLACK}Stop building stations
+STR_MOBILE_STATION_ALONG_X                                      :Along NE-SW
+STR_MOBILE_STATION_ALONG_Y                                      :Along NW-SE
+STR_MOBILE_STATION_TRACKS                                       :Tracks
+STR_MOBILE_STATION_TRACKS_VALUE                                 :Tracks: {NUM}
+STR_MOBILE_STATION_LENGTH                                       :Platform length
+STR_MOBILE_STATION_LENGTH_VALUE                                 :Platform length: {NUM}
+STR_MOBILE_STATION_SHOW_CATCHMENT                               :Show catchment area
+STR_MOBILE_STATION_COVERAGE_LATER                               :{BLACK}Accepts and supplies appear once the station is placed.
+STR_MOBILE_STATION_JOIN                                         :Join {STATION}
+STR_MOBILE_STATION_NEW                                          :New station
+STR_MOBILE_STATION_JOIN_TOOLTIP                                 :{BLACK}Which station the new part belongs to
+STR_MOBILE_ON                                                   :On
+STR_MOBILE_OFF                                                  :Off
+STR_MOBILE_SHOW_ON_MAP                                          :Show on map
+STR_MOBILE_TOWN_LOCAL_AUTHORITY                                 :Local authority
+STR_MOBILE_TOWN_CARGO_GRAPH                                     :Cargo graph
+STR_MOBILE_TOWN_POPULATION                                      :Population
+STR_MOBILE_TOWN_POPULATION_VALUE                                :{COMMA} · {COMMA} house{P "" s}
+STR_MOBILE_TOWN_CARGO_LAST_MONTH                                :{STRING} last month
+STR_MOBILE_TOWN_CARGO_LAST_MINUTE                               :{STRING} last minute
+STR_MOBILE_TOWN_CARGO_OF                                        :{COMMA} of {COMMA}
+STR_MOBILE_TOWN_GROWTH                                          :Growth
+STR_MOBILE_TOWN_GROWTH_EVERY                                    :every {COMMA}{NBSP}day{P "" s}
+STR_MOBILE_TOWN_GROWTH_EVERY_FUNDED                             :every {COMMA}{NBSP}day{P "" s} (funded)
+STR_MOBILE_TOWN_GROWTH_STOPPED                                  :not growing
+STR_MOBILE_TOWN_YOUR_RATING                                     :Your rating
+STR_MOBILE_STATION_TAB_WAITING                                  :Waiting
+STR_MOBILE_STATION_TAB_ACCEPTS                                  :Accepts
+STR_MOBILE_STATION_TAB_RATINGS                                  :Ratings
+STR_MOBILE_STATION_TRAINS                                       :Trains
+STR_MOBILE_MAP_TITLE                                            :Map
+STR_MOBILE_MAP_MODE_TOOLTIP                                     :{BLACK}What the map shows
+STR_MOBILE_MAP_NAMES                                            :Names
+STR_MOBILE_MAP_LEGEND                                           :Legend
+STR_MOBILE_MAP_LEGEND_TOOLTIP                                   :{BLACK}Show the legend instead of the map
+STR_MOBILE_MAP_HINT                                             :Tap to go there · drag to move the map · pinch to zoom
 STR_MOBILE_RAIL_CATEGORY_TOOLTIP                                :{BLACK}Change the rail type, or build something else
 STR_MOBILE_RAIL_MORE                                            :{WHITE}...
 STR_MOBILE_RAIL_MORE_TOOLTIP                                    :{BLACK}More tools: waypoints, rail conversion, track in one direction
@@ -2192,6 +2243,8 @@ STR_CONFIG_SETTING_MOBILE_CONFIRM_BUILD                         :Mobile layout: 
 STR_CONFIG_SETTING_MOBILE_CONFIRM_BUILD_HELPTEXT                :When on, track and tunnels stay selected on the map after you lift your finger, with their cost, until you tap Build. When off, they are built when you lift your finger. Removing, demolishing and converting always ask
 STR_CONFIG_SETTING_MOBILE_SHOW_NAVIGATION_BAR                   :Android: keep the navigation bar on screen: {STRING2}
 STR_CONFIG_SETTING_MOBILE_SHOW_NAVIGATION_BAR_HELPTEXT          :Keep Android's navigation bar (back, home and recent apps) visible below the game. When off, the bar is hidden and can be swiped in from the bottom edge. Only has an effect on Android
+STR_CONFIG_SETTING_MOBILE_PAUSE_IN_BACKGROUND                   :Phones: pause the game when leaving the app: {STRING2}
+STR_CONFIG_SETTING_MOBILE_PAUSE_IN_BACKGROUND_HELPTEXT          :Pause the game when you switch to another app, so it waits for you. The game is always saved when you leave the app, and continues from that save if the phone closed the app meanwhile. Not in multiplayer games you don't host
 STR_CONFIG_SETTING_TOOLBAR_POS                                  :Position of main toolbar: {STRING2}
 STR_CONFIG_SETTING_TOOLBAR_POS_HELPTEXT                         :Horizontal position of the main toolbar at the top of the screen
 STR_CONFIG_SETTING_STATUSBAR_POS                                :Position of status bar: {STRING2}

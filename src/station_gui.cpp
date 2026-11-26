@@ -45,6 +45,8 @@
 
 #include "dropdown_common_type.h"
 
+#include "mobile_gui.h"
+
 #include "safeguards.h"
 
 struct StationTypeFilter
@@ -1356,9 +1358,37 @@ struct StationViewWindow : public Window {
 	CargoDataEntry cached_destinations{}; ///< Cache for the flows passing through this station.
 	CargoDataVector displayed_rows{}; ///< Parent entry of currently displayed rows (including collapsed ones).
 
-	StationViewWindow(WindowDesc &desc, WindowNumber window_number) : Window(desc)
+	const bool mobile; ///< Uses the mobile layout, in the sheet slot: tabs instead of the sort controls.
+
+	/** Tabs of the mobile layout. */
+	enum class MobileTab : uint8_t { Waiting, Accepts, Ratings };
+
+	/**
+	 * Mobile layout: show a tab.
+	 * @param tab The tab.
+	 */
+	void SetMobileTab(MobileTab tab)
+	{
+		this->GetWidget<NWidgetStacked>(WID_SV_SEL_CONTENT)->SetDisplayedPlane(tab == MobileTab::Waiting ? 0 : 1);
+		/* The window's code tells accepts from ratings by the text of the desktop's toggle (hidden here). */
+		NWidgetCore *toggle = this->GetWidget<NWidgetCore>(WID_SV_ACCEPTS_RATINGS);
+		if (tab == MobileTab::Ratings) {
+			toggle->SetStringTip(STR_STATION_VIEW_ACCEPTS_BUTTON, STR_STATION_VIEW_ACCEPTS_TOOLTIP);
+		} else {
+			toggle->SetStringTip(STR_STATION_VIEW_RATINGS_BUTTON, STR_STATION_VIEW_RATINGS_TOOLTIP);
+		}
+		this->SetWidgetLoweredState(WID_SV_TAB_WAITING, tab == MobileTab::Waiting);
+		this->SetWidgetLoweredState(WID_SV_TAB_ACCEPTS, tab == MobileTab::Accepts);
+		this->SetWidgetLoweredState(WID_SV_TAB_RATINGS, tab == MobileTab::Ratings);
+	}
+
+	StationViewWindow(WindowDesc &desc, WindowNumber window_number, bool mobile = false) : Window(desc), mobile(mobile)
 	{
 		this->CreateNestedTree();
+		if (mobile) {
+			this->GetWidget<NWidgetStacked>(WID_SV_SEL_HIDDEN)->SetDisplayedPlane(SZSP_HORIZONTAL);
+			this->SetMobileTab(MobileTab::Waiting);
+		}
 		this->GetWidget<NWidgetStacked>(WID_SV_CLOSE_AIRPORT_SEL)->SetDisplayedPlane(Station::Get(window_number)->facilities.Test(StationFacility::Airport) ? 0 : SZSP_NONE);
 		this->vscroll = this->GetScrollbar(WID_SV_SCROLLBAR);
 		/* Nested widget tree creation is done in two steps to ensure that this->GetWidget<NWidgetCore>(WID_SV_ACCEPTS_RATINGS) exists in UpdateWidgetSize(). */
@@ -1377,6 +1407,8 @@ struct StationViewWindow : public Window {
 	{
 		this->cargo_icon_size = GetLargestCargoIconSize();
 		this->line_height = std::max<int>(GetCharacterHeight(FontSize::Normal), this->cargo_icon_size.height);
+		/* Rows big enough for a finger: tapping one expands its destinations. */
+		if (this->mobile) this->line_height = std::max(this->line_height, ScaleGUITrad(32));
 		this->expand_shrink_width = std::max(GetCharacterWidth(FontSize::Normal, '-'), GetCharacterWidth(FontSize::Normal, '+'));
 	}
 
@@ -1474,11 +1506,17 @@ struct StationViewWindow : public Window {
 
 		this->DrawWidgets();
 
+		/* The mobile layout shows one of the lists at a time; a hidden widget keeps a stale position. */
+		bool show_waiting = !this->mobile || this->GetWidget<NWidgetStacked>(WID_SV_SEL_CONTENT)->shown_plane == 0;
+		bool show_accept_rating = !this->mobile || !show_waiting;
+
 		if (!this->IsShaded()) {
 			/* Draw 'accepted cargo' or 'cargo ratings'. */
 			const NWidgetBase *wid = this->GetWidget<NWidgetBase>(WID_SV_ACCEPT_RATING_LIST);
 			const Rect r = wid->GetCurrentRect();
-			if (this->GetWidget<NWidgetCore>(WID_SV_ACCEPTS_RATINGS)->GetString() == STR_STATION_VIEW_RATINGS_BUTTON) {
+			if (!show_accept_rating) {
+				/* Not shown in the mobile layout's current tab. */
+			} else if (this->GetWidget<NWidgetCore>(WID_SV_ACCEPTS_RATINGS)->GetString() == STR_STATION_VIEW_RATINGS_BUTTON) {
 				int lines = this->DrawAcceptedCargo(r);
 				if (lines > this->accepts_lines) { // Resize the widget, and perform re-initialization of the window.
 					this->accepts_lines = lines;
@@ -1493,6 +1531,7 @@ struct StationViewWindow : public Window {
 					return;
 				}
 			}
+			if (!show_waiting) return;
 
 			/* Draw arrow pointing up/down for ascending/descending sorting */
 			this->DrawSortButton(WID_SV_SORT_ORDER, sort_orders[1] != SO_ASCENDING);
@@ -1509,6 +1548,11 @@ struct StationViewWindow : public Window {
 			this->DrawEntries(cargo, waiting_rect, pos, maxrows, 0);
 			scroll_to_row = INT_MAX;
 		}
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (this->mobile && widget == WID_SV_CAPTION) DrawMobileTitle(r, this->GetWidgetString(WID_SV_CAPTION, STR_NULL));
 	}
 
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
@@ -2006,6 +2050,17 @@ struct StationViewWindow : public Window {
 				}
 				break;
 
+			case WID_SV_MOBILE_CLOSE:
+				this->Close();
+				break;
+
+			case WID_SV_TAB_WAITING:
+			case WID_SV_TAB_ACCEPTS:
+			case WID_SV_TAB_RATINGS:
+				this->SetMobileTab(static_cast<MobileTab>(widget - WID_SV_TAB_WAITING));
+				this->ReInit();
+				break;
+
 			case WID_SV_LOCATION:
 				if (IsCtrlPressed()) {
 					ShowExtraViewportWindow(Station::Get(this->window_number)->xy);
@@ -2197,6 +2252,55 @@ struct StationViewWindow : public Window {
 	}
 };
 
+/** The station window in the mobile layout's sheet slot; see the round 3 design, section 6.1. */
+static constexpr std::initializer_list<NWidgetPart> _nested_station_view_mobile_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Grey, WID_SV_CAPTION), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHIMGBTN, Colours::Grey, WID_SV_RENAME), SetMinimalSize(40, 40), SetSpriteTip(SPR_RENAME, STR_STATION_VIEW_EDIT_TOOLTIP),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_SV_MOBILE_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
+		NWidget(WWT_TEXTBTN, Colours::Grey, WID_SV_TAB_WAITING), SetMinimalSize(60, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_STATION_TAB_WAITING),
+		NWidget(WWT_TEXTBTN, Colours::Grey, WID_SV_TAB_ACCEPTS), SetMinimalSize(60, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_STATION_TAB_ACCEPTS),
+		NWidget(WWT_TEXTBTN, Colours::Grey, WID_SV_TAB_RATINGS), SetMinimalSize(60, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_STATION_TAB_RATINGS),
+	EndContainer(),
+	NWidget(NWID_SELECTION, Colours::Invalid, WID_SV_SEL_CONTENT),
+		NWidget(NWID_HORIZONTAL),
+			NWidget(WWT_PANEL, Colours::Grey, WID_SV_WAITING), SetMinimalSize(200, 44), SetFill(1, 1), SetResize(1, 10), SetScrollbar(WID_SV_SCROLLBAR), EndContainer(),
+			NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_SV_SCROLLBAR),
+		EndContainer(),
+		NWidget(WWT_PANEL, Colours::Grey, WID_SV_ACCEPT_RATING_LIST), SetMinimalSize(200, 23), SetFill(1, 1), SetResize(1, 1), EndContainer(),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_SV_LOCATION), SetMinimalSize(60, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_SHOW_ON_MAP, STR_STATION_VIEW_CENTER_TOOLTIP),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_SV_TRAINS), SetMinimalSize(60, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_STATION_TRAINS, STR_STATION_VIEW_SCHEDULED_TRAINS_TOOLTIP),
+		NWidget(WWT_TEXTBTN, Colours::Grey, WID_SV_CATCHMENT), SetMinimalSize(60, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_BUTTON_CATCHMENT, STR_TOOLTIP_CATCHMENT),
+	EndContainer(),
+	/* The desktop controls the window's code uses; never shown (SZSP_HORIZONTAL keeps the window resizable). */
+	NWidget(NWID_SELECTION, Colours::Invalid, WID_SV_SEL_HIDDEN),
+		NWidget(NWID_HORIZONTAL),
+			NWidget(WWT_TEXTBTN, Colours::Grey, WID_SV_GROUP), SetStringTip(STR_STATION_VIEW_GROUP),
+			NWidget(WWT_DROPDOWN, Colours::Grey, WID_SV_GROUP_BY),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_SV_SORT_ORDER), SetStringTip(STR_BUTTON_SORT_BY),
+			NWidget(WWT_DROPDOWN, Colours::Grey, WID_SV_SORT_BY),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_SV_ACCEPTS_RATINGS), SetStringTip(STR_STATION_VIEW_RATINGS_BUTTON, STR_STATION_VIEW_RATINGS_TOOLTIP),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_SV_CLOSE_AIRPORT_SEL),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_SV_CLOSE_AIRPORT), SetStringTip(STR_STATION_VIEW_CLOSE_AIRPORT),
+			EndContainer(),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_SV_ROADVEHS), SetStringTip(STR_LORRY),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_SV_SHIPS), SetStringTip(STR_SHIP),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_SV_PLANES), SetStringTip(STR_PLANE),
+		EndContainer(),
+	EndContainer(),
+};
+
+static WindowDesc _station_view_mobile_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::StationView, WindowClass::None,
+	{},
+	_nested_station_view_mobile_widgets
+);
+
 /** Window definition for the station view window. */
 static WindowDesc _station_view_desc(
 	WindowPosition::Automatic, "view_station", 249, 117,
@@ -2212,6 +2316,12 @@ static WindowDesc _station_view_desc(
  */
 void ShowStationViewWindow(StationID station)
 {
+	if (IsMobileLayout()) {
+		Window *w = BringWindowToFrontById(WindowClass::StationView, station);
+		if (w == nullptr) w = new StationViewWindow(_station_view_mobile_desc, station, true);
+		MobileShowInfoWindow(w);
+		return;
+	}
 	AllocateWindowDescFront<StationViewWindow>(_station_view_desc, station);
 }
 
@@ -2308,6 +2418,22 @@ static void FindStationsNearby(TileArea ta, bool distant_join)
 	for (auto tile : SpiralTileSequence(TileAddByDir(ctx.tile, Direction::N), max_dist, ta.w, ta.h)) {
 		AddNearbyStation<T>(tile, &ctx);
 	}
+}
+
+/**
+ * Stations of the local company that a new rail station on an area could join, for the mobile station picker.
+ * @param ta The area of the new station.
+ * @param distant_join Also look for stations within the station spread, not only adjacent ones.
+ * @return The stations, nearest first; without "new station".
+ */
+std::vector<StationID> FindJoinableRailStations(TileArea ta, bool distant_join)
+{
+	FindStationsNearby<StationTypeFilter>(ta, distant_join);
+	std::vector<StationID> result;
+	for (StationID id : _stations_nearby_list) {
+		if (id != NEW_STATION && Station::IsValidID(id)) result.push_back(id);
+	}
+	return result;
 }
 
 static constexpr std::initializer_list<NWidgetPart> _nested_select_station_widgets = {

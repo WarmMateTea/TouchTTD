@@ -659,6 +659,7 @@ SettingsContainer &GetSettingsTree()
 			interface->Add(new SettingEntry("gui.mobile_build_picker"));
 			interface->Add(new SettingEntry("gui.mobile_confirm_build"));
 			interface->Add(new SettingEntry("gui.mobile_show_navigation_bar"));
+			interface->Add(new SettingEntry("gui.mobile_pause_in_background"));
 			interface->Add(new SettingEntry("gui.toolbar_pos"));
 			interface->Add(new SettingEntry("gui.statusbar_pos"));
 			interface->Add(new SettingEntry("gui.prefer_teamchat"));

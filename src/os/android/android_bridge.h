@@ -11,5 +11,7 @@
 #define ANDROID_BRIDGE_H
 
 void AndroidApplySystemBars(bool show_navigation_bar);
+void AndroidSetGameRunning(bool running);
+void AndroidSetResumeSave(const std::string &path);
 
 #endif /* ANDROID_BRIDGE_H */

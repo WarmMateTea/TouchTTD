@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Multiplayer and the in-game content download. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The "game in progress" foreground service (GameService), which keeps the game alive in the background. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -34,5 +38,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Runs while a game is in progress. No foreground service type fits a game, hence specialUse.
+             stopWithTask: swiping the app away from recent apps ends it (the game was saved when it left the screen). -->
+        <service android:name=".GameService"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="true"
+            android:exported="false">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps a running game (unsaved progress) in memory while the player switches to another app." />
+        </service>
     </application>
 </manifest>

@@ -256,6 +256,17 @@ static Rect GetSafeArea()
 	return _safe.valid ? _safe.shown : GetSystemSafeArea();
 }
 
+/**
+ * The insets between the safe area and the screen edges. Chrome along an edge reaches the screen edge, with its buttons
+ * kept inside the safe area: spacer widgets in the dock and the construction toolbars take these sizes.
+ * @return The inset at each edge, in screen pixels.
+ */
+Rect GetMobileEdgeGaps()
+{
+	Rect safe = GetSafeArea();
+	return {safe.left, safe.top, std::max(0, _screen.width - 1 - safe.right), std::max(0, _screen.height - 1 - safe.bottom)};
+}
+
 /** Advance the slide of the safe area, and move the shell with it. */
 static const IntervalTimer<TimerWindow> _safe_area_slide = {std::chrono::milliseconds(15), [](auto) {
 	if (!_safe.sliding) return;
@@ -316,16 +327,17 @@ static void FitWindowTo(Window *w, int width, int height)
  * @param label Text below the icon.
  * @param lowered Whether the button is drawn pressed.
  * @param disabled Whether the button is disabled.
+ * @param font_size Font of the label.
  */
-void DrawMobileIconButton(const Rect &r, SpriteID sprite, StringID label, bool lowered, bool disabled)
+void DrawMobileIconButton(const Rect &r, SpriteID sprite, StringID label, bool lowered, bool disabled, FontSize font_size)
 {
 	int offset = lowered ? ScaleGUITrad(1) : 0;
 	Dimension icon = GetSpriteSize(sprite);
-	int text_height = GetCharacterHeight(FontSize::Small);
+	int text_height = GetCharacterHeight(font_size);
 	int gap = ScaleGUITrad(2);
 	int top = CentreBounds(r.top, r.bottom, icon.height + gap + text_height) + offset;
 	DrawSprite(sprite, disabled ? PALETTE_TO_GREY : PAL_NONE, CentreBounds(r.left, r.right, icon.width) + offset, top);
-	DrawString(r.left + offset, r.right + offset, top + icon.height + gap, label, disabled ? TextColour::Grey : TextColour::White, AlignmentH::Centre, false, FontSize::Small);
+	DrawString(r.left + offset, r.right + offset, top + icon.height + gap, label, disabled ? TextColour::Grey : TextColour::White, AlignmentH::Centre, false, font_size);
 }
 
 static void CloseMobileFlyouts()
@@ -556,6 +568,17 @@ static WindowDesc _mobile_status_desc(
 
 /* --- Hub sheets --- */
 
+/**
+ * Draw the title of a sheet: white, vertically centred, inset from the left edge.
+ * @param r The title panel.
+ * @param text The title.
+ */
+void DrawMobileTitle(const Rect &r, std::string_view text)
+{
+	Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+	DrawString(tr.left, tr.right, CentreBounds(r.top, r.bottom, GetCharacterHeight(FontSize::Normal)), text, TextColour::White);
+}
+
 /** The tab window at the top of a hub sheet. */
 struct MobileHubTabsWindow : Window {
 	MobileHub hub; ///< The hub shown.
@@ -603,11 +626,9 @@ struct MobileHubTabsWindow : Window {
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
 		switch (widget) {
-			case WID_MHUB_CAPTION: {
-				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
-				DrawString(tr.left, tr.right, CentreBounds(r.top, r.bottom, GetCharacterHeight(FontSize::Normal)), _hubs[to_underlying(this->hub)].caption, TextColour::White);
+			case WID_MHUB_CAPTION:
+				DrawMobileTitle(r, GetString(_hubs[to_underlying(this->hub)].caption));
 				break;
-			}
 
 			case WID_MHUB_EXPAND: {
 				SpriteID sprite = _sheet.full ? SPR_ARROW_DOWN : SPR_ARROW_UP;
@@ -778,7 +799,18 @@ struct MobileBuildMenuWindow : Window {
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
 	{
 		if (widget != WID_MB_RAILTYPES) return;
-		size.width = std::max<uint>(size.width, ScaleGUITrad(176));
+		/* As wide as the longest row, so NewGRF rail type names aren't cut; at most the visible map width less 16. */
+		uint longest = 0;
+		for (RailType rt : this->railtypes) {
+			const RailTypeInfo *rti = GetRailTypeInfo(rt);
+			uint row = GetSpriteSize(rti->gui_sprites.build_x_rail).width + GetStringBoundingBox(rti->strings.menu_text).width +
+					GetStringBoundingBox(GetString(STR_JUST_CURRENCY_SHORT, RailBuildCost(rt))).width + 2 * WidgetDimensions::scaled.hsep_wide;
+			longest = std::max(longest, row);
+		}
+		longest += WidgetDimensions::scaled.framerect.Horizontal() + padding.width;
+		Rect map = GetMobileVisibleMapRect();
+		uint cap = std::max<int>(ScaleGUITrad(176), map.Width() - ScaleGUITrad(16));
+		size.width = std::max<uint>(size.width, std::min(std::max<uint>(longest, ScaleGUITrad(176)), cap));
 		size.height = ScaleGUITrad(RAILTYPE_ROW_HEIGHT) * std::max<size_t>(1, this->railtypes.size());
 	}
 
@@ -1082,6 +1114,17 @@ struct MobileDockWindow : Window {
 		this->UpdateButtonStates();
 	}
 
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
+	{
+		Rect gaps = GetMobileEdgeGaps();
+		switch (widget) {
+			case WID_MD_GAP_LEFT: size = {static_cast<uint>(gaps.left), 0}; break;
+			case WID_MD_GAP_TOP: size = {0, static_cast<uint>(gaps.top)}; break;
+			case WID_MD_GAP_BOTTOM: size = {0, static_cast<uint>(gaps.bottom)}; break;
+			default: break;
+		}
+	}
+
 	/** Lower the button of the hub or flyout that is open, and disable Build for spectators. */
 	void UpdateButtonStates()
 	{
@@ -1136,7 +1179,8 @@ struct MobileDockWindow : Window {
 			DrawSprite(sprite, PAL_NONE, CentreBounds(r.left, r.right, d.width) + offset, CentreBounds(r.top, r.bottom, d.height) + offset);
 			return;
 		}
-		DrawMobileIconButton(r, sprite, label, this->IsWidgetLowered(widget), this->IsWidgetDisabled(widget));
+		/* Portrait buttons are about 68 pixels wide, room for the normal font; the 40 wide landscape rail keeps the small one. */
+		DrawMobileIconButton(r, sprite, label, this->IsWidgetLowered(widget), this->IsWidgetDisabled(widget), this->landscape ? FontSize::Small : FontSize::Normal);
 	}
 
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
@@ -1158,13 +1202,21 @@ struct MobileDockWindow : Window {
 
 static constexpr std::initializer_list<NWidgetPart> _nested_mobile_dock_landscape_widgets = {
 	NWidget(WWT_PANEL, Colours::Grey),
-		NWidget(NWID_VERTICAL), SetPadding(4), SetPIP(0, 4, 0),
-			NWidget(WWT_PANEL, Colours::Grey, WID_MD_MENU), SetMinimalSize(40, 40), SetToolTip(STR_MOBILE_DOCK_MENU_TOOLTIP), EndContainer(),
-			NWidget(NWID_SPACER), SetFill(0, 1), SetResize(0, 1),
-			NWidget(WWT_PANEL, Colours::Grey, WID_MD_COMPANY), SetMinimalSize(40, 44), SetToolTip(STR_MOBILE_DOCK_COMPANY_TOOLTIP), EndContainer(),
-			NWidget(WWT_PANEL, Colours::Grey, WID_MD_WORLD), SetMinimalSize(40, 44), SetToolTip(STR_MOBILE_DOCK_WORLD_TOOLTIP), EndContainer(),
-			NWidget(WWT_PANEL, Colours::Grey, WID_MD_VEHICLES), SetMinimalSize(40, 44), SetToolTip(STR_MOBILE_DOCK_VEHICLES_TOOLTIP), EndContainer(),
-			NWidget(WWT_PANEL, Colours::Green, WID_MD_BUILD), SetMinimalSize(40, 52), SetToolTip(STR_MOBILE_DOCK_BUILD_TOOLTIP), EndContainer(),
+		/* The dock reaches the screen edges; its buttons stay inside the safe area. */
+		NWidget(NWID_HORIZONTAL),
+			NWidget(WWT_EMPTY, Colours::Invalid, WID_MD_GAP_LEFT), SetFill(0, 1), SetResize(0, 1),
+			NWidget(NWID_VERTICAL),
+				NWidget(WWT_EMPTY, Colours::Invalid, WID_MD_GAP_TOP), SetFill(1, 0),
+				NWidget(NWID_VERTICAL), SetPadding(4), SetPIP(0, 4, 0),
+					NWidget(WWT_PANEL, Colours::Grey, WID_MD_MENU), SetMinimalSize(40, 40), SetToolTip(STR_MOBILE_DOCK_MENU_TOOLTIP), EndContainer(),
+					NWidget(NWID_SPACER), SetFill(0, 1), SetResize(0, 1),
+					NWidget(WWT_PANEL, Colours::Grey, WID_MD_COMPANY), SetMinimalSize(40, 44), SetToolTip(STR_MOBILE_DOCK_COMPANY_TOOLTIP), EndContainer(),
+					NWidget(WWT_PANEL, Colours::Grey, WID_MD_WORLD), SetMinimalSize(40, 44), SetToolTip(STR_MOBILE_DOCK_WORLD_TOOLTIP), EndContainer(),
+					NWidget(WWT_PANEL, Colours::Grey, WID_MD_VEHICLES), SetMinimalSize(40, 44), SetToolTip(STR_MOBILE_DOCK_VEHICLES_TOOLTIP), EndContainer(),
+					NWidget(WWT_PANEL, Colours::Green, WID_MD_BUILD), SetMinimalSize(40, 52), SetToolTip(STR_MOBILE_DOCK_BUILD_TOOLTIP), EndContainer(),
+				EndContainer(),
+				NWidget(WWT_EMPTY, Colours::Invalid, WID_MD_GAP_BOTTOM), SetFill(1, 0),
+			EndContainer(),
 		EndContainer(),
 	EndContainer(),
 };
@@ -1178,6 +1230,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_dock_portrait
 			NWidget(WWT_PANEL, Colours::Grey, WID_MD_COMPANY), SetMinimalSize(64, 44), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_DOCK_COMPANY_TOOLTIP), EndContainer(),
 			NWidget(WWT_PANEL, Colours::Grey, WID_MD_MENU), SetMinimalSize(64, 44), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_DOCK_MENU_TOOLTIP), EndContainer(),
 		EndContainer(),
+		/* The dock reaches the screen edge; its buttons stay inside the safe area. */
+		NWidget(WWT_EMPTY, Colours::Invalid, WID_MD_GAP_BOTTOM), SetFill(1, 0), SetResize(1, 0),
 	EndContainer(),
 };
 
@@ -1414,17 +1468,26 @@ void RelocateMobileWindows()
 		toolbar = GetMobileRailToolbar();
 	}
 
+	/* The dock and the toolbars reach the screen edges (their spacers fill the insets): resize them when the insets change. */
+	static Rect last_gaps{};
+	Rect gaps = GetMobileEdgeGaps();
+	if (gaps.left != last_gaps.left || gaps.top != last_gaps.top || gaps.right != last_gaps.right || gaps.bottom != last_gaps.bottom) {
+		last_gaps = gaps;
+		dock->ReInit();
+		if (toolbar != nullptr) toolbar->ReInit();
+	}
+
 	if (landscape) {
-		FitWindowTo(dock, dock->width, safe.Height());
-		MoveWindowTo(dock, safe.left, safe.top);
+		FitWindowTo(dock, dock->width, _screen.height);
+		MoveWindowTo(dock, 0, 0);
 	} else {
 		FitWindowTo(dock, safe.Width(), dock->height);
 		/* In portrait the rail toolbar replaces the dock. */
-		MoveWindowTo(dock, safe.left, toolbar != nullptr ? _screen.height : safe.bottom + 1 - dock->height);
+		MoveWindowTo(dock, safe.left, toolbar != nullptr ? _screen.height : _screen.height - dock->height);
 	}
 	if (!landscape && toolbar != nullptr) {
 		FitWindowTo(toolbar, safe.Width(), toolbar->height);
-		MoveWindowTo(toolbar, safe.left, safe.bottom + 1 - toolbar->height);
+		MoveWindowTo(toolbar, safe.left, _screen.height - toolbar->height);
 	}
 	int map_left = landscape ? dock->left + dock->width : safe.left;
 
@@ -1458,9 +1521,11 @@ void RelocateMobileWindows()
 	}
 
 	if (landscape && toolbar != nullptr) {
+		/* Its tools don't fit beside a sheet: let it switch to status, Cancel and Build only (it asks IsMobileSheetOpen()). */
+		toolbar->InvalidateData();
 		/* Along the bottom of the map, between the dock and the sheet. */
 		FitWindowTo(toolbar, map_right - map_left, toolbar->height);
-		MoveWindowTo(toolbar, map_left, safe.bottom + 1 - toolbar->height);
+		MoveWindowTo(toolbar, map_left, _screen.height - toolbar->height);
 	}
 
 	if (Window *status = FindWindowById(WindowClass::MobileStatus, 0); status != nullptr) {
@@ -1515,6 +1580,9 @@ void RelocateMobileWindows()
 			}
 		}
 	}
+
+	/* A selection in review that a sheet now covers is scrolled back into view. */
+	MobileBuildRevealPending();
 
 	MarkWholeScreenDirty();
 }
@@ -1578,6 +1646,30 @@ void MobileShowInSheet(Window *w)
 	_sheet.content_cls = w->window_class;
 	_sheet.content_num = w->window_number;
 	RelocateMobileWindows();
+}
+
+/**
+ * Is the sheet slot in use?
+ * @return \c true when a hub, a picker or an info window fills it.
+ */
+bool IsMobileSheetOpen()
+{
+	return IsMobileLayout() && IsSheetOpen();
+}
+
+/**
+ * Show an info window (a town, a station) in the sheet slot: over a hub's list when a hub is open, so closing it
+ * returns to the list; otherwise as the sheet's content.
+ * @param w The window.
+ */
+void MobileShowInfoWindow(Window *w)
+{
+	if (w == nullptr || !IsMobileLayout()) return;
+	if (FindWindowById(WindowClass::MobileHubTabs, 0) != nullptr && GetSheetContent() != w) {
+		MobileDockOverlayInSheet(w);
+		return;
+	}
+	MobileShowInSheet(w);
 }
 
 /**

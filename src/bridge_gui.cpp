@@ -320,11 +320,9 @@ public:
 				this->DrawSortButton(widget, this->bridges.IsDescSortOrder());
 				break;
 
-			case WID_BBS_TITLE: {
-				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
-				DrawString(tr.left, tr.right, CentreBounds(r.top, r.bottom, GetCharacterHeight(FontSize::Normal)), this->GetWidgetString(WID_BBS_TITLE, STR_NULL), TextColour::White);
+			case WID_BBS_TITLE:
+				DrawMobileTitle(r, this->GetWidgetString(WID_BBS_TITLE, STR_NULL));
 				break;
-			}
 
 			case WID_BBS_BRIDGE_LIST: {
 				if (this->mobile) {
@@ -366,7 +364,7 @@ public:
 			text = text.Indent(GetStringBoundingBox(cost).width + WidgetDimensions::scaled.hsep_wide, !rtl);
 			DrawString(text.left, text.right, top, b->material, TextColour::Black);
 			if (b->speed != UINT16_MAX) {
-				DrawString(text.left, text.right, top + line, GetString(STR_MOBILE_BRIDGE_SPEED, PackVelocity(b->speed, static_cast<VehicleType>(this->transport_type))), TextColour::Grey);
+				DrawString(text.left, text.right, top + line, GetString(STR_MOBILE_BRIDGE_SPEED, PackVelocity(b->speed, static_cast<VehicleType>(this->transport_type))), TextColour::Black);
 			}
 			tr = tr.Translate(0, this->resize.step_height);
 		}

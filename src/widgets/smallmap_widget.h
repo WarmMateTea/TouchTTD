@@ -34,6 +34,12 @@ enum SmallMapWidgets : WidgetID {
 	WID_SM_SHOW_HEIGHT,    ///< Show heightmap toggle button.
 	WID_SM_SHOW_IND_NAMES, ///< Show industry names toggle button.
 	WID_SM_SHOW_IND_NAMES_SEL, ///< Container for the 'show industry names' button, which can be hidden.
+	WID_SM_MOBILE_CLOSE,   ///< Mobile layout: close.
+	WID_SM_MOBILE_MODE,    ///< Mobile layout: dropdown choosing what the map shows.
+	WID_SM_MOBILE_LEGEND,  ///< Mobile layout: toggle between the map and its legend.
+	WID_SM_MOBILE_SEL_VIEW, ///< Mobile layout: selection between the map and the legend.
+	WID_SM_MOBILE_HINT,    ///< Mobile layout: hint about the gestures.
+	WID_SM_MOBILE_SEL_HIDDEN, ///< Mobile layout: never shown; holds the desktop buttons the window's code expects.
 };
 
 #endif /* WIDGETS_SMALLMAP_WIDGET_H */

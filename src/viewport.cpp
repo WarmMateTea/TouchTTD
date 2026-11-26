@@ -1116,7 +1116,25 @@ static void HighlightTownLocalAuthorityTiles(const TileInfo *ti)
 
 }
 
-static void DrawTileSelectionArea(const TileInfo *ti);
+static void DrawTileSelectionArea(const TileInfo *ti, bool handle);
+
+/**
+ * Draw the entrance arrow of a depot in review in the mobile layout: the one-way road arrow, pointing out of the entrance.
+ * @param ti The depot's tile.
+ * @param dir The direction its entrance faces.
+ */
+static void DrawMobileDepotArrow(const TileInfo *ti, DiagDirection dir)
+{
+	/* One-way arrows: 0 and 1 point south-west and north-east, 3 and 4 north-west and south-east. */
+	static constexpr uint8_t arrow_offsets[to_underlying(DiagDirection::End)] = {1, 4, 0, 3};
+	SpriteID sprite = SPR_ONEWAY_BASE + arrow_offsets[to_underlying(dir)];
+	if (ti->tileh == SLOPE_NE || ti->tileh == SLOPE_NW) {
+		sprite += ONEWAY_SLOPE_N_OFFSET;
+	} else if (ti->tileh == SLOPE_SE || ti->tileh == SLOPE_SW) {
+		sprite += ONEWAY_SLOPE_S_OFFSET;
+	}
+	AddTileSpriteToDraw(sprite, PALETTE_TO_YELLOW, ti->x + TILE_SIZE / 2, ti->y + TILE_SIZE / 2, ti->z + GetPartialPixelZ(TILE_SIZE / 2, TILE_SIZE / 2, ti->tileh) + 1);
+}
 
 /**
  * Checks if the specified tile is selected and if so draws selection using correct selectionstyle.
@@ -1124,17 +1142,19 @@ static void DrawTileSelectionArea(const TileInfo *ti);
  */
 static void DrawTileSelection(const TileInfo *ti)
 {
-	DrawTileSelectionArea(ti);
-
-	/* The two ends of a selection in review in the mobile layout can be dragged; draw them over the selection. */
-	if (IsMobileBuildHandleTile(ti->tile)) DrawTileSelectionRect(ti, PALETTE_SEL_TILE_BLUE);
+	/* The ends (or corners) of a selection in review in the mobile layout can be dragged: they are drawn blue. */
+	bool handle = IsMobileBuildHandleTile(ti->tile);
+	DrawTileSelectionArea(ti, handle);
+	if (handle && !(_thd.drawstyle & HT_RECT)) DrawTileSelectionRect(ti, PALETTE_SEL_TILE_BLUE);
+	if (DiagDirection dir; GetMobileBuildDepotArrow(ti->tile, dir)) DrawMobileDepotArrow(ti, dir);
 }
 
 /**
  * Draw the selection, error square and highlights of a tile.
  * @param ti TileInfo Tile that is being drawn
+ * @param handle The tile is a handle of a selection in review in the mobile layout; a rectangle is drawn blue there.
  */
-static void DrawTileSelectionArea(const TileInfo *ti)
+static void DrawTileSelectionArea(const TileInfo *ti, bool handle)
 {
 	/* Highlight tiles inside local authority of selected towns. */
 	HighlightTownLocalAuthorityTiles(ti);
@@ -1159,7 +1179,7 @@ static void DrawTileSelectionArea(const TileInfo *ti)
 			IsInsideBS(ti->y, _thd.pos.y, _thd.size.y)) {
 draw_inner:
 		if (_thd.drawstyle & HT_RECT) {
-			if (!is_redsq) DrawTileSelectionRect(ti, _thd.make_square_red ? PALETTE_SEL_TILE_RED : PAL_NONE);
+			if (!is_redsq) DrawTileSelectionRect(ti, _thd.make_square_red ? PALETTE_SEL_TILE_RED : (handle ? PALETTE_SEL_TILE_BLUE : PAL_NONE));
 		} else if (_thd.drawstyle & HT_POINT) {
 			/* Figure out the Z coordinate for the single dot. */
 			int z = 0;

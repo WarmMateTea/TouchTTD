@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">TouchTTD</string>
+    <string name="notification_channel">Game in progress</string>
+    <string name="notification_channel_description">Shown while a game runs, so Android keeps the game when you switch apps.</string>
+    <string name="notification_title">Game in progress</string>
+    <string name="notification_text">Saved and paused when you leave the app. Tap to return.</string>
 </resources>

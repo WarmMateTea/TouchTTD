@@ -1,0 +1,95 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+/**
+ * @file mobile_app.cpp App life cycle on phones.
+ *
+ * A phone may kill an app at any time once it's in the background. So when the player leaves the app during a game:
+ * - the game is paused (setting gui.mobile_pause_in_background), so it waits for them;
+ * - it's saved to autosave/background.sav, and the platform is told that this save resumes the game if the app is
+ *   started afresh (on Android, OpenTTDActivity passes it with -g on the next start).
+ * While a game runs, the platform is told so; Android then keeps a foreground service with a notification, which makes
+ * the system much less likely to kill the app in the background.
+ */
+
+#include "stdafx.h"
+#include "mobile_app.h"
+#include "command_func.h"
+#include "fileio_func.h"
+#include "misc_cmd.h"
+#include "openttd.h"
+#include "settings_type.h"
+#include "network/network.h"
+#include "saveload/saveload_func.h"
+#include "debug.h"
+
+#ifdef __ANDROID__
+#	include "os/android/android_bridge.h"
+#endif
+
+#include "safeguards.h"
+
+static bool _mobile_in_background = false; ///< The app is in the background (between leaving and coming back).
+static bool _mobile_game_running = false; ///< Last game state told to the platform.
+
+/** Where the game is saved when the app goes to the background. */
+static std::string GetBackgroundSavePath()
+{
+	return FioFindDirectory(Subdirectory::Autosave) + "background.sav";
+}
+
+/** Tell the platform which save resumes the game on a fresh start; empty for "start at the main menu". */
+static void SetResumeSave(const std::string &path)
+{
+#ifdef __ANDROID__
+	AndroidSetResumeSave(path);
+#else
+	(void)path;
+#endif
+}
+
+/** The app is leaving the foreground: pause and save a running game. Called while the game state is locked. */
+void MobileAppWillEnterBackground()
+{
+	if (_mobile_in_background) return;
+	_mobile_in_background = true;
+	if (_game_mode != GameMode::Normal) return;
+
+	/* Pause first, so the save is paused too and a restored game waits for the player. */
+	if (_settings_client.gui.mobile_pause_in_background && _pause_mode.None() && (!_networking || _network_server)) {
+		Command<Commands::Pause>::Post(PauseMode::Normal, true);
+	}
+
+	std::string path = GetBackgroundSavePath();
+	Debug(Facility::Sl, Severity::Warning, "Leaving the app: saving to '{}'", path);
+	/* Threaded: the main loop blocks while the app is in the background, the save thread carries on. */
+	if (SaveOrLoad(path, SaveLoadOperation::Save, DetailedFileType::GameFile, Subdirectory::None, true) == SaveLoadResult::Ok) {
+		SetResumeSave(path);
+	}
+}
+
+/** The app is back in the foreground. */
+void MobileAppDidEnterForeground()
+{
+	_mobile_in_background = false;
+}
+
+/** Called every draw tick: keep the platform informed about whether a game runs. */
+void MobileAppTick()
+{
+	bool running = _game_mode == GameMode::Normal && !_exit_game;
+	if (running == _mobile_game_running) return;
+	_mobile_game_running = running;
+
+	/* Leaving a game on purpose (to the main menu, or quitting), as opposed to the app being closed from outside:
+	 * the background save doesn't resume anything any more. */
+	if (!running && !_mobile_in_background) SetResumeSave({});
+
+#ifdef __ANDROID__
+	AndroidSetGameRunning(running);
+#endif
+}

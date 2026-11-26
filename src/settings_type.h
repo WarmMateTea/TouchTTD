@@ -244,6 +244,7 @@ struct GUISettings {
 	bool mobile_build_picker; ///< in the mobile layout, the Build button always opens the category picker
 	bool mobile_show_navigation_bar; ///< on Android, keep the navigation bar (back, home, recent apps) on screen
 	bool mobile_confirm_build; ///< in the mobile layout, keep track and tunnels selected for review until Build is tapped
+	bool mobile_pause_in_background; ///< on phones, pause the game when the player leaves the app
 	uint8_t window_snap_radius; ///< windows snap at each other if closer than this
 	uint8_t window_soft_limit; ///< soft limit of maximum number of non-stickied non-vital windows (0 = no limit)
 	ZoomLevel zoom_min; ///< minimum zoom out level

@@ -20,6 +20,7 @@
 #include "../framerate_type.h"
 #include "../window_func.h"
 #include "../window_gui.h"
+#include "../mobile_app.h"
 #include "../mobile_touch.h"
 #ifdef __ANDROID__
 #	include "../os/android/android_bridge.h"
@@ -197,6 +198,35 @@ void VideoDriver_SDL_Base::ClientSizeChanged(int w, int h, bool force)
 	}
 }
 
+/** Whether PollEvent is inside SDL_PollEvent; the game state is locked then. */
+static bool _sdl_polling = false;
+
+/**
+ * Watch the app life cycle events. SDL on Android blocks inside its event pump as soon as it has queued the "entering
+ * the background" events, before SDL_PollEvent returns them. An event watch sees them while they are queued, still on
+ * the main thread, so the game can be paused and saved in time.
+ */
+static bool SDLCALL LifecycleEventWatch(void *, SDL_Event *ev)
+{
+	switch (ev->type) {
+		case SDL_EVENT_WILL_ENTER_BACKGROUND:
+			if (_sdl_polling) {
+				MobileAppWillEnterBackground();
+			} else {
+				Debug(Facility::Driver, Severity::Warning, "SDL3: entering the background outside the event loop; not saving");
+			}
+			break;
+
+		case SDL_EVENT_DID_ENTER_FOREGROUND:
+			MobileAppDidEnterForeground();
+			break;
+
+		default:
+			break;
+	}
+	return true;
+}
+
 bool VideoDriver_SDL_Base::CreateMainWindow(uint w, uint h, uint flags)
 {
 	if (this->sdl_window != nullptr) return true;
@@ -219,6 +249,7 @@ bool VideoDriver_SDL_Base::CreateMainWindow(uint w, uint h, uint flags)
 	/* The window covers the whole screen anyway; the activity decides which system bars show over it. */
 	AndroidApplySystemBars(_settings_client.gui.mobile_show_navigation_bar);
 #endif
+	SDL_AddEventWatch(LifecycleEventWatch, nullptr);
 
 	std::string icon_path = FioFindFullPath(Subdirectory::Baseset, "openttd.32.bmp");
 	if (!icon_path.empty()) {
@@ -462,7 +493,10 @@ bool VideoDriver_SDL_Base::PollEvent()
 {
 	SDL_Event ev;
 
-	if (!SDL_PollEvent(&ev)) return false;
+	_sdl_polling = true;
+	bool have_event = SDL_PollEvent(&ev);
+	_sdl_polling = false;
+	if (!have_event) return false;
 
 	switch (ev.type) {
 		case SDL_EVENT_MOUSE_MOTION: {
@@ -750,6 +784,7 @@ void VideoDriver_SDL_Base::InputLoop()
 {
 #ifdef __ANDROID__
 	TouchTick();
+	MobileAppTick();
 #endif
 
 	uint32_t mod = SDL_GetModState();

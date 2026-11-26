@@ -31,6 +31,7 @@ void CheckRedrawRoadWaypointCoverage(const Window *w);
 using StationPickerCmdProc = std::function<bool(bool test, StationID to_join)>;
 
 void ShowSelectStationIfNeeded(TileArea ta, StationPickerCmdProc proc);
+std::vector<StationID> FindJoinableRailStations(TileArea ta, bool distant_join);
 void ShowSelectRailWaypointIfNeeded(TileArea ta, StationPickerCmdProc proc);
 void ShowSelectRoadWaypointIfNeeded(TileArea ta, StationPickerCmdProc proc);
 

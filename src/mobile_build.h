@@ -15,6 +15,8 @@
 #include "economy_type.h"
 #include "gfx_type.h"
 #include "strings_type.h"
+#include "station_type.h"
+#include "direction_type.h"
 
 struct Viewport;
 
@@ -48,6 +50,18 @@ void MobileBuildOnSizingUpdate(Window *w);
 MobileViewportClick MobileBuildOnViewportClick(const Viewport &vp, int x, int y);
 void MobileBuildOnPlacementReset();
 bool MobileBuildTunnelTap(Window *w, TileIndex tile);
+bool MobileBuildDepotTap(Window *w, TileIndex tile);
+void MobileBuildRotateDepot();
+TileIndex GetMobileBuildPendingTile();
+bool GetMobileBuildDepotArrow(TileIndex tile, DiagDirection &dir);
+bool GetMobilePendingStationSize(uint &x, uint &y);
+bool GetMobilePendingStationSize();
+void MobileBuildStationResize(uint x, uint y);
+void MobileBuildStationResize();
+const std::vector<StationID> &GetMobileStationJoinCandidates();
+StationID GetMobileStationJoinShown();
+void MobileBuildSetStationJoin(StationID station);
+bool GetMobileStationJoin(StationID &join, bool &adjacent);
 void MobileBuildBridgeResult(bool success, Money cost, TileIndex start, const std::string &error);
 void MobileBuildBridgeListClosed();
 bool MobileBuildMeasurementTooltipsAllowed();
@@ -68,5 +82,6 @@ bool MobileBuildHasUndo();
 Money GetMobileBuildUndoCost();
 bool IsMobileBuildHandleTile(TileIndex tile);
 bool MobileBuildHandleError(const std::string &message);
+void MobileBuildRevealPending();
 
 #endif /* MOBILE_BUILD_H */

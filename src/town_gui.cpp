@@ -153,6 +153,16 @@ public:
 
 	StringID GetRatingString(int rating) const
 	{
+		return GetTownRatingString(rating);
+	}
+
+	/**
+	 * Name of a town rating.
+	 * @param rating The rating.
+	 * @return Its name, from "Appalling" to "Outstanding".
+	 */
+	static StringID GetTownRatingString(int rating)
+	{
 		if (rating > RATING_EXCELLENT) return STR_CARGO_RATING_OUTSTANDING;
 		if (rating > RATING_VERYGOOD)  return STR_CARGO_RATING_EXCELLENT;
 		if (rating > RATING_GOOD)      return STR_CARGO_RATING_VERY_GOOD;
@@ -347,11 +357,101 @@ static void ShowTownAuthorityWindow(uint town)
 struct TownViewWindow : Window {
 private:
 	Town *town = nullptr; ///< Town displayed by the window.
+	const bool mobile; ///< Uses the mobile layout, in the sheet slot: no viewport, label and value rows.
+
+	static constexpr int MOBILE_ROW_HEIGHT = 28; ///< Height of an info row in the mobile layout, in GUI pixels at 1x.
+
+	/** A row of the mobile info panel. */
+	struct MobileInfoRow {
+		std::string label; ///< Left: what it is; empty for a line of text over the full width.
+		std::string value; ///< Right: its value, or the line of text.
+	};
+
+	/**
+	 * The rows of the mobile info panel; see the round 3 design, section 6.2.
+	 * @return The rows.
+	 */
+	std::vector<MobileInfoRow> GetMobileInfoRows() const
+	{
+		std::vector<MobileInfoRow> rows;
+		rows.push_back({GetString(STR_MOBILE_TOWN_POPULATION), GetString(STR_MOBILE_TOWN_POPULATION_VALUE, this->town->cache.population, this->town->cache.num_houses)});
+
+		StringID label_period = TimerGameEconomy::UsingWallclockUnits() ? STR_MOBILE_TOWN_CARGO_LAST_MINUTE : STR_MOBILE_TOWN_CARGO_LAST_MONTH;
+		for (auto tpe : {TownProductionEffect::Passengers, TownProductionEffect::Mail}) {
+			for (const CargoSpec *cs : CargoSpec::town_production_cargoes[tpe]) {
+				auto it = this->town->GetCargoSupplied(cs->Index());
+				uint transported = it == std::end(this->town->supplied) ? 0 : it->history[LAST_MONTH].transported;
+				uint production = it == std::end(this->town->supplied) ? 0 : it->history[LAST_MONTH].production;
+				rows.push_back({GetString(label_period, cs->name), GetString(STR_MOBILE_TOWN_CARGO_OF, transported, production)});
+			}
+		}
+
+		/* Cargo the town needs to grow: the desktop lines. */
+		bool first = true;
+		for (TownAcceptanceEffect i : EnumRange(TownAcceptanceEffect::End)) {
+			if (this->town->goal[i] == 0) continue;
+			if (this->town->goal[i] == TOWN_GROWTH_WINTER && (TileHeight(this->town->xy) < LowestSnowLine() || this->town->cache.population <= 90)) continue;
+			if (this->town->goal[i] == TOWN_GROWTH_DESERT && (GetTropicZone(this->town->xy) != TropicZone::Desert || this->town->cache.population <= 60)) continue;
+			if (first) {
+				rows.push_back({{}, GetString(STR_TOWN_VIEW_CARGO_FOR_TOWNGROWTH)});
+				first = false;
+			}
+			const CargoSpec *cargo = FindFirstCargoWithTownAcceptanceEffect(i);
+			if (this->town->goal[i] == TOWN_GROWTH_DESERT || this->town->goal[i] == TOWN_GROWTH_WINTER) {
+				StringID string = STR_TOWN_VIEW_CARGO_FOR_TOWNGROWTH_DELIVERED_GENERAL;
+				if (this->town->received[i].old_act == 0) {
+					string = (this->town->goal[i] == TOWN_GROWTH_WINTER && TileHeight(this->town->xy) < GetSnowLine()) ? STR_TOWN_VIEW_CARGO_FOR_TOWNGROWTH_REQUIRED_WINTER : STR_TOWN_VIEW_CARGO_FOR_TOWNGROWTH_REQUIRED_GENERAL;
+				}
+				rows.push_back({{}, GetString(string, cargo->name)});
+			} else {
+				StringID string = this->town->received[i].old_act < this->town->goal[i] ? STR_TOWN_VIEW_CARGO_FOR_TOWNGROWTH_REQUIRED : STR_TOWN_VIEW_CARGO_FOR_TOWNGROWTH_DELIVERED;
+				rows.push_back({{}, GetString(string, cargo->Index(), this->town->received[i].old_act, cargo->Index(), this->town->goal[i])});
+			}
+		}
+
+		if (this->town->flags.Test(TownFlag::IsGrowing)) {
+			StringID every = this->town->fund_buildings_months == 0 ? STR_MOBILE_TOWN_GROWTH_EVERY : STR_MOBILE_TOWN_GROWTH_EVERY_FUNDED;
+			rows.push_back({GetString(STR_MOBILE_TOWN_GROWTH), GetString(every, RoundDivSU(this->town->growth_rate + 1, Ticks::DAY_TICKS))});
+		} else {
+			rows.push_back({GetString(STR_MOBILE_TOWN_GROWTH), GetString(STR_MOBILE_TOWN_GROWTH_STOPPED)});
+		}
+
+		if (Company::IsValidID(_local_company) && this->town->have_ratings.Test(_local_company)) {
+			rows.push_back({GetString(STR_MOBILE_TOWN_YOUR_RATING), GetString(TownAuthorityWindow::GetTownRatingString(this->town->ratings[_local_company]))});
+		}
+		if (_settings_game.economy.station_noise_level) {
+			rows.push_back({{}, GetString(STR_TOWN_VIEW_NOISE_IN_TOWN, this->town->noise_reached, this->town->MaxTownNoise())});
+		}
+		return rows;
+	}
+
+	/**
+	 * Draw the mobile info panel: label on the left, value on the right, a row each.
+	 * @param r The panel.
+	 */
+	void DrawMobileInfo(const Rect &r) const
+	{
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+		int row_height = ScaleGUITrad(MOBILE_ROW_HEIGHT);
+		for (const MobileInfoRow &row : this->GetMobileInfoRows()) {
+			int y = CentreBounds(tr.top, tr.top + row_height, GetCharacterHeight(FontSize::Normal));
+			if (row.label.empty()) {
+				DrawString(tr.left, tr.right, y, row.value, TextColour::Black);
+			} else {
+				DrawString(tr.left, tr.right, y, row.value, TextColour::Black, AlignmentH::End);
+				int value_width = GetStringBoundingBox(row.value).width;
+				Rect label = tr.Indent(value_width + WidgetDimensions::scaled.hsep_wide, _current_text_dir != TD_RTL);
+				DrawString(label.left, label.right, y, row.label, TextColour::Black);
+			}
+			tr.top += row_height;
+		}
+		if (!this->town->text.empty()) DrawStringMultiLine(tr, this->town->text.GetDecodedString(), TextColour::Black);
+	}
 
 public:
 	static const int WID_TV_HEIGHT_NORMAL = 150;
 
-	TownViewWindow(WindowDesc &desc, WindowNumber window_number) : Window(desc)
+	TownViewWindow(WindowDesc &desc, WindowNumber window_number, bool mobile = false) : Window(desc), mobile(mobile)
 	{
 		this->CreateNestedTree();
 
@@ -360,8 +460,10 @@ public:
 		this->FinishInitNested(window_number);
 
 		this->flags.Set(WindowFlag::DisableVpScroll);
-		NWidgetViewport *nvp = this->GetWidget<NWidgetViewport>(WID_TV_VIEWPORT);
-		nvp->InitializeViewport(this, this->town->xy, ScaleZoomGUI(ZoomLevel::Town));
+		/* The mobile layout has no viewport: the main map is right there. */
+		if (NWidgetViewport *nvp = this->GetWidget<NWidgetViewport>(WID_TV_VIEWPORT); nvp != nullptr) {
+			nvp->InitializeViewport(this, this->town->xy, ScaleZoomGUI(ZoomLevel::Town));
+		}
 
 		/* disable renaming town in network games if you are not the server */
 		this->SetWidgetDisabledState(WID_TV_CHANGE_NAME, _networking && !_network_server);
@@ -383,14 +485,22 @@ public:
 	void OnPaint() override
 	{
 		extern const Town *_viewport_highlight_town;
-		this->SetWidgetLoweredState(WID_TV_CATCHMENT, _viewport_highlight_town == this->town);
+		if (!this->mobile) this->SetWidgetLoweredState(WID_TV_CATCHMENT, _viewport_highlight_town == this->town);
 
 		this->DrawWidgets();
 	}
 
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
+		if (this->mobile && widget == WID_TV_CAPTION) {
+			DrawMobileTitle(r, this->GetWidgetString(WID_TV_CAPTION, STR_NULL));
+			return;
+		}
 		if (widget != WID_TV_INFO) return;
+		if (this->mobile) {
+			this->DrawMobileInfo(r);
+			return;
+		}
 
 		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
 
@@ -516,6 +626,10 @@ public:
 				ShowTownCargoGraph(this->window_number);
 				break;
 			}
+
+			case WID_TV_MOBILE_CLOSE:
+				this->Close();
+				break;
 		}
 	}
 
@@ -524,6 +638,10 @@ public:
 		switch (widget) {
 			case WID_TV_INFO:
 				size.height = GetDesiredInfoHeight(size.width) + padding.height;
+				break;
+
+			case WID_TV_CAPTION:
+				if (this->mobile) size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal));
 				break;
 		}
 	}
@@ -535,6 +653,12 @@ public:
 	 */
 	uint GetDesiredInfoHeight(int width) const
 	{
+		if (this->mobile) {
+			uint height = static_cast<uint>(this->GetMobileInfoRows().size()) * ScaleGUITrad(MOBILE_ROW_HEIGHT);
+			if (!this->town->text.empty()) height += GetStringHeight(this->town->text.GetDecodedString(), width - WidgetDimensions::scaled.framerect.Horizontal() - 2 * ScaleGUITrad(MOBILE_TEXT_INSET));
+			return height;
+		}
+
 		uint aimed_height = static_cast<uint>(1 + CargoSpec::town_production_cargoes[TownProductionEffect::Passengers].size() + CargoSpec::town_production_cargoes[TownProductionEffect::Mail].size()) * GetCharacterHeight(FontSize::Normal);
 
 		bool first = true;
@@ -645,6 +769,28 @@ static WindowDesc _town_game_view_desc(
 	_nested_town_game_view_widgets
 );
 
+/** The town window in the mobile layout's sheet slot; see the round 3 design, section 6.2. */
+static constexpr std::initializer_list<NWidgetPart> _nested_town_mobile_view_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Brown, WID_TV_CAPTION), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHIMGBTN, Colours::Brown, WID_TV_CHANGE_NAME), SetMinimalSize(40, 40), SetSpriteTip(SPR_RENAME, STR_TOWN_VIEW_RENAME_TOOLTIP),
+		NWidget(WWT_PUSHTXTBTN, Colours::Brown, WID_TV_MOBILE_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Brown, WID_TV_INFO), SetMinimalSize(260, 32), SetFill(1, 1), SetResize(1, 1), EndContainer(),
+	NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
+		NWidget(WWT_PUSHTXTBTN, Colours::Brown, WID_TV_CENTER_VIEW), SetMinimalSize(80, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_SHOW_ON_MAP, STR_TOWN_VIEW_CENTER_TOOLTIP),
+		NWidget(WWT_PUSHTXTBTN, Colours::Brown, WID_TV_SHOW_AUTHORITY), SetMinimalSize(80, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_TOWN_LOCAL_AUTHORITY, STR_TOWN_VIEW_LOCAL_AUTHORITY_TOOLTIP),
+		NWidget(WWT_PUSHTXTBTN, Colours::Brown, WID_TV_GRAPH), SetMinimalSize(80, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_TOWN_CARGO_GRAPH, STR_TOWN_VIEW_CARGO_GRAPH_TOOLTIP),
+	EndContainer(),
+};
+
+static WindowDesc _town_mobile_view_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::TownView, WindowClass::None,
+	{},
+	_nested_town_mobile_view_widgets
+);
+
 static constexpr std::initializer_list<NWidgetPart> _nested_town_editor_view_widgets = {
 	NWidget(NWID_HORIZONTAL),
 		NWidget(WWT_CLOSEBOX, Colours::Brown),
@@ -683,6 +829,12 @@ static WindowDesc _town_editor_view_desc(
 
 void ShowTownViewWindow(TownID town)
 {
+	if (IsMobileLayout() && _game_mode != GameMode::Editor) {
+		Window *w = BringWindowToFrontById(WindowClass::TownView, town);
+		if (w == nullptr) w = new TownViewWindow(_town_mobile_view_desc, town, true);
+		MobileShowInfoWindow(w);
+		return;
+	}
 	if (_game_mode == GameMode::Editor) {
 		AllocateWindowDescFront<TownViewWindow>(_town_editor_view_desc, town);
 	} else {
@@ -930,7 +1082,7 @@ public:
 			DrawFrameRect(button, Colours::Brown, {});
 			DrawString(button.left, button.right, CentreBounds(button.top, button.bottom, text_height), STR_MOBILE_TOWN_INFO, TextColour::FromString, AlignmentH::Centre);
 
-			Rect text = row.Indent(GetMobileInfoButton(row).Width() + WidgetDimensions::scaled.hsep_wide, !rtl);
+			Rect text = row.Indent(GetMobileInfoButton(row).Width() + WidgetDimensions::scaled.hsep_wide, !rtl).Indent(ScaleGUITrad(MOBILE_TEXT_INSET), rtl);
 			int y = CentreBounds(row.top, row.bottom, text_height);
 			std::string population = GetString(STR_JUST_COMMA, t->cache.population);
 			int population_width = GetStringBoundingBox(population).width;

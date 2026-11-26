@@ -24,6 +24,9 @@ enum MobileDockWidgets : WidgetID {
 	WID_MD_WORLD,    ///< Opens the world hub.
 	WID_MD_VEHICLES, ///< Opens the vehicles hub.
 	WID_MD_BUILD,    ///< Reopens the last construction toolbar or opens the build flyout.
+	WID_MD_GAP_LEFT, ///< Spacer filling the screen edge's inset on the left (landscape).
+	WID_MD_GAP_TOP,  ///< Spacer filling the screen edge's inset at the top (landscape).
+	WID_MD_GAP_BOTTOM, ///< Spacer filling the screen edge's inset at the bottom.
 };
 
 /** Widgets of the #MobileBuildMenuWindow class. */

@@ -38,6 +38,13 @@
 #include "rail_cmd.h"
 #include "settings_type.h"
 #include "company_func.h"
+#include "openttd.h"
+#include "rail_map.h"
+#include "station_map.h"
+#include "station_gui.h"
+#include "station_cmd.h"
+#include "station_base.h"
+#include "map_func.h"
 #include "timer/timer.h"
 #include "timer/timer_window.h"
 
@@ -61,9 +68,22 @@ struct PendingSelection {
 	bool tunnel = false; ///< A tunnel tap rather than a dragged selection.
 	TileIndex tunnel_start = INVALID_TILE; ///< Entrance of the tunnel.
 	TileIndex tunnel_end = INVALID_TILE; ///< Computed exit of the tunnel.
+	bool station = false; ///< A rail station footprint, from a tap (the picker's size) or a dragged area.
+	bool depot = false; ///< A rail depot on a single tile.
+	DiagDirection depot_dir = DiagDirection::NE; ///< Direction the depot's entrance faces.
+	bool depot_faces_track = false; ///< The direction was found from track next to the depot.
 
 	TileIndex StartTile() const { return this->tunnel ? this->tunnel_start : TileVirtXY(this->selstart.x, this->selstart.y); }
 	TileIndex EndTile() const { return this->tunnel ? this->tunnel_end : TileVirtXY(this->selend.x, this->selend.y); }
+
+	/** @return The area between the two ends. */
+	TileArea Area() const { return TileArea(this->StartTile(), this->EndTile()); }
+
+	/** @return Whether the selection places a rail waypoint (the station tool's sibling, along a track). */
+	bool IsWaypoint() const { return this->proc == DDSP_BUILD_STATION && !this->station && !this->depot && !this->remove; }
+
+	/** @return Whether the selection is a thing on the map that can be moved by dragging inside it. */
+	bool IsMovable() const { return this->station || this->depot; }
 
 	/**
 	 * Number of tiles in the selection.
@@ -73,7 +93,7 @@ struct PendingSelection {
 	{
 		uint dx = Delta(TileX(this->StartTile()), TileX(this->EndTile())) + 1;
 		uint dy = Delta(TileY(this->StartTile()), TileY(this->EndTile())) + 1;
-		if (this->proc == DDSP_DEMOLISH_AREA || this->proc == DDSP_CONVERT_RAIL) return dx * dy;
+		if (this->proc == DDSP_DEMOLISH_AREA || this->proc == DDSP_CONVERT_RAIL || this->station) return dx * dy;
 		return std::max(dx, dy);
 	}
 };
@@ -92,6 +112,7 @@ static struct {
 	PendingSelection sel; ///< The selection being reviewed.
 	BuildResult estimate; ///< Latest estimate of the selection.
 	TileIndex estimated_end = INVALID_TILE; ///< End tile the estimate was made for while dragging.
+	TileIndex estimated_start = INVALID_TILE; ///< Start tile the estimate was made for while dragging.
 	bool adjusting = false; ///< The drag is an adjustment of a pending selection.
 	StringID hint = STR_NULL; ///< Hint for the selected tool.
 	std::string message; ///< Error from the last construction attempt, shown until the next action.
@@ -101,6 +122,18 @@ static struct {
 	PendingSelection undo; ///< What to remove to undo it.
 	bool undo_available = false; ///< Whether undo is offered.
 	Money undo_cost = 0; ///< Estimated cost of undoing.
+	bool undo_keep_rail = false; ///< Undoing a station keeps the track that was there before.
+
+	bool moving = false; ///< The drag moves the pending selection.
+	PendingSelection move_from; ///< The pending selection before the move.
+	TileIndex move_grab = INVALID_TILE; ///< Tile the finger grabbed the selection at.
+	TileIndexDiff move_delta = 0; ///< How far the selection moved so far.
+
+	TileIndex station_anchor = INVALID_TILE; ///< Tapped tile, or corner of the dragged area, the footprint is placed at.
+	bool station_centred = false; ///< The footprint is centred on the anchor (a tap) rather than starting at it (a drag).
+	std::vector<StationID> join_candidates; ///< Stations the pending footprint can join.
+	StationID join_default = NEW_STATION; ///< What the desktop would join without a choice.
+	StationID join_choice = StationID::Invalid(); ///< The player's choice; invalid for the desktop default.
 } _mb;
 
 /** Undo is offered for this long after a construction. */
@@ -149,6 +182,11 @@ static void ReplaySelection(const PendingSelection &sel)
 	Window *w = GetSelectionToolbar(sel);
 	if (w == nullptr) return;
 
+	if (sel.depot) {
+		PostRailDepot(sel.StartTile(), sel.depot_dir);
+		return;
+	}
+
 	bool old_remove = IsRailRemoveModeActive();
 	SetRailRemoveMode(sel.remove);
 	if (sel.tunnel) {
@@ -169,6 +207,8 @@ static void ReplaySelection(const PendingSelection &sel)
 static BuildResult TrySelection(const PendingSelection &sel, bool estimate_only)
 {
 	CommandResultCapture capture(estimate_only);
+	/* Building a depot also lays track to connect it where it can; whether that works doesn't matter. */
+	capture.first_only = sel.depot;
 	ReplaySelection(sel);
 
 	BuildResult result;
@@ -208,6 +248,81 @@ static void ReleaseHighlight()
 	MarkWholeScreenDirty();
 }
 
+/** Catchment radius of rail stations. */
+static int GetRailStationCatchmentRadius()
+{
+	return _settings_game.station.modified_catchment ? CA_TRAIN : CA_UNMODIFIED;
+}
+
+/**
+ * Show a selection frozen on the map, with the catchment area of a station footprint when that is switched on.
+ * @param sel The selection.
+ */
+static void ShowFrozen(const PendingSelection &sel)
+{
+	_thd.freeze = false;
+	RestoreSelection(sel);
+	_thd.place_mode = HT_SPECIAL | (sel.place_mode & ~(HT_DRAG_MASK | HT_DIR_MASK));
+	_thd.next_drawstyle = sel.drawstyle;
+	if (sel.tunnel) VpSetPresizeRange(sel.tunnel_start, sel.tunnel_end);
+	if (sel.station && _settings_client.gui.station_show_coverage) {
+		int rad = GetRailStationCatchmentRadius();
+		SetTileSelectBigSize(-rad, -rad, 2 * rad, 2 * rad);
+	} else {
+		SetTileSelectBigSize(0, 0, 0, 0);
+	}
+	UpdateTileSelection();
+	_thd.freeze = true;
+	MarkWholeScreenDirty();
+}
+
+/**
+ * Set the area of a selection.
+ * @param sel The selection.
+ * @param start One corner.
+ * @param end The opposite corner.
+ */
+static void SetSelectionArea(PendingSelection &sel, TileIndex start, TileIndex end)
+{
+	sel.selstart = {static_cast<int>(TileX(start) * TILE_SIZE), static_cast<int>(TileY(start) * TILE_SIZE)};
+	sel.selend = {static_cast<int>(TileX(end) * TILE_SIZE), static_cast<int>(TileY(end) * TILE_SIZE)};
+}
+
+/**
+ * Place the pending station footprint at its anchor: centred on a tapped tile, or starting at a dragged corner.
+ * @param x Tiles along the map's X axis.
+ * @param y Tiles along the map's Y axis.
+ */
+static void PlaceStationFootprint(uint x, uint y)
+{
+	int sx = TileX(_mb.station_anchor);
+	int sy = TileY(_mb.station_anchor);
+	if (_mb.station_centred) {
+		sx -= (static_cast<int>(x) - 1) / 2;
+		sy -= (static_cast<int>(y) - 1) / 2;
+	}
+	sx = Clamp(sx, 0, std::max<int>(0, Map::MaxX() - static_cast<int>(x) + 1));
+	sy = Clamp(sy, 0, std::max<int>(0, Map::MaxY() - static_cast<int>(y) + 1));
+	SetSelectionArea(_mb.sel, TileXY(sx, sy), TileXY(std::min<int>(sx + x - 1, Map::MaxX()), std::min<int>(sy + y - 1, Map::MaxY())));
+}
+
+/** Find the stations the pending footprint can join, and what joining does by default. */
+static void UpdateJoinCandidates()
+{
+	_mb.join_candidates.clear();
+	_mb.join_default = NEW_STATION;
+	if (!_mb.sel.station) return;
+
+	TileArea ta = _mb.sel.Area();
+	_mb.join_candidates = FindJoinableRailStations(ta, _settings_game.station.distant_join_stations);
+	/* Without a choice, a station adjacent to exactly one other station joins it. */
+	std::vector<StationID> adjacent = FindJoinableRailStations(ta, false);
+	if (adjacent.size() == 1) _mb.join_default = adjacent[0];
+	if (_mb.join_choice != NEW_STATION && std::ranges::find(_mb.join_candidates, _mb.join_choice) == _mb.join_candidates.end()) {
+		_mb.join_choice = StationID::Invalid();
+	}
+}
+
 static void CloseBuildLabel()
 {
 	CloseWindowById(WindowClass::MobileBuildLabel, 0);
@@ -233,7 +348,11 @@ static void DropPending()
 	ReleaseHighlight();
 	_mb.estimate = {};
 	_mb.adjusting = false;
+	_mb.moving = false;
+	_mb.sel.station = false;
+	_mb.join_candidates.clear();
 	SetState(MobileBuildState::Idle);
+	InvalidateWindowData(WindowClass::BuildStation, TransportType::Rail);
 }
 
 /* --- The live label above the finger --- */
@@ -310,12 +429,43 @@ static std::string GetSelectionCostText(const PendingSelection &sel, Money cost)
 {
 	/* Removing track refunds part of its cost: show that as a gain, not as a negative cost. */
 	std::string money = cost < 0 ? GetString(STR_MOBILE_BUILD_REFUND, -cost) : GetString(STR_JUST_CURRENCY_LONG, cost);
+	if (sel.station) {
+		TileArea ta = sel.Area();
+		uint tracks, length;
+		GetRailStationTracksAndLength(ta.w, ta.h, tracks, length);
+		StationID join = GetMobileStationJoinShown();
+		if (join != NEW_STATION && Station::IsValidID(join)) return GetString(STR_MOBILE_BUILD_STATUS_STATION_JOIN, tracks, length, join, money);
+		return GetString(STR_MOBILE_BUILD_STATUS_STATION, tracks, length, money);
+	}
+	if (sel.depot) return GetString(sel.depot_faces_track ? STR_MOBILE_BUILD_STATUS_DEPOT_FACES_TRACK : STR_MOBILE_BUILD_STATUS_DEPOT_CHECK, money);
+	if (sel.IsWaypoint()) return GetString(STR_MOBILE_BUILD_STATUS_WAYPOINT, sel.TileCount(), money);
 	switch (GetMobileBuildKind()) {
 		case MobileBuildKind::Remove: return GetString(STR_MOBILE_BUILD_STATUS_REMOVE, sel.TileCount(), money);
 		case MobileBuildKind::Demolish: return GetString(STR_MOBILE_BUILD_STATUS_DEMOLISH, sel.TileCount(), money);
 		case MobileBuildKind::Convert: return GetString(STR_MOBILE_BUILD_STATUS_CONVERT, sel.TileCount(), money);
 		default: return GetString(STR_MOBILE_BUILD_STATUS_COST, sel.TileCount(), money);
 	}
+}
+
+/**
+ * Start an error with a capital letter, as the status line shows it ("Site unsuitable...", not "site unsuitable...").
+ * Formatting codes before the first letter are skipped.
+ * @param text The error.
+ * @return The error, capitalised.
+ */
+static std::string CapitaliseError(std::string text)
+{
+	for (size_t i = 0; i < text.size();) {
+		unsigned char c = static_cast<unsigned char>(text[i]);
+		if (c < 0x80) {
+			if (c >= 'a' && c <= 'z') text[i] = static_cast<char>(c - 'a' + 'A');
+			break;
+		}
+		/* Formatting codes are in the private use area, U+E000 and up: three bytes starting with 0xEE or 0xEF. */
+		if (c != 0xEE && c != 0xEF) break;
+		i += 3;
+	}
+	return text;
 }
 
 /* --- Edge scrolling --- */
@@ -362,7 +512,11 @@ static void EdgeScroll()
 bool MobileBuildReviewWanted(const Window *w)
 {
 	if (!IsReviewToolbar(w)) return false;
+	if (_mb.moving) return true;
 	switch (_thd.select_proc) {
+		case DDSP_BUILD_STATION: // Stations and waypoints.
+			return !IsRailRemoveModeActive();
+
 		case DDSP_PLACE_RAIL:
 			/* Building track follows the "confirm before building" setting; removing always asks. */
 			return _settings_client.gui.mobile_confirm_build || IsRailRemoveModeActive();
@@ -376,6 +530,39 @@ bool MobileBuildReviewWanted(const Window *w)
 }
 
 /**
+ * The pending selection moved to where the finger is now, keeping it on the map.
+ * @return The moved selection.
+ */
+static PendingSelection MovedSelection()
+{
+	PendingSelection sel = _mb.move_from;
+	Point pt = GetTileBelowCursor();
+	if (pt.x != -1) {
+		TileArea ta = sel.Area();
+		TileIndex grab_now = TileVirtXY(pt.x, pt.y);
+		int dx = static_cast<int>(TileX(grab_now)) - static_cast<int>(TileX(_mb.move_grab));
+		int dy = static_cast<int>(TileY(grab_now)) - static_cast<int>(TileY(_mb.move_grab));
+		dx = Clamp(dx, -static_cast<int>(TileX(ta.tile)), static_cast<int>(Map::MaxX()) - static_cast<int>(TileX(ta.tile) + ta.w - 1));
+		dy = Clamp(dy, -static_cast<int>(TileY(ta.tile)), static_cast<int>(Map::MaxY()) - static_cast<int>(TileY(ta.tile) + ta.h - 1));
+		_mb.move_delta = TileDiffXY(dx, dy);
+	}
+	TileArea ta = sel.Area();
+	SetSelectionArea(sel, ta.tile + _mb.move_delta, TileAddXY(ta.tile, ta.w - 1, ta.h - 1) + _mb.move_delta);
+	if (sel.depot) sel.depot_faces_track = false;
+	return sel;
+}
+
+/**
+ * Is a selection a station footprint being placed (rather than a waypoint, or removal)?
+ * @param sel The selection.
+ * @return \c true for the station tool's area.
+ */
+static bool IsStationPlacement(const PendingSelection &sel)
+{
+	return sel.proc == DDSP_BUILD_STATION && sel.method == VPM_X_AND_Y_LIMITED && !sel.remove;
+}
+
+/**
  * The finger was lifted after dragging a reviewed selection.
  * @param w The toolbar that started the selection.
  */
@@ -383,20 +570,65 @@ void MobileBuildOnRelease(Window *w)
 {
 	_mb.message.clear();
 
-	/* Lifting over a window cancels the drag. */
+	bool was_adjusting = _mb.adjusting;
+	bool was_moving = _mb.moving;
+	_mb.adjusting = false;
+	_mb.moving = false;
+
+	/* Lifting over a window cancels the drag; a moved selection goes back to where it was. */
 	Window *under = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
 	if (under != nullptr && under->window_class != WindowClass::MainWindow && under->window_class != WindowClass::MobileBuildLabel) {
 		RestorePlaceModeAfterSizing();
-		_mb.adjusting = false;
+		if (was_moving) {
+			_mb.sel = _mb.move_from;
+			ShowFrozen(_mb.sel);
+			_mb.estimate = TrySelection(_mb.sel, true);
+			SetState(MobileBuildState::Pending);
+			return;
+		}
 		SetState(MobileBuildState::Idle);
 		return;
 	}
 
-	_mb.sel = SnapshotSelection(w);
-	_mb.sel.place_mode = GetPlaceModeAfterSizing();
-	_mb.adjusting = false;
-	_thd.freeze = true;
+	if (was_moving) {
+		TileIndex old_start = _mb.move_from.Area().tile;
+		_mb.sel = MovedSelection();
+		_mb.sel.place_mode = GetPlaceModeAfterSizing();
+		if (_mb.sel.station) {
+			TileIndex new_start = _mb.sel.Area().tile;
+			int dx = static_cast<int>(TileX(new_start)) - static_cast<int>(TileX(old_start));
+			int dy = static_cast<int>(TileY(new_start)) - static_cast<int>(TileY(old_start));
+			_mb.station_anchor = TileXY(TileX(_mb.station_anchor) + dx, TileY(_mb.station_anchor) + dy);
+		}
+	} else {
+		_mb.sel = SnapshotSelection(w);
+		_mb.sel.place_mode = GetPlaceModeAfterSizing();
+		if (IsStationPlacement(_mb.sel)) {
+			_mb.sel.station = true;
+			if (!was_adjusting) _mb.join_choice = StationID::Invalid();
+			if (!was_adjusting && _mb.sel.StartTile() == _mb.sel.EndTile()) {
+				/* A tap: the picker's size, centred on the tapped tile so the finger isn't at a corner. */
+				_mb.station_anchor = _mb.sel.StartTile();
+				_mb.station_centred = true;
+				uint x, y;
+				GetRailStationFootprintSize(x, y);
+				PlaceStationFootprint(x, y);
+			} else {
+				/* A dragged area: its sides become tracks and length. */
+				TileArea ta = _mb.sel.Area();
+				_mb.station_anchor = ta.tile;
+				_mb.station_centred = false;
+				SetRailStationSizeFromFootprint(ta.w, ta.h);
+			}
+		}
+	}
 	ClearUndo();
+	if (_mb.sel.IsMovable()) {
+		ShowFrozen(_mb.sel);
+		UpdateJoinCandidates();
+	} else {
+		_thd.freeze = true;
+	}
 
 	if (_mb.sel.proc == DDSP_BUILD_BRIDGE) {
 		/* The bridge list is the confirmation: tapping a bridge builds it. */
@@ -412,6 +644,7 @@ void MobileBuildOnRelease(Window *w)
 
 	_mb.estimate = TrySelection(_mb.sel, true);
 	SetState(MobileBuildState::Pending);
+	InvalidateWindowData(WindowClass::BuildStation, TransportType::Rail);
 }
 
 /**
@@ -426,17 +659,32 @@ void MobileBuildOnSizingUpdate(Window *w)
 		_mb.message.clear();
 		ClearUndo();
 		_mb.estimated_end = INVALID_TILE;
+		_mb.estimated_start = INVALID_TILE;
 		SetState(MobileBuildState::Dragging);
 	}
 
 	EdgeScroll();
 
-	PendingSelection sel = SnapshotSelection(w);
+	PendingSelection sel;
+	if (_mb.moving) {
+		/* The whole selection follows the finger. */
+		sel = MovedSelection();
+		_thd.selstart = sel.selstart;
+		_thd.selend = sel.selend;
+	} else {
+		sel = SnapshotSelection(w);
+		sel.station = IsStationPlacement(sel);
+		/* Until the finger moves, a station tap shows the picker's size when lifted; no label yet. */
+		if (sel.station && !_mb.adjusting && sel.StartTile() == sel.EndTile()) return;
+	}
+
 	TileIndex end = sel.EndTile();
-	bool estimate = sel.proc == DDSP_PLACE_RAIL || sel.proc == DDSP_DEMOLISH_AREA || sel.proc == DDSP_CONVERT_RAIL;
-	if (end != _mb.estimated_end) {
+	bool estimate = sel.proc == DDSP_PLACE_RAIL || sel.proc == DDSP_DEMOLISH_AREA || sel.proc == DDSP_CONVERT_RAIL || sel.station || sel.depot;
+	if (end != _mb.estimated_end || sel.StartTile() != _mb.estimated_start) {
 		_mb.estimated_end = end;
+		_mb.estimated_start = sel.StartTile();
 		_mb.sel = sel;
+		if (sel.station) UpdateJoinCandidates();
 		_mb.estimate = estimate ? TrySelection(sel, true) : BuildResult{};
 	}
 
@@ -475,12 +723,38 @@ static Point TileCentreOnScreen(const Viewport &vp, TileIndex tile)
  * @param y Screen y.
  * @return The tile of the handle, or \c INVALID_TILE.
  */
+/**
+ * The handles of the pending selection: its two ends, or the four corners of a station footprint.
+ * @return The handle tiles.
+ */
+static std::vector<TileIndex> GetHandles()
+{
+	if (_mb.sel.depot) return {};
+	if (!_mb.sel.station) return {_mb.sel.StartTile(), _mb.sel.EndTile()};
+	TileArea ta = _mb.sel.Area();
+	return {ta.tile, TileAddXY(ta.tile, ta.w - 1, 0), TileAddXY(ta.tile, 0, ta.h - 1), TileAddXY(ta.tile, ta.w - 1, ta.h - 1)};
+}
+
+/**
+ * The handle opposite to a handle, which stays put while the handle is dragged.
+ * @param handle A handle.
+ * @return The opposite end or corner.
+ */
+static TileIndex GetOppositeHandle(TileIndex handle)
+{
+	if (!_mb.sel.station) return handle == _mb.sel.StartTile() ? _mb.sel.EndTile() : _mb.sel.StartTile();
+	TileArea ta = _mb.sel.Area();
+	uint x = TileX(handle) == TileX(ta.tile) ? TileX(ta.tile) + ta.w - 1 : TileX(ta.tile);
+	uint y = TileY(handle) == TileY(ta.tile) ? TileY(ta.tile) + ta.h - 1 : TileY(ta.tile);
+	return TileXY(x, y);
+}
+
 static TileIndex FindHandle(const Viewport &vp, int x, int y)
 {
 	int half = std::max(ScaleGUITrad(20), UnScaleByZoom(TILE_PIXELS * 2 * ZOOM_BASE, vp.zoom) / 2);
 	TileIndex best = INVALID_TILE;
 	int best_dist = INT_MAX;
-	for (TileIndex tile : {_mb.sel.StartTile(), _mb.sel.EndTile()}) {
+	for (TileIndex tile : GetHandles()) {
 		Point c = TileCentreOnScreen(vp, tile);
 		int dx = abs(x - c.x);
 		int dy = abs(y - c.y);
@@ -514,14 +788,26 @@ MobileViewportClick MobileBuildOnViewportClick(const Viewport &vp, int x, int y)
 		case MobileBuildState::Pending: {
 			if (_mb.sel.tunnel) return MobileViewportClick::Pan;
 			TileIndex handle = FindHandle(vp, x, y);
-			if (handle == INVALID_TILE) return MobileViewportClick::Pan;
+			if (handle != INVALID_TILE) {
+				/* Adjust: drag the touched end or corner, the opposite one stays where it is. */
+				TileIndex fixed = GetOppositeHandle(handle);
+				ReleaseHighlight();
+				SetRailRemoveMode(_mb.sel.remove);
+				VpStartPlaceSizing(fixed, _mb.sel.method, _mb.sel.proc);
+				if (_mb.sel.station) VpSetPlaceSizingLimit(_settings_game.station.station_spread);
+				_mb.adjusting = true;
+				return MobileViewportClick::Consumed;
+			}
 
-			/* Adjust: drag the touched end, the other end stays where it is. */
-			TileIndex fixed = handle == _mb.sel.StartTile() ? _mb.sel.EndTile() : _mb.sel.StartTile();
+			/* Move: a drag starting inside a station or depot moves it. */
+			Point pt = GetTileBelowCursor();
+			if (!_mb.sel.IsMovable() || pt.x == -1 || !_mb.sel.Area().Contains(TileVirtXY(pt.x, pt.y))) return MobileViewportClick::Pan;
+			_mb.moving = true;
+			_mb.move_from = _mb.sel;
+			_mb.move_grab = TileVirtXY(pt.x, pt.y);
+			_mb.move_delta = 0;
 			ReleaseHighlight();
-			SetRailRemoveMode(_mb.sel.remove);
-			VpStartPlaceSizing(fixed, _mb.sel.method, _mb.sel.proc);
-			_mb.adjusting = true;
+			VpStartPlaceSizing(_mb.sel.StartTile(), _mb.sel.method, _mb.sel.proc);
 			return MobileViewportClick::Consumed;
 		}
 
@@ -540,6 +826,10 @@ void MobileBuildOnPlacementReset()
 	_thd.freeze = false;
 	_mb.estimate = {};
 	_mb.adjusting = false;
+	_mb.moving = false;
+	/* Done keeps describing what was built ("Built station") while Undo is offered. */
+	if (_mb.state != MobileBuildState::Done) _mb.sel.station = false;
+	_mb.join_candidates.clear();
 	CloseBuildLabel();
 	if (_mb.state == MobileBuildState::BridgePicking) CloseWindowByClass(WindowClass::BuildBridge);
 	if (_mb.state != MobileBuildState::Done) _mb.state = MobileBuildState::Idle;
@@ -582,6 +872,175 @@ bool MobileBuildTunnelTap(Window *w, TileIndex tile)
 
 	_mb.estimate = TrySelection(_mb.sel, true);
 	SetState(MobileBuildState::Pending);
+	return true;
+}
+
+/**
+ * Which way a new depot faces: towards the one neighbouring track that ends at it, or else the way the last depot faced.
+ * @param tile The depot tile.
+ * @param[out] faces_track Whether a track was found.
+ * @return The direction of the entrance.
+ */
+static DiagDirection GetAutoDepotDirection(TileIndex tile, bool &faces_track)
+{
+	DiagDirection found = DiagDirection::Invalid;
+	int count = 0;
+	for (DiagDirection dir : EnumRange(DiagDirection::End)) {
+		TileIndex neighbour = TileAddByDiagDir(tile, dir);
+		if (!IsValidTile(neighbour) || !IsPlainRailTile(neighbour) || !IsTileOwner(neighbour, _local_company)) continue;
+		/* Track in the neighbour that a train leaving the depot this way would run onto. */
+		if (GetTrackBits(neighbour).Any(DiagdirReachesTracks(dir))) {
+			found = dir;
+			count++;
+		}
+	}
+	faces_track = count == 1;
+	return faces_track ? found : GetRailDepotDirection();
+}
+
+/**
+ * A tap with the depot tool: show the depot and its cost for review instead of building it.
+ * @param w The rail toolbar.
+ * @param tile The tapped tile.
+ * @return \c true when the depot is now in review; \c false to build it at once.
+ */
+bool MobileBuildDepotTap(Window *w, TileIndex tile)
+{
+	if (!IsReviewToolbar(w)) return false;
+
+	_mb.message.clear();
+	ClearUndo();
+	PendingSelection sel;
+	sel.cls = w->window_class;
+	sel.num = w->window_number;
+	sel.method = VPM_X_AND_Y;
+	sel.proc = DDSP_BUILD_STATION;
+	sel.drawstyle = HT_RECT;
+	sel.place_mode = _thd.place_mode;
+	SetSelectionArea(sel, tile, tile);
+	sel.depot = true;
+	sel.depot_dir = GetAutoDepotDirection(tile, sel.depot_faces_track);
+	_mb.sel = sel;
+	ShowFrozen(sel);
+
+	_mb.estimate = TrySelection(_mb.sel, true);
+	SetState(MobileBuildState::Pending);
+	return true;
+}
+
+/** @return The tile the pending selection starts at. */
+TileIndex GetMobileBuildPendingTile()
+{
+	return _mb.sel.StartTile();
+}
+
+/** Turn the entrance of the depot in review clockwise. */
+void MobileBuildRotateDepot()
+{
+	if (_mb.state != MobileBuildState::Pending || !_mb.sel.depot) return;
+	_mb.sel.depot_dir = ChangeDiagDir(_mb.sel.depot_dir, DiagDirDiff::Right90);
+	_mb.sel.depot_faces_track = false;
+	_mb.estimate = TrySelection(_mb.sel, true);
+	MarkTileDirtyByTile(_mb.sel.StartTile());
+	SetMobileBuildDirty();
+}
+
+/**
+ * Is a depot in review on this tile, and which way does it face?
+ * @param tile The tile.
+ * @param[out] dir The direction of its entrance.
+ * @return \c true for the tile of a depot in review.
+ */
+bool GetMobileBuildDepotArrow(TileIndex tile, DiagDirection &dir)
+{
+	if (_mb.state != MobileBuildState::Pending || !_mb.sel.depot || tile != _mb.sel.StartTile()) return false;
+	dir = _mb.sel.depot_dir;
+	return true;
+}
+
+/* --- The station picker --- */
+
+/**
+ * The size of the station footprint in review.
+ * @param[out] x Tiles along the map's X axis.
+ * @param[out] y Tiles along the map's Y axis.
+ * @return \c true when a station is in review.
+ */
+bool GetMobilePendingStationSize(uint &x, uint &y)
+{
+	if (_mb.state != MobileBuildState::Pending || !_mb.sel.station) return false;
+	TileArea ta = _mb.sel.Area();
+	x = ta.w;
+	y = ta.h;
+	return true;
+}
+
+/** @return Whether a station is in review. */
+bool GetMobilePendingStationSize()
+{
+	uint x, y;
+	return GetMobilePendingStationSize(x, y);
+}
+
+/**
+ * The picker changed: resize the station footprint in review, where it was placed.
+ * @param x Tiles along the map's X axis.
+ * @param y Tiles along the map's Y axis.
+ */
+void MobileBuildStationResize(uint x, uint y)
+{
+	if (!GetMobilePendingStationSize()) return;
+	PlaceStationFootprint(x, y);
+	MobileBuildStationResize();
+}
+
+/** Show the station footprint in review again, e.g. after the catchment area was switched on or off. */
+void MobileBuildStationResize()
+{
+	if (!GetMobilePendingStationSize()) return;
+	ShowFrozen(_mb.sel);
+	UpdateJoinCandidates();
+	_mb.estimate = TrySelection(_mb.sel, true);
+	SetMobileBuildDirty();
+	InvalidateWindowData(WindowClass::BuildStation, TransportType::Rail);
+}
+
+/** @return The stations the footprint in review can join; empty when there is no choice to make. */
+const std::vector<StationID> &GetMobileStationJoinCandidates()
+{
+	static const std::vector<StationID> none;
+	return GetMobilePendingStationSize() ? _mb.join_candidates : none;
+}
+
+/** @return The station the footprint in review joins, or \c NEW_STATION. */
+StationID GetMobileStationJoinShown()
+{
+	return _mb.join_choice != StationID::Invalid() ? _mb.join_choice : _mb.join_default;
+}
+
+/**
+ * The player chose which station the footprint in review joins.
+ * @param station The station, or \c NEW_STATION.
+ */
+void MobileBuildSetStationJoin(StationID station)
+{
+	if (!GetMobilePendingStationSize()) return;
+	_mb.join_choice = station;
+	_mb.estimate = TrySelection(_mb.sel, true);
+	SetMobileBuildDirty();
+}
+
+/**
+ * The join choice for building the station in review, replacing the desktop's join window.
+ * @param[out] join The station to join, or \c NEW_STATION.
+ * @param[out] adjacent Whether building next to another station is allowed.
+ * @return \c false when the player made no choice, so the desktop's default applies.
+ */
+bool GetMobileStationJoin(StationID &join, bool &adjacent)
+{
+	if (!_mb.sel.station || _mb.join_choice == StationID::Invalid()) return false;
+	join = _mb.join_choice;
+	adjacent = true;
 	return true;
 }
 
@@ -644,25 +1103,36 @@ static bool SelectionHasTrack(const PendingSelection &sel)
 	return false;
 }
 
+/**
+ * Does a station footprint cover tiles of an existing station? Undoing would then remove part of that station too.
+ * @param sel The selection.
+ * @return \c true when a tile in the footprint is a station tile.
+ */
+static bool SelectionHasStation(const PendingSelection &sel)
+{
+	for (TileIndex tile : sel.Area()) {
+		if (IsTileType(tile, TileType::Station)) return true;
+	}
+	return false;
+}
+
 /** Build the pending selection. */
 void MobileBuildConfirm()
 {
 	if (!MobileBuildCanConfirm()) return;
 
 	PendingSelection sel = _mb.sel;
-	bool offer_undo = GetMobileBuildKind() == MobileBuildKind::Build && !sel.tunnel && !SelectionHasTrack(sel);
+	bool is_waypoint = sel.IsWaypoint();
+	bool offer_undo = GetMobileBuildKind() == MobileBuildKind::Build && !sel.tunnel && !sel.depot && !sel.station && (is_waypoint || !SelectionHasTrack(sel));
+	/* A station over existing track is undone keeping the track; over an existing station, not at all. */
+	bool undo_station = sel.station && !SelectionHasStation(sel);
+	bool keep_rail = SelectionHasTrack(sel);
 
 	ReleaseHighlight();
 	BuildResult result = TrySelection(sel, false);
 	if (result.failed) {
 		/* Back to review, with the real error. */
-		_thd.freeze = false;
-		RestoreSelection(sel);
-		_thd.place_mode = HT_SPECIAL | (sel.place_mode & ~(HT_DRAG_MASK | HT_DIR_MASK));
-		_thd.next_drawstyle = sel.drawstyle;
-		if (sel.tunnel) VpSetPresizeRange(sel.tunnel_start, sel.tunnel_end);
-		UpdateTileSelection();
-		_thd.freeze = true;
+		ShowFrozen(sel);
 		_mb.estimate = result;
 		SetState(MobileBuildState::Pending);
 		return;
@@ -671,9 +1141,18 @@ void MobileBuildConfirm()
 	_mb.done_tiles = sel.TileCount();
 	_mb.done_cost = result.cost;
 	_mb.undo_available = false;
-	if (sel.tunnel && result.valid) {
-		/* Undo a tunnel by demolishing its entrance, which removes the whole tunnel. */
+	_mb.undo_keep_rail = false;
+	if ((sel.tunnel || sel.depot) && result.valid) {
+		/* Undo a tunnel by demolishing its entrance, which removes the whole tunnel; a depot by demolishing it. */
 		_mb.undo = sel;
+		if (sel.depot) {
+			_mb.undo.tunnel = true;
+			_mb.undo.tunnel_start = sel.StartTile();
+		}
+		offer_undo = true;
+	} else if (undo_station && result.valid) {
+		_mb.undo = sel;
+		_mb.undo_keep_rail = keep_rail;
 		offer_undo = true;
 	} else if (offer_undo) {
 		_mb.undo = sel;
@@ -684,6 +1163,11 @@ void MobileBuildConfirm()
 		if (_mb.undo.tunnel) {
 			CommandResultCapture capture(true);
 			Command<Commands::LandscapeClear>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, _mb.undo.tunnel_start);
+			undo_estimate.failed = capture.failed;
+			undo_estimate.cost = capture.cost;
+		} else if (_mb.undo.station) {
+			CommandResultCapture capture(true);
+			Command<Commands::RemoveFromRailStation>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, _mb.undo.EndTile(), _mb.undo.StartTile(), _mb.undo_keep_rail);
 			undo_estimate.failed = capture.failed;
 			undo_estimate.cost = capture.cost;
 		} else {
@@ -712,6 +1196,11 @@ void MobileBuildUndo()
 	if (_mb.undo.tunnel) {
 		CommandResultCapture capture(false);
 		Command<Commands::LandscapeClear>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, _mb.undo.tunnel_start);
+		result.failed = capture.failed;
+		if (capture.failed) result.error = capture.error.GetDecodedString();
+	} else if (_mb.undo.station) {
+		CommandResultCapture capture(false);
+		Command<Commands::RemoveFromRailStation>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, _mb.undo.EndTile(), _mb.undo.StartTile(), _mb.undo_keep_rail);
 		result.failed = capture.failed;
 		if (capture.failed) result.error = capture.error.GetDecodedString();
 	} else {
@@ -805,12 +1294,17 @@ std::string GetMobileBuildStatus(TextColour &colour)
 		case MobileBuildState::Pending:
 			if (_mb.estimate.failed) {
 				colour = TextColour::Red;
-				return GetString(STR_MOBILE_BUILD_STATUS_ERROR, _mb.estimate.error);
+				return GetString(STR_MOBILE_BUILD_STATUS_ERROR, CapitaliseError(_mb.estimate.error));
 			}
 			return GetSelectionCostText(_mb.sel, _mb.estimate.cost);
 
-		case MobileBuildState::Done:
-			return GetString(STR_MOBILE_BUILD_STATUS_BUILT, _mb.done_tiles, _mb.done_cost < 0 ? GetString(STR_MOBILE_BUILD_REFUND, -_mb.done_cost) : GetString(STR_JUST_CURRENCY_LONG, _mb.done_cost));
+		case MobileBuildState::Done: {
+			std::string money = _mb.done_cost < 0 ? GetString(STR_MOBILE_BUILD_REFUND, -_mb.done_cost) : GetString(STR_JUST_CURRENCY_LONG, _mb.done_cost);
+			if (_mb.sel.station) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_STATION, money);
+			if (_mb.sel.depot) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_DEPOT, money);
+			if (_mb.sel.IsWaypoint()) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_WAYPOINT, money);
+			return GetString(STR_MOBILE_BUILD_STATUS_BUILT, _mb.done_tiles, money);
+		}
 
 		case MobileBuildState::BridgePicking:
 			return GetString(STR_MOBILE_BUILD_STATUS_PICK_BRIDGE, _mb.sel.TileCount());
@@ -818,7 +1312,7 @@ std::string GetMobileBuildStatus(TextColour &colour)
 		default:
 			if (!_mb.message.empty()) {
 				colour = TextColour::Red;
-				return GetString(STR_MOBILE_BUILD_STATUS_ERROR, _mb.message);
+				return GetString(STR_MOBILE_BUILD_STATUS_ERROR, CapitaliseError(_mb.message));
 			}
 			return _mb.hint == STR_NULL ? std::string{} : GetString(_mb.hint);
 	}
@@ -852,6 +1346,13 @@ Money GetMobileBuildUndoCost()
 bool IsMobileBuildHandleTile(TileIndex tile)
 {
 	if (_mb.state != MobileBuildState::Pending && _mb.state != MobileBuildState::BridgePicking) return false;
+	if (_mb.sel.station) {
+		TileArea ta = _mb.sel.Area();
+		uint x = TileX(tile);
+		uint y = TileY(tile);
+		return (x == TileX(ta.tile) || x == TileX(ta.tile) + ta.w - 1) && (y == TileY(ta.tile) || y == TileY(ta.tile) + ta.h - 1) && ta.Contains(tile);
+	}
+	if (_mb.sel.depot) return false;
 	return tile == _mb.sel.StartTile() || tile == _mb.sel.EndTile();
 }
 
@@ -868,10 +1369,40 @@ bool MobileBuildHandleError(const std::string &message)
 	return true;
 }
 
+/**
+ * Reveal the pending selection: when the visible part of the map changed (a sheet opened, the layout changed) and the
+ * selection isn't fully inside it any more, scroll so the selection's centre is in the middle of the visible map.
+ * Called by the mobile layout pass.
+ */
+void MobileBuildRevealPending()
+{
+	static Rect last_map{};
+	Rect map = GetMobileVisibleMapRect();
+	bool changed = map.left != last_map.left || map.top != last_map.top || map.right != last_map.right || map.bottom != last_map.bottom;
+	last_map = map;
+	if (!changed || (_mb.state != MobileBuildState::Pending && _mb.state != MobileBuildState::BridgePicking)) return;
+
+	const Window *main = GetMainWindow();
+	if (main == nullptr || main->viewport == nullptr) return;
+	TileArea ta = _mb.sel.tunnel ? TileArea(_mb.sel.tunnel_start, _mb.sel.tunnel_end) : _mb.sel.Area();
+	bool inside = true;
+	for (TileIndex corner : {ta.tile, TileAddXY(ta.tile, ta.w - 1, 0), TileAddXY(ta.tile, 0, ta.h - 1), TileAddXY(ta.tile, ta.w - 1, ta.h - 1)}) {
+		Point pt = TileCentreOnScreen(*main->viewport, corner);
+		if (!map.Contains(pt)) inside = false;
+	}
+	if (!inside) ScrollMainWindowToTile(TileAddXY(ta.tile, ta.w / 2, ta.h / 2));
+}
+
 /** Ends the undo offer after a while. */
 static const IntervalTimer<TimerWindow> _undo_timeout = {std::chrono::milliseconds(500), [](auto) {
 	static auto done_since = std::chrono::steady_clock::now();
 	static MobileBuildState last_state = MobileBuildState::Idle;
+	/* Pausing or unpausing changes what can be built ("Not allowed while paused"): estimate again. */
+	static bool last_paused = false;
+	if (_pause_mode.Any() != last_paused) {
+		last_paused = _pause_mode.Any();
+		MobileBuildReestimate();
+	}
 	if (_mb.state != last_state) {
 		last_state = _mb.state;
 		done_since = std::chrono::steady_clock::now();

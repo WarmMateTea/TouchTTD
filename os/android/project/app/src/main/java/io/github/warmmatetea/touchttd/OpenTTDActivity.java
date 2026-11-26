@@ -7,7 +7,12 @@
 
 package io.github.warmmatetea.touchttd;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.content.pm.PackageInfo;
 import android.content.res.AssetManager;
 import android.os.Build;
@@ -79,6 +84,10 @@ public class OpenTTDActivity extends SDLActivity {
         /* SDL treats every window as full screen and re-hides any system bar that appears; the bars are ours to manage. */
         mFullscreenModeActive = false;
         Log.i(TAG, "applying system bars, navigation bar shown: " + showNavigationBar);
+        /* The game's dock and toolbars reach the screen edge under the navigation bar; let them show through it
+         * instead of the black background (MIUI) or contrast scrim some systems give three-button navigation. */
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= 29) window.setNavigationBarContrastEnforced(false);
         if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController controller = window.getInsetsController();
             if (controller == null) return;
@@ -134,6 +143,61 @@ public class OpenTTDActivity extends SDLActivity {
         }
     }
 
+    /** Preferences: which save resumes the game on a fresh start, and whether notifications were asked for. */
+    private static final String PREFS = "touchttd";
+    private static final String PREF_RESUME_SAVE = "resume_save";
+    private static final String PREF_ASKED_NOTIFICATIONS = "asked_notifications";
+
+    /**
+     * Called by the game (os/android/android_bridge.cpp) when a game starts or ends: run the "game in progress"
+     * foreground service while one does.
+     * @param running Whether a game is running.
+     */
+    public void setGameRunning(boolean running) {
+        Log.i(TAG, "setGameRunning(" + running + ")");
+        runOnUiThread(() -> {
+            Intent service = new Intent(this, GameService.class);
+            if (!running) {
+                stopService(service);
+                return;
+            }
+            askForNotificationsOnce();
+            try {
+                startForegroundService(service);
+            } catch (RuntimeException e) {
+                /* E.g. not allowed while the app is in the background; the next game start tries again. */
+                Log.w(TAG, "Could not start the game service", e);
+            }
+        });
+    }
+
+    /** Android 13+ hides a foreground service's notification without this permission; ask the first time a game starts. */
+    private void askForNotificationsOnce() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return;
+        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        if (prefs.getBoolean(PREF_ASKED_NOTIFICATIONS, false)) return;
+        prefs.edit().putBoolean(PREF_ASKED_NOTIFICATIONS, true).apply();
+        requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, 1);
+    }
+
+    /**
+     * Called by the game when it saved itself on leaving the app (path set), or when the player left the game on
+     * purpose (empty). On the next fresh start, a set save is loaded instead of showing the main menu.
+     * @param path Full path of the save, or empty.
+     */
+    public void setResumeSave(String path) {
+        Log.i(TAG, "setResumeSave(" + path + ")");
+        /* commit(), not apply(): the process may be killed soon after. */
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_RESUME_SAVE, path).commit();
+    }
+
+    @Override
+    protected void onDestroy() {
+        stopService(new Intent(this, GameService.class));
+        super.onDestroy();
+    }
+
     @Override
     protected String[] getLibraries() {
         return new String[] {"SDL3", "main"};
@@ -142,6 +206,15 @@ public class OpenTTDActivity extends SDLActivity {
     @Override
     protected String[] getArguments() {
         File config = new File(getFilesDir(), "openttd.cfg");
+        /* Android killed the app during a game: continue from the save made when the player left the app. Used once;
+         * the game sets it again the next time it's saved on leaving. */
+        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        String resume = prefs.getString(PREF_RESUME_SAVE, "");
+        prefs.edit().remove(PREF_RESUME_SAVE).commit();
+        if (!resume.isEmpty() && new File(resume).isFile()) {
+            Log.i(TAG, "Resuming the game from " + resume);
+            return new String[] {"-c", config.getAbsolutePath(), "-g", resume};
+        }
         return new String[] {"-c", config.getAbsolutePath()};
     }
 

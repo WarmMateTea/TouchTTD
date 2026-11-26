@@ -91,3 +91,8 @@ tools/mobile/run_headless.sh 1920 1080 200 false # desktop layout at 200%
 - **Widget enum names are global.** The script API imports every `src/widgets/*_widget.h` into one namespace, so a new prefix that clashes with an existing one (e.g. `WID_MH_`, already the message history's) fails the build in `script_window.hpp`.
 - `unzip` isn't installed on the server; `python3 -m zipfile -e` does the same.
 - **Never wait on a build with `pgrep -f "<text>"` or `pkill -f "<text>"` from a shell command that itself contains `<text>`.** `-f` matches full command lines, including the waiting shell's own, so the loop waits forever (or `pkill` kills itself). Run the build itself in the background and wait for it to exit, or match something only the build has (`pgrep -x cc1plus`).
+
+### Tips added in round 3
+- **Xvfb "Server is already active for display N"** right after `stop_headless.sh`: the old server is still shutting down. Wait a few seconds or use another display: `DISPLAY_NUM=96 tools/mobile/run_headless.sh ...` (and `DISPLAY=:96` for xdotool).
+- **Changing `command_func.h`, `settings_type.h` or a `widgets/*.h` enum rebuilds most of the game** (several minutes; the script API is regenerated). Run long builds in the background.
+- **Android-only rebuild after Java/resource changes** is quick: `os/android/build.sh` reuses the native build when no C++ changed.

@@ -15,6 +15,9 @@
 #include "gfx_type.h"
 #include "strings_type.h"
 
+/** Left and right inset of titles and list rows in sheets, in GUI pixels at 1x (round 3 design, section 9.1). */
+static constexpr int MOBILE_TEXT_INSET = 8;
+
 bool IsMobileLayout();
 bool IsMobileShellWindow(WindowClass cls);
 void ShowMobileVitalWindows();
@@ -26,11 +29,15 @@ Point GetMobileToolbarAlignedWindowPosition(int window_width);
 void ApplyMobileLayoutSetting();
 void ApplyMobileSystemBars();
 Rect GetMobileVisibleMapRect();
+Rect GetMobileEdgeGaps();
 Point GetMobileMapCentreOffset();
 void MobileShowInSheet(Window *w);
+void MobileShowInfoWindow(Window *w);
+bool IsMobileSheetOpen();
 void ShowMobileBuildFlyoutForToolbar(Window *toolbar, WidgetID widget);
 bool ShowMobileError(const std::string &summary, const std::string &detail);
-void DrawMobileIconButton(const Rect &r, SpriteID sprite, StringID label, bool lowered, bool disabled);
+void DrawMobileIconButton(const Rect &r, SpriteID sprite, StringID label, bool lowered, bool disabled, FontSize font_size = FontSize::Small);
+void DrawMobileTitle(const Rect &r, std::string_view text);
 
 void ShowMobileNewsBanner();
 void CloseMobileNewsBanner();

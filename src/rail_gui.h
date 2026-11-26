@@ -12,6 +12,8 @@
 
 #include "rail_type.h"
 #include "dropdown_type.h"
+#include "direction_type.h"
+#include "tile_type.h"
 
 struct Window *ShowBuildRailToolbar(RailType railtype);
 void ReinitGuiAfterToggleElrail(bool disable);
@@ -24,6 +26,11 @@ RailType GetCurrentRailType();
 bool IsRailRemoveModeActive();
 void SetRailRemoveMode(bool remove);
 void PostRailTunnel(TileIndex tile);
+void GetRailStationFootprintSize(uint &x, uint &y);
+void GetRailStationTracksAndLength(uint x, uint y, uint &tracks, uint &length);
+void SetRailStationSizeFromFootprint(uint x, uint y);
+DiagDirection GetRailDepotDirection();
+void PostRailDepot(TileIndex tile, DiagDirection dir);
 struct Window *GetMobileRailToolbar();
 bool IsMobileRailToolbarLandscape(const struct Window *w);
 void RecreateMobileRailToolbar();

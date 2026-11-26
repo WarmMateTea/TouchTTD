@@ -2,6 +2,10 @@
 <resources>
     <!-- Base application theme. -->
     <style name="AppTheme" parent="android:Theme.NoTitleBar.Fullscreen">
-        <!-- Customize your theme here. -->
+        <!-- The game's dock and toolbars reach under the navigation bar; keep the bar's background see-through
+             (three-button navigation is otherwise drawn on black on some systems, e.g. HyperOS). -->
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 </resources>

@@ -18,6 +18,14 @@ Since the first version of this file, rounds 2, the touch gesture layer and the 
 
 The user has not yet reported trying the screenshot window exercise; ask first.
 
+## Update, 26 Nov 2026 (evening)
+
+Round 3 adds good examples of **one window class, two layouts** (the most important technique of this project), each with a small `mobile` flag in the window:
+- `src/town_gui.cpp`: `_nested_town_mobile_view_widgets` vs `_nested_town_game_view_widgets`; compare `DrawMobileInfo()` with the desktop `DrawWidget()`.
+- `src/station_gui.cpp`: the mobile station window keeps the desktop's controls in a never-shown `NWID_SELECTION`, because the window's code still talks to them. A good puzzle: why does the window break if they're simply left out?
+- `src/mobile_app.cpp`: a tiny module that reacts to the app going to the background. It shows how SDL events reach the game (`src/video/sdl3_v.cpp`, `LifecycleEventWatch`).
+- Exercise idea: in `TownViewWindow::GetMobileInfoRows()`, add a row "Stations nearby".
+
 ## Suggested path from here
 
 The original path still holds. The new code adds examples that are **closer to your goal** than the screenshot window. Same pattern, but now it's mobile UI you care about.

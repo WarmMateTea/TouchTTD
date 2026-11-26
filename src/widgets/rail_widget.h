@@ -38,6 +38,9 @@ enum RailToolbarWidgets : WidgetID {
 	WID_RAT_SEL_TOOLS,      ///< Mobile layout: selection hiding the tools while picking a bridge.
 	WID_RAT_SEL_CONFIRM,    ///< Mobile layout: selection between confirm, undo and nothing.
 	WID_RAT_SEL_HIDDEN,     ///< Mobile layout: never shown; holds the tools that are in the More flyout.
+	WID_RAT_SEL_ROTATE,     ///< Mobile layout: selection showing the Rotate button while a depot is in review.
+	WID_RAT_ROTATE,         ///< Mobile layout: turn the entrance of the depot in review.
+	WID_RAT_GAP_BOTTOM,     ///< Mobile layout: spacer filling the screen edge's inset at the bottom.
 };
 
 /** Widgets of the mobile layout's More flyout of the rail toolbar. */
@@ -74,6 +77,13 @@ enum BuildRailStationWidgets : WidgetID {
 	WID_BRAS_HIGHLIGHT_OFF,        ///< Button for turning coverage highlighting off.
 	WID_BRAS_HIGHLIGHT_ON,         ///< Button for turning coverage highlighting on.
 	WID_BRAS_COVERAGE_TEXTS,       ///< Empty space for the coverage texts.
+	WID_BRAS_TITLE,                ///< Mobile layout: title.
+	WID_BRAS_CLOSE,                ///< Mobile layout: close, which drops the station tool.
+	WID_BRAS_COVERAGE_TOGGLE,      ///< Mobile layout: toggle for showing the catchment area.
+	WID_BRAS_SEL_JOIN,             ///< Mobile layout: selection showing the join dropdown when there is a station to join.
+	WID_BRAS_JOIN,                 ///< Mobile layout: dropdown choosing the station to join.
+	WID_BRAS_TRACKS_LABEL,         ///< Mobile layout: label above the number of tracks.
+	WID_BRAS_LENGTH_LABEL,         ///< Mobile layout: label above the platform length.
 
 	WID_BRAS_PLATFORM_NUM_BEGIN = WID_BRAS_PLATFORM_NUM_1 - 1, ///< Helper for determining the chosen platform width.
 	WID_BRAS_PLATFORM_LEN_BEGIN = WID_BRAS_PLATFORM_LEN_1 - 1, ///< Helper for determining the chosen platform length.
