@@ -1,6 +1,6 @@
 # Mobile UI project docs
 
-Work notes for the touch-first mobile layout of this OpenTTD fork. The project rule (see `/CLAUDE.md`) is that every step is documented here as it's done.
+Work notes for the touch-first mobile layout of this OpenTTD fork. **Resuming work? Start with [`session-state.md`](session-state.md).** The project rule (see `/CLAUDE.md`) is that every step is documented here as it's done.
 
 | File | What's in it |
 |---|---|
@@ -26,6 +26,7 @@ Work notes for the touch-first mobile layout of this OpenTTD fork. The project r
 4. `03-impl-to-design-round2.md`: round 1 results, answers to the feasibility questions, input for round 2
 5. `04-design-to-impl-round2.md`: design round 2 (laying track): rail toolbar, review before building, bridges, tunnels, undo
 6. `05-impl-to-design-round3.md`: round 2 results, answers to the round 3 questions, device findings
+7. (next) `06-design-to-impl-round3.md`: expected from the design session
 
 ## Code map
 

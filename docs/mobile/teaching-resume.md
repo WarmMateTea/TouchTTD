@@ -9,6 +9,15 @@ For the next mentor session (or for you, reading it yourself). The original ment
 - **The design session** is working on round 2 (track laying), from [`handoffs/03-impl-to-design-round2.md`](handoffs/03-impl-to-design-round2.md).
 - **Android:** plan in [`02-android-build-plan.md`](02-android-build-plan.md); waiting on your answers in its section 5.
 
+## Update, 26 Nov 2026
+
+Since the first version of this file, rounds 2, the touch gesture layer and the device polish were built (see `session-state.md`). New code that makes good teaching material:
+- `src/mobile_touch.cpp`: a small state machine turning finger events into mouse events. Good for learning how input reaches windows (`HandleMouseEvents()` → `MouseLoop()`).
+- `src/mobile_build.cpp`: shows the command system in practice: posting a command, test-mode estimates, results.
+- `os/android/project/.../OpenTTDActivity.java` + `src/os/android/android_bridge.cpp`: how C++ calls into Java (JNI).
+
+The user has not yet reported trying the screenshot window exercise; ask first.
+
 ## Suggested path from here
 
 The original path still holds. The new code adds examples that are **closer to your goal** than the screenshot window. Same pattern, but now it's mobile UI you care about.
