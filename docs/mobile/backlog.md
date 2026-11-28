@@ -21,6 +21,7 @@ Left over: a "Continue" entry on the main menu (the menus are in design round 4)
 ## Mobile UI
 - **Corner handles of a station footprint** don't show inside the white rectangle (neighbouring outlines cover them). Needs a marker sprite; asked the designer (handoff 07).
 - **Ghost signals** (round 5 design §5): pending signals show only as the highlighted stretch and a count. Drawing them needs the signal sprites added to the viewport's tile drawing at the pending positions (as `_vd.handle_sprites_to_draw` does for handles), computing the positions the way `CmdBuildSignalTrack` walks the track.
+- **Fund new industry: footprint highlight** (round 5 §9.3): the pending industry shows only the tapped tile. `IndustrySpec::layouts[layout]` gives the tiles; highlight their bounding box with `SetTileSelectSize()` after the tap.
 - **Steppers: hold to repeat** (round 5 design §4): Settings' − value + steps once per tap. A held finger is a long press today (tooltip); repeating needs the gesture layer to send repeated clicks while a stepper button is held.
 - **Station picker Type row** for NewGRF station classes/types (design round 3 §3.2) isn't built; base game unaffected.
 - **"Building…" state** for multiplayer (design round 3 §1.2): planned with multiplayer in round 5, batch 13.

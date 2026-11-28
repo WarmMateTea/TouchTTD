@@ -280,6 +280,8 @@ add_files(
     mobile_company_gui.cpp
     mobile_company_gui.h
     mobile_gui.cpp
+    mobile_industry_gui.cpp
+    mobile_industry_gui.h
     mobile_gui.h
     mobile_newgame_gui.cpp
     mobile_newgame_gui.h

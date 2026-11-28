@@ -202,6 +202,40 @@ enum MobileStopsBarWidgets : WidgetID {
 	WID_MSB_GAP_BOTTOM, ///< Spacer filling the screen edge's inset at the bottom.
 };
 
+/** Widgets of the mobile industry window (round 5 design, 9.2). */
+enum MobileIndustryWidgets : WidgetID {
+	WID_MIV_SEL_BACK, ///< Selection showing Back when opened over the directory.
+	WID_MIV_BACK, ///< Back to the directory.
+	WID_MIV_TITLE, ///< The industry's name.
+	WID_MIV_CLOSE, ///< Close.
+	WID_MIV_INFO, ///< Produces, accepts, hint.
+	WID_MIV_SHOW_ON_MAP, ///< Scroll the map there.
+	WID_MIV_CHAIN, ///< The cargo chain (desktop window).
+	WID_MIV_GRAPH, ///< The production graph (desktop window).
+};
+
+/** Widgets of the mobile industry directory (round 5 design, 9.1). */
+enum MobileIndustryDirectoryWidgets : WidgetID {
+	WID_MIND_PRODUCES, ///< Filter by produced cargo.
+	WID_MIND_ACCEPTS, ///< Filter by accepted cargo.
+	WID_MIND_SORT, ///< Sort order.
+	WID_MIND_LIST, ///< The industries.
+	WID_MIND_SCROLL, ///< Scrollbar of the list.
+	WID_MIND_FUND, ///< Fund new industry.
+};
+
+/** Widgets of the mobile Fund new industry (round 5 design, 9.3). */
+enum MobileBuildIndustryWidgets : WidgetID {
+	WID_MBI_TITLE, ///< Title.
+	WID_MBI_CLOSE, ///< Close.
+	WID_MBI_LIST, ///< The industry types.
+	WID_MBI_SCROLL, ///< Scrollbar of the list.
+	WID_MBI_SEL_FOOTER, ///< Selection showing the review footer while placing.
+	WID_MBI_STATUS, ///< What to do, the cost, or the error.
+	WID_MBI_CANCEL, ///< Cancel the industry in review, or stop placing.
+	WID_MBI_FUND, ///< Fund the industry in review.
+};
+
 /** Widgets of the mobile finances (round 5 design, batch 6). */
 enum MobileFinancesWidgets : WidgetID {
 	WID_MFIN_YEAR, ///< "<year> so far".

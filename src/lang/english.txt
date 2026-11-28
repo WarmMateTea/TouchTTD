@@ -1178,6 +1178,40 @@ STR_MOBILE_NEW_SHIP                                             :New ship
 STR_MOBILE_NEW_AIRCRAFT                                         :New aircraft
 STR_MOBILE_NEW_VEHICLE_NONE                                     :Nothing can be bought here yet
 STR_MOBILE_NEW_VEHICLE_LINE                                     :{RAW_STRING} · {VELOCITY}
+STR_MOBILE_INDUSTRY_PRODUCED                                    :{CARGO_LONG} · {NUM}% transported
+STR_MOBILE_INDUSTRY_PRODUCES_NOTHING                            :Produces nothing
+STR_MOBILE_INDUSTRY_PRODUCES                                    :Produces
+STR_MOBILE_INDUSTRY_ACCEPTS                                     :Accepts
+STR_MOBILE_INDUSTRY_NOTHING                                     :Nothing
+STR_MOBILE_INDUSTRY_TRANSPORTED                                 :{NUM}% transported
+STR_MOBILE_INDUSTRY_LAST_MONTH                                  :{CARGO_LONG} last month
+STR_MOBILE_INDUSTRY_WAITING                                     :{CARGO_LONG} waiting
+STR_MOBILE_INDUSTRY_HINT                                        :Nobody serves this {STRING} yet. Build a station within reach of it, and vehicles to carry its cargo
+STR_MOBILE_INDUSTRY_CHAIN                                       :Cargo chain
+STR_MOBILE_INDUSTRY_GRAPH                                       :Production
+STR_MOBILE_INDUSTRY_NONE                                        :No industries match
+STR_MOBILE_INDUSTRY_INFO                                        :i
+STR_MOBILE_INDUSTRY_PRODUCES_ANY                                :Produces: any
+STR_MOBILE_INDUSTRY_PRODUCES_CARGO                              :Produces: {STRING}
+STR_MOBILE_INDUSTRY_ACCEPTS_ANY                                 :Accepts: any
+STR_MOBILE_INDUSTRY_ACCEPTS_CARGO                               :Accepts: {STRING}
+STR_MOBILE_INDUSTRY_FILTER_TOOLTIP                              :{BLACK}Show only industries that produce (or accept) a cargo
+STR_MOBILE_INDUSTRY_FUND                                        :+ Fund new industry
+STR_MOBILE_INDUSTRY_FUND_TITLE                                  :Fund new industry
+STR_MOBILE_INDUSTRY_FUND_NONE                                   :No industries can be funded in this game
+STR_MOBILE_INDUSTRY_COST                                        :{CURRENCY_LONG}
+STR_MOBILE_INDUSTRY_PRODUCES_COST                               :Produces {RAW_STRING} · {CURRENCY_LONG}
+STR_MOBILE_INDUSTRY_PRODUCES_LIST                               :Produces: {RAW_STRING}
+STR_MOBILE_INDUSTRY_ACCEPTS_LIST                                :Accepts: {RAW_STRING}
+STR_MOBILE_INDUSTRY_PLACE                                       :Place it · {CURRENCY_LONG}
+STR_MOBILE_INDUSTRY_PROSPECT                                    :Prospect · {CURRENCY_LONG}
+STR_MOBILE_INDUSTRY_NOT_NOW                                     :Can't be funded now
+STR_MOBILE_INDUSTRY_TAP_TO_PLACE                                :Tap the map to place the {STRING}
+STR_MOBILE_INDUSTRY_PENDING                                     :{STRING} · {CURRENCY_LONG}
+STR_MOBILE_INDUSTRY_FUND_VERB                                   :{WHITE}Fund
+STR_MOBILE_INDUSTRY_PROSPECT_TITLE                              :Prospect for a {STRING} for {CURRENCY_LONG}?
+STR_MOBILE_INDUSTRY_PROSPECT_TEXT                               :It may find nothing.
+STR_MOBILE_INDUSTRY_PROSPECT_VERB                               :Prospect
 STR_MOBILE_FINANCES_INCOME                                      :Income
 STR_MOBILE_FINANCES_RUNNING                                     :Running costs
 STR_MOBILE_FINANCES_CONSTRUCTION                                :Construction

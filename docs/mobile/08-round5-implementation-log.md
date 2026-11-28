@@ -12,7 +12,8 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 | 4. Road and tram | done, headless (tram untested: no tram types in the test game) |
 | 5. Other vehicles and refit | done, headless with road vehicles (ships, aircraft need docks and airports: batch 9) |
 | 6. Finances | done, headless |
-| 7. Industries | next |
+| 7. Industries | done, headless |
+| 8. Towns, news and land info | next |
 
 ## Batch 1: fonts, main menu, cells, fixes, leftovers (§2, §3)
 
@@ -138,3 +139,22 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 - **`Company::yearly_expenses` keeps costs positive and income negative** (`[0]` is this year, `[1]` last year, `[2]` the year before); the table negates them.
 - The desktop's category names (`STR_FINANCES_SECTION_*`) carry `{GOLD}`; drawing them black needs `ExtendedTextColourFlag::Forced` (and `NoShade`, or they keep a shadow).
 - `Money` is `OverflowSafeInt`: a `?:` with a literal `0` on one side doesn't compile; write `Money{0}`.
+
+## Batch 7: Industries (§9)
+
+### Steps
+- **New file** `src/mobile_industry_gui.cpp` (+ `.h`), hooked into `ShowIndustryDirectory()`, `ShowIndustryViewWindow()` and `ShowBuildIndustryWindow()` in the mobile layout. New widgets `WID_MIND_*`, `WID_MIV_*`, `WID_MBI_*`.
+- **Directory** (World › Industries): Produces / Accepts filters (any, or a cargo some industry type produces or accepts), sort (Name · Type · Production · Transported); rows of 48 with the map colour, name and "168 tonnes of coal · 0% transported" (two cargoes, then "..."), and an (i) button. A row scrolls the map to the industry; (i) opens it. "+ Fund new industry" at the bottom.
+- **Industry window**: Produces (cargo colour, "<n> last month", "<p>% transported" red at 0) and Accepts (with what's waiting); the hint "Nobody serves this Coal Mine yet…" when nothing is transported; Show on map · Cargo chain · Production (the desktop windows; `ShowIndustryCargoChain()` is a new export wrapping the static `ShowIndustryCargoesWindow()`). ‹ returns to the directory when opened over it.
+- **Fund new industry**: the types the game lets you fund (raw industries only when the setting allows), each with "Produces X · £cost"; a tap expands it to produces/accepts and **Place it · £x** (or **Prospect · £x** when raw industries are prospected; "Can't be funded now" when a NewGRF says no). Place it → tap the map → a review footer in the window: "Factory · £609,375", ✕, **Fund** (the seed and layout are kept, so the estimate and the construction are the same industry). Prospect asks first ("Prospect for a coal mine for £x? It may find nothing.").
+- The floating red Cancel doesn't show for Fund new industry, which has its own ✕ (`WantToolCancel()`).
+- Screenshots `L27`–`L29`.
+
+### Findings
+- **The script API generator chokes on non-ASCII characters in widget comments** (`‹` in a `///<` comment of `mobile_widget.h` broke the generated `script_window.hpp`). Keep widget enum comments ASCII.
+- `TileArea::GetCentreTile()` (British spelling).
+- The estimate of `BuildIndustry` under a `CommandResultCapture` doesn't check the money; "not enough cash" comes only when funding, in the error banner.
+- Formatting `GetString(capture.error_summary)` when nothing failed is a crash (`INVALID_STRING_ID`).
+
+### Not done
+- The pending industry's footprint isn't highlighted (only the tapped tile); the layout is chosen at the tap.

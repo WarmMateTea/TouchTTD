@@ -51,6 +51,8 @@
 #include "core/string_consumer.hpp"
 
 #include "widgets/industry_widget.h"
+#include "mobile_gui.h"
+#include "mobile_industry_gui.h"
 
 #include "table/strings.h"
 
@@ -765,6 +767,10 @@ public:
 void ShowBuildIndustryWindow()
 {
 	if (_game_mode != GameMode::Editor && !Company::IsValidID(_local_company)) return;
+	if (IsMobileLayout()) {
+		ShowMobileBuildIndustry();
+		return;
+	}
 	if (BringWindowToFrontById(WindowClass::BuildIndustry, 0)) return;
 	new BuildIndustryWindow();
 }
@@ -1229,6 +1235,10 @@ static WindowDesc _industry_view_desc(
 
 void ShowIndustryViewWindow(IndustryID industry)
 {
+	if (IsMobileLayout()) {
+		ShowMobileIndustryWindow(industry);
+		return;
+	}
 	AllocateWindowDescFront<IndustryViewWindow>(_industry_view_desc, industry);
 }
 
@@ -1925,6 +1935,10 @@ static WindowDesc _industry_directory_desc(
 
 void ShowIndustryDirectory()
 {
+	if (IsMobileLayout()) {
+		ShowMobileIndustryDirectory();
+		return;
+	}
 	AllocateWindowDescFront<IndustryDirectoryWindow>(_industry_directory_desc, 0);
 }
 
@@ -3433,4 +3447,13 @@ static void ShowIndustryCargoesWindow(IndustryType id)
 void ShowIndustryCargoesWindow()
 {
 	ShowIndustryCargoesWindow(NUM_INDUSTRYTYPES);
+}
+
+/**
+ * Show the cargo chain of an industry type (the mobile industry window's Cargo chain).
+ * @param type The industry type.
+ */
+void ShowIndustryCargoChain(IndustryType type)
+{
+	ShowIndustryCargoesWindow(type);
 }

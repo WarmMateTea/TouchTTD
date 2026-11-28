@@ -1194,7 +1194,8 @@ static bool WantToolCancel()
 	if ((_thd.place_mode & HT_DRAG_MASK) == HT_NONE) return false;
 	const Window *w = _thd.GetCallbackWnd();
 	/* Not for the construction toolbar (it has its own Cancel), nor while adding stops (the stops bar has Done). */
-	return w != nullptr && w != GetMobileConstructionToolbar() && w->window_class != WindowClass::MainWindow && w->window_class != WindowClass::VehicleView;
+	/* Nor for Fund new industry, whose review footer has one. */
+	return w != nullptr && w != GetMobileConstructionToolbar() && w->window_class != WindowClass::MainWindow && w->window_class != WindowClass::VehicleView && w->window_class != WindowClass::BuildIndustry;
 }
 
 /** The hub dock: a left rail in landscape and a bottom bar in portrait, with the same widgets. */

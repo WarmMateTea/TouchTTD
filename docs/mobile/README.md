@@ -43,6 +43,7 @@ Work notes for the touch-first mobile layout of this OpenTTD fork. **Resuming wo
 - `src/town_gui.cpp`, `src/station_gui.cpp`, `src/smallmap_gui.cpp`: mobile layouts of the town directory and window, station window, minimap
 - `src/mobile_vehicle_gui.cpp`: depot sheet, New train (and road vehicle, ship, aircraft), vehicle window with orders, adding stops, vehicle lists, refit
 - `src/mobile_company_gui.cpp`: finances and the loan
+- `src/mobile_industry_gui.cpp`: industry directory, industry window, Fund new industry
 - `src/mobile_saveload_gui.cpp`, `src/mobile_newgame_gui.cpp`, `src/mobile_settings_gui.cpp`: save/load, New game, Settings; the main menu is a layout in `src/intro_gui.cpp`
 - `src/mobile_app.cpp`, `src/mobile_app.h`: app life cycle on phones (pause and save when leaving, resume after a kill)
 - `src/mobile_touch.cpp`: the touch gesture layer
