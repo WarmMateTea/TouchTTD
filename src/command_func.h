@@ -100,6 +100,7 @@ struct CommandResultCapture {
 	bool any = false; ///< Whether any command was posted.
 	EncodedString error; ///< Error of the first failed command.
 	StringID error_summary = INVALID_STRING_ID; ///< Summary ("Can't build ...") of the first failed command.
+	bool blocked_by_pause = false; ///< A command can't be executed now because the game is paused (also set when only estimating).
 	bool first_only = false; ///< Only the first command counts; later ones (e.g. posted by its callback) neither change the result nor show errors.
 
 	explicit CommandResultCapture(bool estimate_only);

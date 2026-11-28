@@ -1475,6 +1475,8 @@ struct StationViewWindow : public Window {
 			case WID_SV_WAITING:
 				fill.height = resize.height = this->line_height;
 				size.height = 4 * resize.height + padding.height;
+				/* In the sheet, resize by pixel so the window fills the slot and the footer sits on its bottom edge. */
+				if (this->mobile) fill.height = resize.height = 1;
 				break;
 
 			case WID_SV_ACCEPT_RATING_LIST:
@@ -1546,6 +1548,9 @@ struct StationViewWindow : public Window {
 			NWidgetBase *nwi = this->GetWidget<NWidgetBase>(WID_SV_WAITING);
 			Rect waiting_rect = nwi->GetCurrentRect().Shrink(WidgetDimensions::scaled.framerect);
 			this->DrawEntries(cargo, waiting_rect, pos, maxrows, 0);
+			if (this->mobile && displayed_rows.empty()) {
+				DrawString(waiting_rect.Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0), STR_MOBILE_STATION_NOTHING_WAITING, TextColour::Black);
+			}
 			scroll_to_row = INT_MAX;
 		}
 	}
@@ -2232,6 +2237,12 @@ struct StationViewWindow : public Window {
 
 	void OnResize() override
 	{
+		if (this->mobile) {
+			/* The list resizes by pixel in the mobile layout (see UpdateWidgetSize()); count whole rows. */
+			const NWidgetBase *nwid = this->GetWidget<NWidgetBase>(WID_SV_WAITING);
+			this->vscroll->SetCapacity((static_cast<int>(nwid->current_y) - WidgetDimensions::scaled.framerect.Vertical()) / this->line_height);
+			return;
+		}
 		this->vscroll->SetCapacityFromWidget(this, WID_SV_WAITING, WidgetDimensions::scaled.framerect.Vertical());
 	}
 

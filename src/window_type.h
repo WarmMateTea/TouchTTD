@@ -815,6 +815,18 @@ enum class WindowClass : uint16_t {
 	 */
 	MobileToolCancel,
 
+	/**
+	 * Mobile layout bar shown while adding stops to a train's orders; %Window numbers:
+	 *   - 0 = #MobileStopsBarWidgets
+	 */
+	MobileStopsBar,
+
+	/**
+	 * Mobile layout settings; %Window numbers:
+	 *   - 0 = #MobileSettingsWidgets
+	 */
+	MobileSettings,
+
 	Invalid = 0xFFFF, ///< Invalid window.
 };
 

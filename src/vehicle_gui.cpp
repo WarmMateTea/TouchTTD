@@ -48,6 +48,9 @@
 
 #include "table/strings.h"
 
+#include "mobile_gui.h"
+#include "mobile_vehicle_gui.h"
+
 #include "safeguards.h"
 
 
@@ -2319,6 +2322,11 @@ static void ShowVehicleListWindowLocal(CompanyID company, VehicleListType vlt, V
 
 	assert(IsCompanyBuildableVehicleType(vehicle_type));
 	VehicleListIdentifier vli(vlt, vehicle_type, company, unique_number);
+	/* The mobile layout has its own list for the company's trains and those calling at a station. */
+	if (IsMobileLayout() && vehicle_type == VehicleType::Train && company == _local_company && (vlt == VehicleListType::Company || vlt == VehicleListType::Station)) {
+		ShowMobileTrainList(vli.ToWindowNumber(), vlt == VehicleListType::Station ? StationID(unique_number) : StationID::Invalid());
+		return;
+	}
 	AllocateWindowDescFront<VehicleListWindow>(_vehicle_list_desc[vehicle_type], vli.ToWindowNumber(), vli);
 }
 
@@ -2329,7 +2337,7 @@ void ShowVehicleListWindow(CompanyID company, VehicleType vehicle_type)
 	 * if IsCtrlPressed(), do the opposite action (Advanced list x Normal list)
 	 */
 
-	if ((_settings_client.gui.advanced_vehicle_list > (uint)(company != _local_company)) != IsCtrlPressed()) {
+	if (!(IsMobileLayout() && vehicle_type == VehicleType::Train) && (_settings_client.gui.advanced_vehicle_list > (uint)(company != _local_company)) != IsCtrlPressed()) {
 		ShowCompanyGroup(company, vehicle_type);
 	} else {
 		ShowVehicleListWindowLocal(company, VehicleListType::Company, vehicle_type, company.base());
@@ -3498,6 +3506,10 @@ static WindowDesc _train_view_desc(
  */
 void ShowVehicleViewWindow(const Vehicle *v)
 {
+	if (IsMobileLayout() && v->type == VehicleType::Train) {
+		ShowMobileTrainWindow(v);
+		return;
+	}
 	AllocateWindowDescFront<VehicleViewWindow>((v->type == VehicleType::Train) ? _train_view_desc : _vehicle_view_desc, v->index);
 }
 

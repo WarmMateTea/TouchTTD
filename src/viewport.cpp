@@ -83,6 +83,7 @@
 #include "mobile_build.h"
 #include "mobile_gui.h"
 #include "mobile_touch.h"
+#include "mobile_vehicle_gui.h"
 #include "tilehighlight_func.h"
 #include "window_gui.h"
 #include "linkgraph/linkgraph_gui.h"
@@ -176,6 +177,9 @@ struct ViewportDrawer {
 
 	StringSpriteToDrawVector string_sprites_to_draw;
 	TileSpriteToDrawVector tile_sprites_to_draw;
+	TileSpriteToDrawVector handle_sprites_to_draw; ///< Mobile layout: handle outlines, drawn after all other tile sprites.
+	std::vector<Point> handle_knobs; ///< Mobile layout: centres of handle tiles (remapped coordinates), for their knobs.
+	bool adding_handles = false; ///< AddTileSpriteToDraw() adds to #handle_sprites_to_draw.
 	ParentSpriteToDrawVector parent_sprites_to_draw;
 	ParentSpriteToSortVector parent_sprites_to_sort; ///< Parent sprite pointer array used for sorting
 	ChildScreenSpriteToDrawVector child_screen_sprites_to_draw;
@@ -512,7 +516,7 @@ static void AddTileSpriteToDraw(SpriteID image, PaletteID pal, int32_t x, int32_
 {
 	assert((image & SPRITE_MASK) < MAX_SPRITES);
 
-	TileSpriteToDraw &ts = _vd.tile_sprites_to_draw.emplace_back();
+	TileSpriteToDraw &ts = (_vd.adding_handles ? _vd.handle_sprites_to_draw : _vd.tile_sprites_to_draw).emplace_back();
 	ts.image = image;
 	ts.pal = pal;
 	ts.sub = sub;
@@ -1116,7 +1120,7 @@ static void HighlightTownLocalAuthorityTiles(const TileInfo *ti)
 
 }
 
-static void DrawTileSelectionArea(const TileInfo *ti, bool handle);
+static void DrawTileSelectionArea(const TileInfo *ti);
 
 /**
  * Draw the entrance arrow of a depot in review in the mobile layout: the one-way road arrow, pointing out of the entrance.
@@ -1142,19 +1146,24 @@ static void DrawMobileDepotArrow(const TileInfo *ti, DiagDirection dir)
  */
 static void DrawTileSelection(const TileInfo *ti)
 {
-	/* The ends (or corners) of a selection in review in the mobile layout can be dragged: they are drawn blue. */
-	bool handle = IsMobileBuildHandleTile(ti->tile);
-	DrawTileSelectionArea(ti, handle);
-	if (handle && !(_thd.drawstyle & HT_RECT)) DrawTileSelectionRect(ti, PALETTE_SEL_TILE_BLUE);
+	DrawTileSelectionArea(ti);
+
+	/* The ends (or corners) of a selection in review in the mobile layout can be dragged. Their blue outline is drawn
+	 * after all other tile sprites, so the white outlines of neighbouring tiles don't cover it, and a knob marks the
+	 * centre, drawn over everything. */
+	if (IsMobileBuildHandleTile(ti->tile)) {
+		AutoRestoreBackup adding(_vd.adding_handles, true);
+		DrawTileSelectionRect(ti, PALETTE_SEL_TILE_BLUE);
+		_vd.handle_knobs.push_back(RemapCoords(ti->x + TILE_SIZE / 2, ti->y + TILE_SIZE / 2, ti->z + GetPartialPixelZ(TILE_SIZE / 2, TILE_SIZE / 2, ti->tileh)));
+	}
 	if (DiagDirection dir; GetMobileBuildDepotArrow(ti->tile, dir)) DrawMobileDepotArrow(ti, dir);
 }
 
 /**
  * Draw the selection, error square and highlights of a tile.
  * @param ti TileInfo Tile that is being drawn
- * @param handle The tile is a handle of a selection in review in the mobile layout; a rectangle is drawn blue there.
  */
-static void DrawTileSelectionArea(const TileInfo *ti, bool handle)
+static void DrawTileSelectionArea(const TileInfo *ti)
 {
 	/* Highlight tiles inside local authority of selected towns. */
 	HighlightTownLocalAuthorityTiles(ti);
@@ -1179,7 +1188,7 @@ static void DrawTileSelectionArea(const TileInfo *ti, bool handle)
 			IsInsideBS(ti->y, _thd.pos.y, _thd.size.y)) {
 draw_inner:
 		if (_thd.drawstyle & HT_RECT) {
-			if (!is_redsq) DrawTileSelectionRect(ti, _thd.make_square_red ? PALETTE_SEL_TILE_RED : (handle ? PALETTE_SEL_TILE_BLUE : PAL_NONE));
+			if (!is_redsq) DrawTileSelectionRect(ti, _thd.make_square_red ? PALETTE_SEL_TILE_RED : PAL_NONE);
 		} else if (_thd.drawstyle & HT_POINT) {
 			/* Figure out the Z coordinate for the single dot. */
 			int z = 0;
@@ -1876,6 +1885,7 @@ void ViewportDoDraw(const Viewport &vp, int left, int top, int right, int bottom
 	DrawTextEffects(&_vd.dpi);
 
 	if (!_vd.tile_sprites_to_draw.empty()) ViewportDrawTileSprites(&_vd.tile_sprites_to_draw);
+	if (!_vd.handle_sprites_to_draw.empty()) ViewportDrawTileSprites(&_vd.handle_sprites_to_draw);
 
 	for (auto &psd : _vd.parent_sprites_to_draw) {
 		_vd.parent_sprites_to_sort.push_back(&psd);
@@ -1901,6 +1911,20 @@ void ViewportDoDraw(const Viewport &vp, int left, int top, int right, int bottom
 		vp.overlay->Draw(&dp);
 	}
 
+	if (!_vd.handle_knobs.empty()) {
+		/* Mobile layout: a knob on each handle, 6 GUI pixels, blue with a white border. Translate to world coordinates. */
+		dp.left = UnScaleByZoom(_vd.dpi.left, zoom);
+		dp.top = UnScaleByZoom(_vd.dpi.top, zoom);
+		int half = ScaleGUITrad(3);
+		int border = ScaleGUITrad(1);
+		for (const Point &pt : _vd.handle_knobs) {
+			int cx = UnScaleByZoom(pt.x, zoom);
+			int cy = UnScaleByZoom(pt.y, zoom);
+			GfxFillRect(cx - half - border, cy - half - border, cx + half + border - 1, cy + half + border - 1, PC_WHITE);
+			GfxFillRect(cx - half, cy - half, cx + half - 1, cy + half - 1, PC_LIGHT_BLUE);
+		}
+	}
+
 	if (!_vd.string_sprites_to_draw.empty()) {
 		/* translate to world coordinates */
 		dp.left = UnScaleByZoom(_vd.dpi.left, zoom);
@@ -1910,6 +1934,8 @@ void ViewportDoDraw(const Viewport &vp, int left, int top, int right, int bottom
 
 	_vd.string_sprites_to_draw.clear();
 	_vd.tile_sprites_to_draw.clear();
+	_vd.handle_sprites_to_draw.clear();
+	_vd.handle_knobs.clear();
 	_vd.parent_sprites_to_draw.clear();
 	_vd.parent_sprites_to_sort.clear();
 	_vd.child_screen_sprites_to_draw.clear();
@@ -2325,6 +2351,28 @@ static bool CheckClickOnViewportSign(const Viewport &vp, int x, int y, const Vie
  * @param y Y position of click
  * @return true if the sign was hit
  */
+/**
+ * The station or waypoint whose sign is at a point of a viewport.
+ * @param vp The viewport.
+ * @param x Screen x.
+ * @param y Screen y.
+ * @return The topmost station or waypoint sign hit, or \c nullptr.
+ */
+static const BaseStation *GetStationSignAt(const Viewport &vp, int x, int y)
+{
+	if (_game_mode == GameMode::Menu || !_display_opt.Test(DisplayOption::ShowStationNames) || IsInvisibilitySet(TransparencyOption::Signs)) return nullptr;
+	x = ScaleByZoom(x - vp.left, vp.zoom) + vp.virtual_left;
+	y = ScaleByZoom(y - vp.top, vp.zoom) + vp.virtual_top;
+	Rect search_rect = ExpandRectWithViewportSignMargins({x - 1, y - 1, x + 1, y + 1}, vp.zoom);
+	const BaseStation *hit = nullptr;
+	_viewport_sign_kdtree.FindContained(search_rect.left, search_rect.top, search_rect.right, search_rect.bottom, [&](const ViewportSignKdtreeItem &item) {
+		if (item.type != ViewportSignKdtreeItem::VKI_STATION) return;
+		const BaseStation *st = BaseStation::Get(std::get<StationID>(item.id));
+		if (CheckClickOnViewportSign(vp, x, y, &st->sign)) hit = st;
+	});
+	return hit;
+}
+
 static bool CheckClickOnViewportSign(const Viewport &vp, int x, int y)
 {
 	if (_game_mode == GameMode::Menu) return false;
@@ -2546,6 +2594,9 @@ bool HandleViewportClicked(const Viewport &vp, int x, int y)
 	if (_thd.place_mode & HT_VEHICLE) {
 		if (v != nullptr && VehicleClicked(v)) return true;
 	}
+
+	/* Mobile layout, adding stops to a train: a station sign counts as its station. */
+	if ((_thd.place_mode & HT_DRAG_MASK) != HT_NONE && IsMobileLayout() && MobileVehicleOnStationSignClick(GetStationSignAt(vp, x, y))) return true;
 
 	/* Vehicle placement mode already handled above. */
 	if ((_thd.place_mode & HT_DRAG_MASK) != HT_NONE) {

@@ -30,7 +30,7 @@ typedef void QueryCallbackProc(Window*, bool);
 
 void ShowQueryString(std::string_view str, StringID caption, uint max_len, Window *parent, CharSetFilter afilter, QueryStringFlags flags);
 void UpdateQueryStringDefault(std::string_view str);
-void ShowQuery(EncodedString &&caption, EncodedString &&message, Window *w, QueryCallbackProc *callback, bool focus = false);
+void ShowQuery(EncodedString &&caption, EncodedString &&message, Window *w, QueryCallbackProc *callback, bool focus = false, StringID verb = INVALID_STRING_ID, bool destructive = true);
 
 /** The number of 'characters' on the on-screen keyboard. */
 static const uint OSK_KEYBOARD_ENTRIES = 50;

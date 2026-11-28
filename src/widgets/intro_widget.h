@@ -27,6 +27,9 @@ enum SelectGameIntroWidgets : WidgetID {
 	WID_SGI_HELP,                  ///< Help and manuals button.
 	WID_SGI_CONTENT_DOWNLOAD,      ///< Content Download button.
 	WID_SGI_EXIT,                  ///< Exit button.
+	WID_SGI_SEL_CONTINUE,          ///< Mobile layout: selection showing Continue when there is a save to continue.
+	WID_SGI_CONTINUE,              ///< Mobile layout: continue the last game.
+	WID_SGI_VERSION,               ///< Mobile layout: version label.
 };
 
 #endif /* WIDGETS_INTRO_WIDGET_H */

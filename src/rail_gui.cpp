@@ -549,6 +549,7 @@ struct BuildRailToolbarWindow : Window {
 	WidgetID last_user_action = INVALID_WIDGET; ///< Last started user action.
 	const bool mobile; ///< Whether this is the mobile layout of the toolbar.
 	const bool landscape; ///< For the mobile layout: whether this is the landscape (one row) layout.
+	bool tools_hidden = false; ///< For the mobile layout: a sheet hides the tools and nothing is in progress.
 
 	/** The tools that the mobile layout keeps in its More flyout, in that flyout's order. */
 	static inline const WidgetID more_tools_landscape[] = {WID_RAT_BUILD_WAYPOINT, WID_RAT_CONVERT_RAIL, WID_RAT_BUILD_NS, WID_RAT_BUILD_EW, WID_RAT_BUILD_X, WID_RAT_BUILD_Y};
@@ -667,6 +668,8 @@ struct BuildRailToolbarWindow : Window {
 		bool picking = state == MobileBuildState::BridgePicking || FindWindowById(WindowClass::BuildStation, TransportType::Rail) != nullptr;
 		/* In landscape the tools don't fit beside an open sheet either (an info window, say). */
 		if (this->landscape && IsMobileSheetOpen()) picking = true;
+		/* ...and with no tool or selection either, offer to bring the tools back rather than a dead Cancel and Build. */
+		this->tools_hidden = picking && state == MobileBuildState::Idle && _thd.GetCallbackWnd() != this && FindWindowById(WindowClass::BuildStation, TransportType::Rail) == nullptr;
 		DiagDirection depot_dir;
 		bool depot_pending = state == MobileBuildState::Pending && GetMobileBuildDepotArrow(GetMobileBuildPendingTile(), depot_dir);
 
@@ -679,7 +682,8 @@ struct BuildRailToolbarWindow : Window {
 		};
 		/* Portrait stacks the tool row under row A: hidden, it must still resize horizontally (SZSP_HORIZONTAL). */
 		set_plane(WID_RAT_SEL_TOOLS, picking ? (this->landscape ? SZSP_NONE : SZSP_HORIZONTAL) : 0);
-		set_plane(WID_RAT_SEL_CONFIRM, MobileBuildHasUndo() ? 1 : (state == MobileBuildState::BridgePicking ? SZSP_NONE : 0));
+		set_plane(WID_RAT_SEL_CONFIRM, this->tools_hidden ? 2 : (MobileBuildHasUndo() ? 1 : (state == MobileBuildState::BridgePicking ? SZSP_NONE : 0)));
+		set_plane(WID_RAT_SEL_CANCEL, this->tools_hidden ? SZSP_NONE : 0);
 		set_plane(WID_RAT_SEL_ROTATE, depot_pending ? 0 : SZSP_NONE);
 
 		MobileBuildKind kind = this->GetToolKind();
@@ -775,6 +779,10 @@ struct BuildRailToolbarWindow : Window {
 			case WID_RAT_STATUS: {
 				TextColour colour;
 				std::string status = GetMobileBuildStatus(colour);
+				if (this->tools_hidden) {
+					colour = TextColour::Black;
+					status = GetString(STR_MOBILE_BUILD_TOOLS_HIDDEN);
+				}
 				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
 				if (colour == TextColour::Red) {
 					/* Errors start with a warning sign. */
@@ -932,6 +940,7 @@ struct BuildRailToolbarWindow : Window {
 			case WID_RAT_CONFIRM: MobileBuildConfirm(); return;
 			case WID_RAT_UNDO: MobileBuildUndo(); return;
 			case WID_RAT_ROTATE: MobileBuildRotateDepot(); return;
+			case WID_RAT_SHOW_TOOLS: CloseMobileSheetPublic(); return;
 			case WID_RAT_EXIT: this->Close(); return;
 			case WID_RAT_STATUS: return;
 			default: break;
@@ -1314,10 +1323,13 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_rail_landscap
 			NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_ROTATE),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_ROTATE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_BUILD_ROTATE, STR_MOBILE_BUILD_ROTATE_TOOLTIP),
 			EndContainer(),
-NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_CANCEL), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_BUILD_CANCEL_TOOLTIP),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_CANCEL),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_CANCEL), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_BUILD_CANCEL_TOOLTIP),
+			EndContainer(),
 			NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_CONFIRM),
 				NWidget(WWT_PUSHTXTBTN, Colours::Green, WID_RAT_CONFIRM), SetMinimalSize(56, 40), SetStringTip(STR_MOBILE_BUILD_CONFIRM_BUILD, STR_MOBILE_BUILD_CONFIRM_TOOLTIP),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_UNDO), SetMinimalSize(100, 40), SetStringTip(STR_MOBILE_BUILD_UNDO, STR_MOBILE_BUILD_UNDO_TOOLTIP),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_SHOW_TOOLS), SetMinimalSize(100, 40), SetStringTip(STR_MOBILE_BUILD_SHOW_TOOLS, STR_MOBILE_BUILD_SHOW_TOOLS_TOOLTIP),
 			EndContainer(),
 			NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_HIDDEN),
 				NWidget(NWID_HORIZONTAL),
@@ -1341,10 +1353,13 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_rail_portrait
 				NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_ROTATE),
 					NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_ROTATE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_BUILD_ROTATE, STR_MOBILE_BUILD_ROTATE_TOOLTIP),
 				EndContainer(),
-				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_CANCEL), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_BUILD_CANCEL_TOOLTIP),
+				NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_CANCEL),
+					NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_CANCEL), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_BUILD_CANCEL_TOOLTIP),
+				EndContainer(),
 				NWidget(NWID_SELECTION, Colours::Invalid, WID_RAT_SEL_CONFIRM),
 					NWidget(WWT_PUSHTXTBTN, Colours::Green, WID_RAT_CONFIRM), SetMinimalSize(56, 40), SetStringTip(STR_MOBILE_BUILD_CONFIRM_BUILD, STR_MOBILE_BUILD_CONFIRM_TOOLTIP),
 					NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_UNDO), SetMinimalSize(100, 40), SetStringTip(STR_MOBILE_BUILD_UNDO, STR_MOBILE_BUILD_UNDO_TOOLTIP),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RAT_SHOW_TOOLS), SetMinimalSize(100, 40), SetStringTip(STR_MOBILE_BUILD_SHOW_TOOLS, STR_MOBILE_BUILD_SHOW_TOOLS_TOOLTIP),
 				EndContainer(),
 				/* Inside this row rather than below it: in a vertical container, a child that can't resize
 				 * (like this always hidden selection) stops the whole container from resizing horizontally. */
@@ -1496,6 +1511,16 @@ static WindowDesc _mobile_rail_more_desc(
 	{},
 	_nested_mobile_rail_more_widgets
 );
+
+/**
+ * Let the mobile rail toolbar re-plan which of its parts show, e.g. after a sheet opened beside it.
+ * Unlike invalidating the window, this doesn't touch company state, so the layout pass may call it at any time.
+ * @param w The mobile rail toolbar.
+ */
+void UpdateMobileRailToolbarPlanes(Window *w)
+{
+	if (BuildRailToolbarWindow *toolbar = dynamic_cast<BuildRailToolbarWindow *>(w); toolbar != nullptr && toolbar->mobile) toolbar->UpdateMobileWidgets();
+}
 
 /**
  * Open the More flyout of the mobile rail toolbar, or close it when it is open.
@@ -2298,7 +2323,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_station_build
 				NWidget(WWT_PANEL, Colours::Grey, WID_BRAS_PLATFORM_DIR_X), SetMinimalSize(120, 40), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_STATION_BUILD_RAILROAD_ORIENTATION_TOOLTIP), EndContainer(),
 				NWidget(WWT_PANEL, Colours::Grey, WID_BRAS_PLATFORM_DIR_Y), SetMinimalSize(120, 40), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_STATION_BUILD_RAILROAD_ORIENTATION_TOOLTIP), EndContainer(),
 			EndContainer(),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_BRAS_TRACKS_LABEL), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET), SetTextStyle(TextColour::Black, FontSize::Small),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_BRAS_TRACKS_LABEL), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET), SetTextStyle(TextColour::Black, FontSize::Normal),
 			NWidget(NWID_HORIZONTAL),
 				NWidget(NWID_SPACER), SetFill(1, 0), SetResize(1, 0),
 				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_NUM_1), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_1, STR_STATION_BUILD_NUMBER_OF_TRACKS_TOOLTIP),
@@ -2310,7 +2335,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_station_build
 				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_NUM_7), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_7, STR_STATION_BUILD_NUMBER_OF_TRACKS_TOOLTIP),
 				NWidget(NWID_SPACER), SetFill(1, 0), SetResize(1, 0),
 			EndContainer(),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_BRAS_LENGTH_LABEL), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET), SetTextStyle(TextColour::Black, FontSize::Small),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_BRAS_LENGTH_LABEL), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET), SetTextStyle(TextColour::Black, FontSize::Normal),
 			NWidget(NWID_HORIZONTAL),
 				NWidget(NWID_SPACER), SetFill(1, 0), SetResize(1, 0),
 				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_LEN_1), SetMinimalSize(40, 40), SetStringTip(STR_BLACK_1, STR_STATION_BUILD_PLATFORM_LENGTH_TOOLTIP),

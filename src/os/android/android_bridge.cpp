@@ -15,7 +15,52 @@
 #include <android/log.h>
 #include <SDL3/SDL_system.h>
 
+#include "../../core/geometry_type.hpp"
+#include <mutex>
+#include <vector>
+
 #include "../../safeguards.h"
+
+static std::mutex _top_insets_mutex; ///< Guards the top insets, written by the UI thread.
+static int _status_bar_height = 0; ///< Height of the status bar when it is visible, else 0.
+static std::vector<Rect> _cutout_rects; ///< The display cutouts, in screen pixels.
+static bool _top_insets_reported = false; ///< The activity reported its insets.
+
+/**
+ * Called by the activity's surface (OpenTTDSurface.java) when the insets change: the visible status bar and the
+ * display cutout's rectangles, for placing the floating chrome at the top of the screen.
+ */
+extern "C" JNIEXPORT void JNICALL Java_io_github_warmmatetea_touchttd_OpenTTDSurface_nativeSetTopInsets(JNIEnv *env, jclass, jint status_bar, jintArray rects)
+{
+	std::vector<Rect> cutouts;
+	jsize n = env->GetArrayLength(rects);
+	std::vector<jint> values(n);
+	if (n > 0) env->GetIntArrayRegion(rects, 0, n, values.data());
+	for (jsize i = 0; i + 3 < n; i += 4) cutouts.push_back({values[i], values[i + 1], values[i + 2] - 1, values[i + 3] - 1});
+	std::lock_guard<std::mutex> lock(_top_insets_mutex);
+	_status_bar_height = status_bar;
+	_cutout_rects = std::move(cutouts);
+	_top_insets_reported = true;
+}
+
+/**
+ * Where the floating chrome at the top may start, for a horizontal span of the screen.
+ * @param left Left edge of the span.
+ * @param right Right edge of the span.
+ * @param gap Gap to keep from the top edge, a visible status bar and the cutout.
+ * @return The top, in screen pixels; -1 when the activity hasn't reported its insets.
+ */
+int AndroidGetTopChromeY(int left, int right, int gap)
+{
+	std::lock_guard<std::mutex> lock(_top_insets_mutex);
+	if (!_top_insets_reported) return -1;
+	int y = std::max(gap, _status_bar_height + (_status_bar_height > 0 ? gap : 0));
+	for (const Rect &r : _cutout_rects) {
+		if (r.right < left || r.left > right || r.top > y + 200) continue;
+		y = std::max(y, r.bottom + 1 + gap);
+	}
+	return y;
+}
 
 /**
  * Tell the activity which system bars to show: the status bar is always hidden, the navigation bar

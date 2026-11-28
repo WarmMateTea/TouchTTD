@@ -903,7 +903,8 @@ STR_MOBILE_MENU_SETTINGS                                        :Settings
 STR_MOBILE_MENU_SCRIPTS                                         :AI / game script settings
 STR_MOBILE_MENU_MAP_TOOLS                                       :Map tools {RIGHT_ARROW}
 STR_MOBILE_MENU_MUSIC                                           :Music and sound
-STR_MOBILE_MENU_QUIT                                            :Quit to main menu
+STR_MOBILE_MENU_QUIT                                            :Exit to main menu
+STR_MOBILE_MENU_QUIT_GAME                                       :Quit game
 STR_MOBILE_TOWN_SORT_NAME_ASC                                   :Name (A-Z)
 STR_MOBILE_TOWN_SORT_NAME_DESC                                  :Name (Z-A)
 STR_MOBILE_TOWN_SORT_POPULATION_DESC                            :Largest first
@@ -952,12 +953,15 @@ STR_MOBILE_BUILD_STATUS_DEPOT_CHECK                             :Depot · {RAW_S
 STR_MOBILE_BUILD_STATUS_BUILT_DEPOT                             :Built depot · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_WAYPOINT                                :Waypoint {COMMA} tile{P "" s} · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_BUILT_WAYPOINT                          :Built waypoint · {RAW_STRING}
+STR_MOBILE_BUILD_SHOW_TOOLS                                     :{BLACK}Show tools
+STR_MOBILE_BUILD_SHOW_TOOLS_TOOLTIP                             :{BLACK}Close the panel so the construction tools show again
+STR_MOBILE_BUILD_TOOLS_HIDDEN                                   :Tools are hidden while a panel is open
 STR_MOBILE_BUILD_ROTATE                                         :{BLACK}Turn
 STR_MOBILE_BUILD_ROTATE_TOOLTIP                                 :{BLACK}Turn the depot's entrance clockwise
 STR_MOBILE_STATION_TITLE                                        :Station
 STR_MOBILE_STATION_CLOSE_TOOLTIP                                :{BLACK}Stop building stations
-STR_MOBILE_STATION_ALONG_X                                      :Along NE-SW
-STR_MOBILE_STATION_ALONG_Y                                      :Along NW-SE
+STR_MOBILE_STATION_ALONG_X                                      :NE-SW
+STR_MOBILE_STATION_ALONG_Y                                      :NW-SE
 STR_MOBILE_STATION_TRACKS                                       :Tracks
 STR_MOBILE_STATION_TRACKS_VALUE                                 :Tracks: {NUM}
 STR_MOBILE_STATION_LENGTH                                       :Platform length
@@ -967,6 +971,90 @@ STR_MOBILE_STATION_COVERAGE_LATER                               :{BLACK}Accepts 
 STR_MOBILE_STATION_JOIN                                         :Join {STATION}
 STR_MOBILE_STATION_NEW                                          :New station
 STR_MOBILE_STATION_JOIN_TOOLTIP                                 :{BLACK}Which station the new part belongs to
+STR_MOBILE_STATUS_PAUSED                                        :Paused
+STR_MOBILE_RESUME_BANNER                                        :Paused while you were away · tap {RIGHT_ARROW} to continue
+STR_MOBILE_BUILD_STATUS_PAUSED                                  :Paused · tap {RIGHT_ARROW} to build
+STR_MOBILE_MENU_CONTINUE                                        :Continue
+STR_MOBILE_MENU_CONTINUE_TOOLTIP                                :{BLACK}Continue where you left off
+STR_MOBILE_MAIN_SETTINGS                                        :{BLACK}Settings
+STR_MOBILE_MAIN_QUIT                                            :{WHITE}Quit
+STR_MOBILE_SAVED_MINUTES_AGO                                    :Saved {NUM} minute{P "" s} ago
+STR_MOBILE_SAVED_HOURS_AGO                                      :Saved {NUM} hour{P "" s} ago
+STR_MOBILE_SAVED_DAYS_AGO                                       :Saved {NUM} day{P "" s} ago
+STR_MOBILE_QUERY_QUIT_TITLE                                     :Quit the game?
+STR_MOBILE_QUERY_QUIT_TEXT                                      :Progress since the last save is lost. The game was saved when you last left the app.
+STR_MOBILE_QUERY_QUIT_VERB                                      :{WHITE}Quit
+STR_MOBILE_QUERY_EXIT_TITLE                                     :Exit to the main menu?
+STR_MOBILE_QUERY_EXIT_TEXT                                      :Progress since the last save is lost.
+STR_MOBILE_QUERY_EXIT_VERB                                      :{WHITE}Exit
+STR_MOBILE_QUERY_CANCEL                                         :{BLACK}Cancel
+STR_MOBILE_QUERY_CONFIRM                                        :{WHITE}Confirm
+STR_MOBILE_SAVE_TITLE                                           :Save game
+STR_MOBILE_LOAD_TITLE                                           :Load game
+STR_MOBILE_SAVE_AUTOSAVES_TITLE                                 :Autosaves
+STR_MOBILE_SAVE_AUTOSAVES_ROW                                   :Autosaves ({NUM}) {RIGHT_ARROW}
+STR_MOBILE_SAVE_EMPTY                                           :No saved games yet
+STR_MOBILE_SAVE_DETAILS                                         :{RAW_STRING} · {RAW_STRING}
+STR_MOBILE_SAVE_AUTOMATICALLY                                   :{RAW_STRING} automatically
+STR_MOBILE_SAVE_BACKGROUND_NAME                                 :Your last game
+STR_MOBILE_SAVE_LEFT_THE_APP                                    :LEFT THE APP
+STR_MOBILE_SAVE_SAVE                                            :{WHITE}Save
+STR_MOBILE_SAVE_LOAD                                            :Load
+STR_MOBILE_SAVE_DELETE                                          :Delete
+STR_MOBILE_SAVE_SORT_NEWEST                                     :Newest first
+STR_MOBILE_SAVE_SORT_NAME                                       :Name
+STR_MOBILE_SAVE_OVERWRITE_TITLE                                 :Overwrite "{RAW_STRING}"?
+STR_MOBILE_SAVE_OVERWRITE_TEXT                                  :The save with this name will be replaced. This can't be undone.
+STR_MOBILE_SAVE_OVERWRITE_VERB                                  :{WHITE}Overwrite
+STR_MOBILE_SAVE_DELETE_TITLE                                    :Delete "{RAW_STRING}"?
+STR_MOBILE_SAVE_DELETE_TEXT                                     :The save will be gone. This can't be undone.
+STR_MOBILE_SAVE_DELETE_VERB                                     :{WHITE}Delete
+STR_MOBILE_SAVE_LOAD_OVER_TITLE                                 :Load over this game?
+STR_MOBILE_SAVE_LOAD_OVER_TEXT                                  :Progress in this game since its last save is lost.
+STR_MOBILE_SAVE_LOAD_VERB                                       :{WHITE}Load
+STR_MOBILE_NEW_GAME_TITLE                                       :New game
+STR_MOBILE_NEW_GAME_START                                       :{WHITE}{RIGHT_ARROW} Start game
+STR_MOBILE_NEW_GAME_RULES                                       :Rules
+STR_MOBILE_NEW_GAME_CLASSIC                                     :Classic
+STR_MOBILE_NEW_GAME_CLASSIC_LINE                                :The game as it comes
+STR_MOBILE_NEW_GAME_RELAXED                                     :Relaxed
+STR_MOBILE_NEW_GAME_RELAXED_LINE                                :No breakdowns, disasters or inflation
+STR_MOBILE_NEW_GAME_SANDBOX                                     :Sandbox
+STR_MOBILE_NEW_GAME_SANDBOX_LINE                                :Big loan, no competitors, calm towns
+STR_MOBILE_NEW_GAME_PRESET_NOTE                                 :A preset only sets normal game settings; all of them can be changed later in Settings.
+STR_MOBILE_NEW_GAME_CLIMATE                                     :Climate
+STR_MOBILE_NEW_GAME_TEMPERATE                                   :{BLACK}Temperate
+STR_MOBILE_NEW_GAME_ARCTIC                                      :{BLACK}Arctic
+STR_MOBILE_NEW_GAME_TROPIC                                      :{BLACK}Tropic
+STR_MOBILE_NEW_GAME_TOYLAND                                     :{BLACK}Toyland
+STR_MOBILE_NEW_GAME_MAP_SIZE                                    :Map size
+STR_MOBILE_NEW_GAME_SMALL                                       :{BLACK}Small 256
+STR_MOBILE_NEW_GAME_MEDIUM                                      :{BLACK}Medium 512
+STR_MOBILE_NEW_GAME_LARGE                                       :{BLACK}Large 1024
+STR_MOBILE_NEW_GAME_TOWNS                                       :Towns
+STR_MOBILE_NEW_GAME_INDUSTRIES                                  :Industries
+STR_MOBILE_NEW_GAME_FEW                                         :{BLACK}Few
+STR_MOBILE_NEW_GAME_NORMAL                                      :{BLACK}Normal
+STR_MOBILE_NEW_GAME_MANY                                        :{BLACK}Many
+STR_MOBILE_NEW_GAME_TERRAIN                                     :Terrain
+STR_MOBILE_NEW_GAME_FLAT                                        :{BLACK}Flat
+STR_MOBILE_NEW_GAME_HILLY                                       :{BLACK}Hilly
+STR_MOBILE_NEW_GAME_MOUNTAINS                                   :{BLACK}Mountains
+STR_MOBILE_NEW_GAME_START_YEAR                                  :Start year
+STR_MOBILE_NEW_GAME_ADVANCED                                    :{BLACK}Advanced options {RIGHT_ARROW}
+STR_MOBILE_MINUS                                                :{BLACK}-
+STR_MOBILE_PLUS                                                 :{BLACK}+
+STR_MOBILE_SETTINGS_TITLE                                       :Settings
+STR_MOBILE_SETTINGS_SEARCH                                      :Search all settings
+STR_MOBILE_SETTINGS_PHONE                                       :Phone
+STR_MOBILE_SETTINGS_DISPLAY                                     :Display, sound, language and saving
+STR_MOBILE_SETTINGS_BUILDING                                    :Building and vehicles
+STR_MOBILE_SETTINGS_ECONOMY                                     :Economy, towns, competitors
+STR_MOBILE_SETTINGS_NEWGRF                                      :Graphics and add-ons (NewGRF)
+STR_MOBILE_SETTINGS_SCRIPTS                                     :AI and game scripts
+STR_MOBILE_SETTINGS_ALL                                         :All settings
+STR_MOBILE_SETTINGS_NONE                                        :No settings found
+STR_MOBILE_SETTINGS_ONLY_BEFORE_START                           :Can only be changed before the game starts
 STR_MOBILE_ON                                                   :On
 STR_MOBILE_OFF                                                  :Off
 STR_MOBILE_SHOW_ON_MAP                                          :Show on map
@@ -985,6 +1073,7 @@ STR_MOBILE_TOWN_YOUR_RATING                                     :Your rating
 STR_MOBILE_STATION_TAB_WAITING                                  :Waiting
 STR_MOBILE_STATION_TAB_ACCEPTS                                  :Accepts
 STR_MOBILE_STATION_TAB_RATINGS                                  :Ratings
+STR_MOBILE_STATION_NOTHING_WAITING                              :Nothing waiting yet
 STR_MOBILE_STATION_TRAINS                                       :Trains
 STR_MOBILE_MAP_TITLE                                            :Map
 STR_MOBILE_MAP_MODE_TOOLTIP                                     :{BLACK}What the map shows
@@ -992,6 +1081,88 @@ STR_MOBILE_MAP_NAMES                                            :Names
 STR_MOBILE_MAP_LEGEND                                           :Legend
 STR_MOBILE_MAP_LEGEND_TOOLTIP                                   :{BLACK}Show the legend instead of the map
 STR_MOBILE_MAP_HINT                                             :Tap to go there · drag to move the map · pinch to zoom
+STR_MOBILE_ELLIPSIS                                             :...
+STR_MOBILE_BACK                                                 :{BLACK}{LEFT_ARROW}
+STR_MOBILE_BACK_TOOLTIP                                         :{BLACK}Back
+STR_MOBILE_DEPOT_EMPTY                                          :No trains here yet
+STR_MOBILE_DEPOT_FREE_WAGONS                                    :Wagons without an engine
+STR_MOBILE_DEPOT_NEW_TRAIN                                      :{WHITE}+ New train
+STR_MOBILE_DEPOT_CLONE                                          :{BLACK}Clone a train
+STR_MOBILE_TRAIN_NAME                                           :{VEHICLE}
+STR_MOBILE_TRAIN_STOPPED                                        :Stopped
+STR_MOBILE_TRAIN_STOPPED_NO_ORDERS                              :Stopped · no orders
+STR_MOBILE_TRAIN_RUNNING                                        :Running
+STR_MOBILE_TRAIN_HEADING_TO                                     :Heading to {STATION}
+STR_MOBILE_TRAIN_SPEED_PROFIT                                   :{VELOCITY} · profit this year {CURRENCY_LONG}
+STR_MOBILE_TRAIN_ADD_TWO_STOPS                                  :Add at least 2 stops to start
+STR_MOBILE_TRAIN_ADD_ONE_STOP                                   :Add one more stop
+STR_MOBILE_TRAIN_READY                                          :Ready to start
+STR_MOBILE_TRAIN_START                                          :{WHITE}{RIGHT_ARROW} Start
+STR_MOBILE_TRAIN_STOP                                           :{WHITE}Stop
+STR_MOBILE_TRAIN_TAB_ORDERS                                     :Orders
+STR_MOBILE_TRAIN_TAB_DETAILS                                    :Details
+STR_MOBILE_TRAIN_SEND_TO_DEPOT                                  :Send to depot
+STR_MOBILE_TRAIN_CLONE                                          :Clone
+STR_MOBILE_TRAIN_CLONE_IN_DEPOT                                 :Stop the train in a depot to clone it
+STR_MOBILE_TRAIN_ADD_VEHICLES                                   :+ Add vehicles
+STR_MOBILE_TRAIN_ADD_VEHICLES_TOOLTIP                           :{BLACK}Buy vehicles for this train; it must be stopped in a depot
+STR_MOBILE_TRAIN_SELL                                           :X Sell
+STR_MOBILE_TRAIN_SELL_TRAIN_TITLE                               :Sell the whole train?
+STR_MOBILE_TRAIN_SELL_TRAIN_TEXT                                :Selling the engine sells the train with all its wagons. You get their value back.
+STR_MOBILE_TRAIN_SELL_TRAIN_VERB                                :{WHITE}Sell train
+STR_MOBILE_TRAIN_SUMMARY                                        :{COMMA} vehicle{P "" s} · {COMMA} tile{P "" s} · {RAW_STRING} · {VELOCITY}
+STR_MOBILE_TRAIN_NO_CARGO                                       :no cargo
+STR_MOBILE_TRAIN_DETAILS_AGE                                    :Age: {COMMA} of {COMMA} days
+STR_MOBILE_TRAIN_DETAILS_RELIABILITY                            :Reliability: {COMMA}%
+STR_MOBILE_TRAIN_DETAILS_RUNNING_COST                           :Running cost: {CURRENCY_LONG}/year
+STR_MOBILE_TRAIN_DETAILS_PROFIT                                 :Profit this year: {CURRENCY_LONG} · last year: {CURRENCY_LONG}
+STR_MOBILE_TRAIN_NEW_TITLE                                      :New train · {STRING}
+STR_MOBILE_TRAIN_BUY_ENGINE_FIRST                               :Buy an engine to start
+STR_MOBILE_TRAIN_TAB_ENGINES                                    :Engines
+STR_MOBILE_TRAIN_TAB_WAGONS                                     :Wagons
+STR_MOBILE_TRAIN_BUY                                            :+ {CURRENCY_SHORT}
+STR_MOBILE_TRAIN_ENGINE_LINE                                    :{VELOCITY} · {POWER}
+STR_MOBILE_TRAIN_SPENT                                          :{BLACK}Spent {CURRENCY_LONG}
+STR_MOBILE_TRAIN_NEXT_ORDERS                                    :{WHITE}Next: orders {RIGHT_ARROW}
+STR_MOBILE_TRAIN_LIST_TOTAL                                     :{BLACK}Profit this year: {CURRENCY_LONG}
+STR_MOBILE_TRAIN_LIST_AT_STATION                                :Trains calling at {STATION}
+STR_MOBILE_TRAIN_LIST_EMPTY                                     :No trains yet
+STR_MOBILE_ORDERS_EMPTY                                         :No stops yet
+STR_MOBILE_ORDERS_MENU                                          :...
+STR_MOBILE_ORDERS_ADD_STOPS                                     :+ Add stops
+STR_MOBILE_ORDERS_ADD_STOPS_TOOLTIP                             :{BLACK}Tap stations on the map to add them as stops
+STR_MOBILE_ORDERS_TAP_STATION                                   :Tap a station to add it as stop {COMMA}
+STR_MOBILE_ORDERS_DONE                                          :{WHITE}Done
+STR_MOBILE_ORDERS_DONE_TOOLTIP                                  :{BLACK}Stop adding stops
+STR_MOBILE_ORDERS_NOT_A_STATION                                 :Not a station of yours
+STR_MOBILE_ORDERS_ALREADY_PREVIOUS                              :Already the previous stop
+STR_MOBILE_ORDERS_CHIP                                          :+ {STATION}
+STR_MOBILE_ORDERS_CHIP_TOOLTIP                                  :{BLACK}Add this station as the next stop
+STR_MOBILE_ORDERS_NON_STOP                                      :Non-stop
+STR_MOBILE_ORDERS_STOPS_EVERYWHERE                              :Stops everywhere
+STR_MOBILE_ORDERS_SEPARATOR                                     : ·{NBSP}
+STR_MOBILE_ORDERS_LOAD_NORMAL                                   :load what is available
+STR_MOBILE_ORDERS_LOAD_FULL_ANY                                 :full load (any cargo)
+STR_MOBILE_ORDERS_LOAD_FULL_ALL                                 :full load (all cargo)
+STR_MOBILE_ORDERS_LOAD_NONE                                     :don't load
+STR_MOBILE_ORDERS_UNLOAD_ALL                                    :unload all
+STR_MOBILE_ORDERS_TRANSFER                                      :transfer
+STR_MOBILE_ORDERS_NO_UNLOAD                                     :don't unload
+STR_MOBILE_ORDERS_DEPOT                                         :Go to depot
+STR_MOBILE_ORDERS_CONDITIONAL                                   :Conditional order
+STR_MOBILE_ORDERS_OTHER                                         :Other order
+STR_MOBILE_ORDERS_MENU_NON_STOP                                 :Go non-stop
+STR_MOBILE_ORDERS_MENU_STOP_EVERYWHERE                          :Stop at intermediate stations
+STR_MOBILE_ORDERS_MENU_LOAD_NORMAL                              :Load: normal
+STR_MOBILE_ORDERS_MENU_LOAD_FULL_ANY                            :Load: full load (any cargo)
+STR_MOBILE_ORDERS_MENU_LOAD_FULL_ALL                            :Load: full load (all cargo)
+STR_MOBILE_ORDERS_MENU_LOAD_NONE                                :Load: don't load
+STR_MOBILE_ORDERS_MENU_UNLOAD_NORMAL                            :Unload: normal
+STR_MOBILE_ORDERS_MENU_UNLOAD_ALL                               :Unload: unload all
+STR_MOBILE_ORDERS_MENU_TRANSFER                                 :Unload: transfer
+STR_MOBILE_ORDERS_MENU_NO_UNLOAD                                :Unload: don't unload
+STR_MOBILE_ORDERS_MENU_SKIP                                     :Skip to this stop
+STR_MOBILE_ORDERS_MENU_DELETE                                   :{RED}Delete stop
 STR_MOBILE_RAIL_CATEGORY_TOOLTIP                                :{BLACK}Change the rail type, or build something else
 STR_MOBILE_RAIL_MORE                                            :{WHITE}...
 STR_MOBILE_RAIL_MORE_TOOLTIP                                    :{BLACK}More tools: waypoints, rail conversion, track in one direction

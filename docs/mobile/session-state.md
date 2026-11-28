@@ -13,11 +13,13 @@ Last updated: 26 Nov 2026 (evening). Read this first, then `README.md` (the inde
   - **Device polish (user requests of 25 Nov):** navigation bar setting, tool Cancel (✕ and the floating red Cancel), the sliding safe area, and a swiped-in bar moving the dock. Log: `05-device-polish-log.md`. The user confirmed it's "perfect".
   - **Background survival (26 Nov):** foreground service + notification while a game runs, pause and save when leaving the app, resume after a kill. Verified on the phone. Log: `06-round3-implementation-log.md` part A.
   - **Round 3 (26 Nov):** stations (tap/drag footprint, picker in the sheet, join, move, Undo), depots (auto-facing, Turn), waypoints, mobile town/station windows and minimap, edge-to-edge chrome, design fixes. Verified headless and on the phone (pinch on the minimap untested). Log: `06-round3-implementation-log.md` part B.
+  - **Round 4 (27–28 Nov):** design fixes, touch dropdown, depot → New train → orders → Start, train list, main menu with Continue, New game with presets, confirmations, save/load, settings with search, top chrome against the cutout. Verified headless and partly on the phone. Log: `07-round4-implementation-log.md`.
   - **Android build:** `os/android/build.sh`, APK published as GitHub pre-releases (`android-<commit count>`); latest: `android-33329` (commit `2ade79d992`, 26 Nov, round 3 + background survival). Logs: `02-android-build-plan.md`, `03-android-build-log.md`.
 
 ## Waiting on
 
-- **Design session, round 4** (trains, depot window, orders) **plus the menus**. Our handoff: `handoffs/07-impl-to-design-round4.md` with `screenshots/round3/`. Its reply goes in `handoffs/08-…`.
+- **Design session, round 5.** Our handoff: `handoffs/09-impl-to-design-round5.md` (+ `screenshots/round4/`), including the user's font requests. Its reply goes in `handoffs/10-…`.
+- **The user asked to switch the phone back to the Claude app** after device testing (`adb shell monkey -p com.anthropic.claude -c android.intent.category.LAUNCHER 1`).
 - **User's request for later:** the top chrome (status pill, minimap button) should slide with the safe area like the dock and maybe sit closer to the top edge (`backlog.md`).
 
 ## Working with the user's phone (Poco X7 Pro, Android 16)

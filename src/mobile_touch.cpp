@@ -208,7 +208,8 @@ static void StartDrag(Point current)
 				_touch.list_num = w->window_number;
 				_touch.list_scrollbar = nw->GetScrollbarIndex();
 				_touch.list_start_pos = sb->GetPosition();
-				_touch.list_step = std::max<int>(1, w->resize.step_height > 0 ? w->resize.step_height : GetCharacterHeight(FontSize::Normal));
+				/* Pixels per row: from the list's size and how many rows it shows (lists may resize by pixel). */
+				_touch.list_step = sb->GetCapacity() > 0 ? std::max<int>(1, nw->current_y / sb->GetCapacity()) : std::max<int>(1, w->resize.step_height > 1 ? w->resize.step_height : GetCharacterHeight(FontSize::Normal));
 				return;
 			}
 		}

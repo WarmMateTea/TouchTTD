@@ -39,6 +39,9 @@
 
 #include "table/strings.h"
 
+#include "mobile_gui.h"
+#include "mobile_vehicle_gui.h"
+
 #include "safeguards.h"
 
 /*
@@ -1182,6 +1185,10 @@ static void DepotSellAllConfirmationCallback(Window *win, bool confirmed)
  */
 void ShowDepotWindow(TileIndex tile, VehicleType type)
 {
+	if (IsMobileLayout() && type == VehicleType::Train) {
+		ShowMobileDepotWindow(tile);
+		return;
+	}
 	if (BringWindowToFrontById(WindowClass::VehicleDepot, tile) != nullptr) return;
 
 	switch (type) {

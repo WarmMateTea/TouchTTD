@@ -104,6 +104,7 @@ struct BuildResult {
 	bool failed = false; ///< Whether it failed.
 	Money cost = 0; ///< Its cost when it succeeded.
 	std::string error; ///< Its error when it failed.
+	bool paused = false; ///< It can't be built because the game is paused.
 };
 
 /** All state of the review flow. There is at most one construction in review at a time. */
@@ -216,6 +217,12 @@ static BuildResult TrySelection(const PendingSelection &sel, bool estimate_only)
 	result.failed = capture.failed;
 	result.cost = capture.cost;
 	if (capture.failed) result.error = capture.error.empty() ? GetString(capture.error_summary) : capture.error.GetDecodedString();
+	if (capture.blocked_by_pause) {
+		/* Estimates work while paused, building doesn't: say so, and keep Build disabled until the game runs. */
+		result.failed = true;
+		result.paused = true;
+		result.error = GetString(STR_MOBILE_BUILD_STATUS_PAUSED);
+	}
 	return result;
 }
 

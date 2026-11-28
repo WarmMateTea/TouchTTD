@@ -13,5 +13,6 @@
 void AndroidApplySystemBars(bool show_navigation_bar);
 void AndroidSetGameRunning(bool running);
 void AndroidSetResumeSave(const std::string &path);
+int AndroidGetTopChromeY(int left, int right, int gap);
 
 #endif /* ANDROID_BRIDGE_H */

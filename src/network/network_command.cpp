@@ -52,6 +52,7 @@
 #include "../water_cmd.h"
 #include "../waypoint_cmd.h"
 #include "../script/script_cmd.h"
+#include "../mobile_vehicle_gui.h"
 
 #include "../safeguards.h"
 
@@ -84,7 +85,8 @@ static constexpr auto _callback_tuple = std::make_tuple(
 	&CcGame,
 	&CcAddVehicleNewGroup,
 	&CcMoveStationName,
-	&CcMoveWaypointName
+	&CcMoveWaypointName,
+	&CcMobileBuildTrainPart
 );
 
 #ifdef SILENCE_GCC_FUNCTION_POINTER_CAST

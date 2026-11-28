@@ -904,6 +904,16 @@ protected:
 		Point lower_right = this->RemapTile(lower_right_smallmap_coord.x / (int)TILE_SIZE, lower_right_smallmap_coord.y / (int)TILE_SIZE);
 		lower_right.x -= this->subscroll;
 
+		if (this->mobile) {
+			/* The desktop's corner marks, one screen pixel thin, vanish on a phone: draw the whole rectangle, 1 GUI pixel thick. */
+			int t = ScaleGUITrad(1);
+			GfxFillRect(upper_left.x, upper_left.y, lower_right.x, upper_left.y + t - 1, PC_VERY_LIGHT_YELLOW);
+			GfxFillRect(upper_left.x, lower_right.y - t + 1, lower_right.x, lower_right.y, PC_VERY_LIGHT_YELLOW);
+			GfxFillRect(upper_left.x, upper_left.y, upper_left.x + t - 1, lower_right.y, PC_VERY_LIGHT_YELLOW);
+			GfxFillRect(lower_right.x - t + 1, upper_left.y, lower_right.x, lower_right.y, PC_VERY_LIGHT_YELLOW);
+			return;
+		}
+
 		SmallMapWindow::DrawVertMapIndicator(upper_left.x, upper_left.y, lower_right.y);
 		SmallMapWindow::DrawVertMapIndicator(lower_right.x, upper_left.y, lower_right.y);
 

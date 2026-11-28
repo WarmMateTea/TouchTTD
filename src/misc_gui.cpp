@@ -1092,13 +1092,21 @@ struct QueryWindow : public Window {
 	QueryCallbackProc *proc = nullptr; ///< callback function executed on closing of popup. Window* points to parent, bool is true if 'yes' clicked, false otherwise
 	EncodedString caption{}; ///< caption for query window.
 	EncodedString message{}; ///< message for query window.
+	bool mobile = false; ///< Mobile layout: question title, consequence, Cancel and a verb (round 4 design, section 10).
 
-	QueryWindow(WindowDesc &desc, EncodedString &&caption, EncodedString &&message, Window *parent, QueryCallbackProc *callback)
-		: Window(desc), proc(callback), caption(std::move(caption)), message(std::move(message))
+	QueryWindow(WindowDesc &desc, EncodedString &&caption, EncodedString &&message, Window *parent, QueryCallbackProc *callback, bool mobile = false, StringID verb = INVALID_STRING_ID, bool destructive = true)
+		: Window(desc), proc(callback), caption(std::move(caption)), message(std::move(message)), mobile(mobile)
 	{
 		this->parent = parent;
 
 		this->CreateNestedTree();
+		if (mobile) {
+			Colours colour = destructive ? Colours::Red : Colours::Grey;
+			this->GetWidget<NWidgetCore>(WID_Q_CAPTION)->colour = colour;
+			NWidgetCore *yes = this->GetWidget<NWidgetCore>(WID_Q_YES);
+			yes->colour = destructive ? Colours::Red : Colours::Green;
+			yes->SetString(verb == INVALID_STRING_ID ? STR_MOBILE_QUERY_CONFIRM : verb);
+		}
 		this->FinishInitNested(ConfirmPopupQueryWindowNumber::Default);
 	}
 
@@ -1108,8 +1116,23 @@ struct QueryWindow : public Window {
 		this->Window::Close();
 	}
 
-	void FindWindowPlacementAndResize(int, int, bool) override
+	void FindWindowPlacementAndResize(int def_width, int def_height, bool allow_resize) override
 	{
+		if (this->mobile) {
+			/* Landscape: centred in the visible map, at most 320 wide; portrait: along its bottom, full width. */
+			Rect map = IsMobileLayout() ? GetMobileVisibleMapRect() : Rect{0, 0, _screen.width - 1, _screen.height - 1};
+			int margin = ScaleGUITrad(8);
+			bool landscape = _screen.width > _screen.height;
+			int width = landscape ? std::min(ScaleGUITrad(320), map.Width() - 2 * margin) : map.Width() - 2 * margin;
+			ResizeWindow(this, std::max(0, width - this->width), 0, false);
+			this->left = landscape ? CentreBounds(map.left, map.right + 1, this->width) : map.left + margin;
+			this->top = landscape ? CentreBounds(map.top, map.bottom + 1, this->height) : map.bottom + 1 - margin - this->height;
+			this->SetDirty();
+			return;
+		}
+		(void)def_width;
+		(void)def_height;
+		(void)allow_resize;
 		/* Position query window over the calling window, ensuring it's within screen bounds. */
 		this->left = SoftClamp(parent->left + (parent->width / 2) - (this->width / 2), 0, _screen.width - this->width);
 		this->top = SoftClamp(parent->top + (parent->height / 2) - (this->height / 2), 0, _screen.height - this->height);
@@ -1129,15 +1152,33 @@ struct QueryWindow : public Window {
 
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
 	{
+		if (this->mobile && widget == WID_Q_CAPTION) {
+			size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal));
+			return;
+		}
 		if (widget != WID_Q_TEXT) return;
 
+		if (this->mobile) {
+			/* Wrapped to the width the window will get (its placement makes it at most 320 wide). */
+			uint width = std::max<uint>(size.width, ScaleGUITrad(280));
+			size.height = GetStringHeight(this->message.GetDecodedString(), width);
+			return;
+		}
 		size = GetStringMultiLineBoundingBox(this->message.GetDecodedString(), size);
 	}
 
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
+		if (this->mobile && widget == WID_Q_CAPTION) {
+			DrawMobileTitle(r, this->caption.GetDecodedString());
+			return;
+		}
 		if (widget != WID_Q_TEXT) return;
 
+		if (this->mobile) {
+			DrawStringMultiLine(r, this->message.GetDecodedString(), TextColour::Black, {AlignmentH::Start, AlignmentV::Top});
+			return;
+		}
 		DrawStringMultiLine(r, this->message.GetDecodedString(), TextColour::FromString, {AlignmentH::Centre, AlignmentV::Middle});
 	}
 
@@ -1200,6 +1241,28 @@ static constexpr std::initializer_list<NWidgetPart> _nested_query_widgets = {
 	EndContainer(),
 };
 
+/** The confirmation in the mobile layout: the question as title, the consequence, Cancel and a verb on the right. */
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_query_widgets = {
+	NWidget(WWT_PANEL, Colours::Red, WID_Q_CAPTION), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+	NWidget(WWT_PANEL, Colours::Grey, WID_Q_BODY),
+		NWidget(NWID_VERTICAL), SetPIP(0, 10, 0), SetPadding(10),
+			NWidget(WWT_EMPTY, Colours::Invalid, WID_Q_TEXT), SetMinimalSize(200, 12), SetFill(1, 0), SetResize(1, 0),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, 4, 0),
+				NWidget(NWID_SPACER), SetFill(1, 0), SetResize(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_Q_NO), SetMinimalSize(100, 40), SetStringTip(STR_MOBILE_QUERY_CANCEL),
+				NWidget(WWT_PUSHTXTBTN, Colours::Red, WID_Q_YES), SetMinimalSize(110, 40), SetStringTip(STR_MOBILE_QUERY_CONFIRM),
+			EndContainer(),
+		EndContainer(),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_query_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::ConfirmPopupQuery, WindowClass::None,
+	WindowDefaultFlag::Modal,
+	_nested_mobile_query_widgets
+);
+
 /** Window definition for the query window. */
 static WindowDesc _query_desc(
 	WindowPosition::Center, {}, 0, 0,
@@ -1217,8 +1280,10 @@ static WindowDesc _query_desc(
  * the main window WindowClass::MainWindow
  * @param callback callback function pointer to set in the window descriptor
  * @param focus whether the window should be focussed (by default false)
+ * @param verb Mobile layout: what the confirm button says ("Delete", "Quit"); a generic "Confirm" when not given.
+ * @param destructive Mobile layout: draw the title and the confirm button red.
  */
-void ShowQuery(EncodedString &&caption, EncodedString &&message, Window *parent, QueryCallbackProc *callback, bool focus)
+void ShowQuery(EncodedString &&caption, EncodedString &&message, Window *parent, QueryCallbackProc *callback, bool focus, StringID verb, bool destructive)
 {
 	if (parent == nullptr) parent = GetMainWindow();
 
@@ -1233,6 +1298,7 @@ void ShowQuery(EncodedString &&caption, EncodedString &&message, Window *parent,
 		break;
 	}
 
-	QueryWindow *q = new QueryWindow(_query_desc, std::move(caption), std::move(message), parent, callback);
+	bool mobile = IsMobileMenus();
+	QueryWindow *q = new QueryWindow(mobile ? _mobile_query_desc : _query_desc, std::move(caption), std::move(message), parent, callback, mobile, verb, destructive);
 	if (focus) SetFocusedWindow(q);
 }

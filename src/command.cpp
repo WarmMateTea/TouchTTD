@@ -227,6 +227,10 @@ std::tuple<bool, bool, bool> CommandHelperBase::InternalPostBefore(Commands cmd,
 	 * fancy things for 'success'. */
 	bool only_sending = _networking && !network_command;
 
+	if (CommandResultCapture *capture = CommandResultCapture::active; capture != nullptr && !network_command && _pause_mode.Any() && !IsCommandAllowedWhilePaused(cmd)) {
+		capture->blocked_by_pause = true;
+	}
+
 	if (_pause_mode.Any() && !IsCommandAllowedWhilePaused(cmd) && !estimate_only) {
 		if (CommandResultCapture *capture = CommandResultCapture::active; capture != nullptr && !network_command && !(capture->first_only && capture->any)) {
 			/* The capture's owner reports the error; without this the command would look like it did nothing successfully. */

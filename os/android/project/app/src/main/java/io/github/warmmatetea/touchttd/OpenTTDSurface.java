@@ -23,6 +23,9 @@ import org.libsdl.app.SDLSurface;
  * the camera cutout. So the layout follows the bars as they appear and disappear.
  */
 public class OpenTTDSurface extends SDLSurface {
+    /** Implemented in the game (src/os/android/android_bridge.cpp). */
+    private static native void nativeSetTopInsets(int statusBar, int[] cutoutRects);
+
     public OpenTTDSurface(Context context) {
         super(context);
     }
@@ -46,6 +49,24 @@ public class OpenTTDSurface extends SDLSurface {
                  * The navigation bar is never at the top, so the top of the tappable inset is the status bar's. */
                 Insets tappable = insets.getInsetsIgnoringVisibility(WindowInsets.Type.tappableElement());
                 edges = Insets.max(edges, Insets.of(tappable.left, 0, tappable.right, tappable.bottom));
+            }
+            /* The floating chrome at the top (status pill, map button) goes against the cutout's actual shape, not the
+             * whole inset band: tell the game where the cutout is, and how tall a visible status bar is. */
+            int statusBar = insets.isVisible(WindowInsets.Type.statusBars()) ? insets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top : 0;
+            android.view.DisplayCutout cutout = insets.getDisplayCutout();
+            java.util.List<android.graphics.Rect> rects = cutout != null ? cutout.getBoundingRects() : java.util.Collections.emptyList();
+            int[] flat = new int[rects.size() * 4];
+            for (int i = 0; i < rects.size(); i++) {
+                android.graphics.Rect r = rects.get(i);
+                flat[i * 4] = r.left;
+                flat[i * 4 + 1] = r.top;
+                flat[i * 4 + 2] = r.right;
+                flat[i * 4 + 3] = r.bottom;
+            }
+            try {
+                nativeSetTopInsets(statusBar, flat);
+            } catch (UnsatisfiedLinkError e) {
+                /* The game library isn't loaded yet; the next insets change brings it. */
             }
             SDLActivity.onNativeInsetsChanged(edges.left, edges.right, edges.top, edges.bottom);
             if (getContext() instanceof OpenTTDActivity) ((OpenTTDActivity) getContext()).onSystemBarsChanged(insets);

@@ -20,6 +20,7 @@
 #include "window_gui.h"
 #include "window_func.h"
 #include "zoom_func.h"
+#include "mobile_gui.h"
 
 #include "widgets/dropdown_widget.h"
 
@@ -112,6 +113,20 @@ static constexpr std::initializer_list<NWidgetPart> _nested_dropdown_menu_widget
 		EndContainer(),
 	EndContainer(),
 };
+
+/** Height of a dropdown row in the mobile layout, in GUI pixels at 1x (round 4 design, section 2.2). */
+static constexpr int MOBILE_DROPDOWN_ROW_HEIGHT = 40;
+
+/**
+ * Height of a dropdown row: the item's own height, or a finger-sized row in the mobile layout.
+ * @param item The item.
+ * @return The height in pixels.
+ */
+static uint GetDropDownItemHeight(const DropDownListItem &item)
+{
+	if (!IsMobileMenus() || item.Height() == 0) return item.Height();
+	return std::max<uint>(item.Height(), ScaleGUITrad(MOBILE_DROPDOWN_ROW_HEIGHT));
+}
 
 /** Window description for dropdown menus. */
 static WindowDesc _dropdown_desc(
@@ -268,7 +283,7 @@ struct DropdownWindow : Window {
 		uint height = 0;
 		for (const auto &item : this->list) {
 			if (!this->FilterByText(*item)) continue;
-			height += item->Height();
+			height += GetDropDownItemHeight(*item);
 		}
 		return height;
 	}
@@ -290,6 +305,8 @@ struct DropdownWindow : Window {
 
 		/* Width should match at least the width of the parent widget. */
 		widget_dim.width = std::max<uint>(widget_dim.width, button_rect.Width());
+
+		if (IsMobileMenus() && this->UpdateMobileSizeAndPosition(widget_dim, list_dim)) return;
 
 		/* Available height below (or above, if the dropdown is placed above the widget). */
 		uint available_height_below = std::max(GetMainViewBottom() - button_rect.bottom - 1, 0);
@@ -328,6 +345,45 @@ struct DropdownWindow : Window {
 		if (this->above) this->vscroll->SetPosition(INT_MAX);
 	}
 
+	/**
+	 * Mobile layout: in portrait, a full-width sheet above the dock (at most 60% of the screen); in landscape, anchored
+	 * to the button as on desktop but at most 8 rows and no wider than the visible map. See the round 4 design, 2.2.
+	 * @param[in,out] widget_dim Size of the items widget.
+	 * @param list_dim Size of the whole list.
+	 * @return \c true when the position was set here (portrait).
+	 */
+	bool UpdateMobileSizeAndPosition(Dimension &widget_dim, const Dimension &list_dim)
+	{
+		Rect map = GetMobileVisibleMapRect();
+		uint max_rows_height = ScaleGUITrad(MOBILE_DROPDOWN_ROW_HEIGHT) * 8 + WidgetDimensions::scaled.dropdownlist.Vertical();
+		if (_screen.width > _screen.height) {
+			widget_dim.width = std::min<uint>(widget_dim.width, std::max(map.Width() - ScaleGUITrad(16), 0));
+			widget_dim.height = std::min(widget_dim.height, max_rows_height);
+			return false;
+		}
+
+		/* Portrait: a sheet along the bottom of the visible map, full width. */
+		int margin = ScaleGUITrad(8);
+		widget_dim.width = std::max(map.Width() - 2 * margin, 0);
+		uint max_height = std::min<uint>(_screen.height * 6 / 10, map.Height());
+		if (widget_dim.height > max_height) {
+			uint rows = std::max<uint>((max_height - WidgetDimensions::scaled.dropdownlist.Vertical()) / ScaleGUITrad(MOBILE_DROPDOWN_ROW_HEIGHT), 1);
+			widget_dim.height = rows * ScaleGUITrad(MOBILE_DROPDOWN_ROW_HEIGHT) + WidgetDimensions::scaled.dropdownlist.Vertical();
+		}
+		this->above = false;
+		this->position.x = map.left + margin;
+		this->position.y = map.bottom + 1 - static_cast<int>(widget_dim.height) - static_cast<int>(this->GetFilterBoxHeight());
+		this->GetWidget<NWidgetCore>(WID_DM_FILTER_PANEL)->GetParentWidget<NWidgetVertical>()->bottom_up = false;
+
+		this->initial_dim = widget_dim;
+		this->items_dim = widget_dim;
+		this->GetWidget<NWidgetStacked>(WID_DM_SHOW_SCROLL)->SetDisplayedPlane(list_dim.height > widget_dim.height ? 0 : SZSP_NONE);
+		this->vscroll->SetCapacity(widget_dim.height - WidgetDimensions::scaled.dropdownlist.Vertical());
+		this->vscroll->SetStepSize(ScaleGUITrad(MOBILE_DROPDOWN_ROW_HEIGHT));
+		this->vscroll->SetCount(this->GetVisibleHeight());
+		return true;
+	}
+
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
 	{
 		if (widget == WID_DM_ITEMS) size = this->items_dim;
@@ -355,7 +411,7 @@ struct DropdownWindow : Window {
 
 		for (const auto &item : this->list) {
 			if (!this->FilterByText(*item)) continue;
-			int item_height = item->Height();
+			int item_height = GetDropDownItemHeight(*item);
 
 			/* Skip items that are scrolled up */
 			if (y > y_end) break;
@@ -410,7 +466,7 @@ struct DropdownWindow : Window {
 
 		for (const auto &item : this->list) {
 			if (!this->FilterByText(*item)) continue;
-			int item_height = item->Height();
+			int item_height = GetDropDownItemHeight(*item);
 
 			/* Skip items that are scrolled up */
 			if (y > y_end) break;
@@ -418,9 +474,23 @@ struct DropdownWindow : Window {
 				Rect full = ir.Translate(0, y).WithHeight(item_height);
 
 				bool selected = (this->selected_result == item->result) && item->Selectable() && this->selected_click_result < 0;
-				if (selected) GfxFillRect(full, PC_BLACK);
-
-				item->Draw(full, full.Shrink(WidgetDimensions::scaled.dropdowntext, RectPadding::zero), selected, selected ? this->selected_click_result : -1, colour);
+				if (IsMobileMenus()) {
+					/* Touch rows: the item centred in a tall row, inset from the left; the selected row is lowered with a tick. */
+					if (selected) DrawFrameRect(full, colour, FrameFlag::Lowered);
+					Rect inner = full.Shrink(WidgetDimensions::scaled.dropdowntext, RectPadding::zero).Indent(ScaleGUITrad(MOBILE_TEXT_INSET), _current_text_dir == TD_RTL);
+					int pad = (item_height - static_cast<int>(item->Height())) / 2;
+					inner.top += pad;
+					inner.bottom = inner.top + item->Height() - 1;
+					if (selected) {
+						Dimension tick = GetStringBoundingBox(STR_JUST_CHECKMARK);
+						DrawString(inner.left, inner.right, CentreBounds(full.top, full.bottom, tick.height), STR_JUST_CHECKMARK, TextColour::Black, AlignmentH::End);
+						inner = inner.Indent(tick.width + WidgetDimensions::scaled.hsep_wide, _current_text_dir != TD_RTL);
+					}
+					item->Draw(full.WithY(inner.top, inner.bottom), inner, false, -1, colour);
+				} else {
+					if (selected) GfxFillRect(full, PC_BLACK);
+					item->Draw(full, full.Shrink(WidgetDimensions::scaled.dropdowntext, RectPadding::zero), selected, selected ? this->selected_click_result : -1, colour);
+				}
 			}
 			y += item_height;
 		}
@@ -552,10 +622,12 @@ Dimension GetDropDownListDimension(const DropDownList &list)
 {
 	Dimension dim{};
 	for (const auto &item : list) {
-		dim.height += item->Height();
+		dim.height += GetDropDownItemHeight(*item);
 		dim.width = std::max(dim.width, item->Width());
 	}
 	dim.width += WidgetDimensions::scaled.dropdowntext.Horizontal();
+	/* Mobile rows: inset text and room for the tick of the selected row. */
+	if (IsMobileMenus()) dim.width += ScaleGUITrad(MOBILE_TEXT_INSET) + GetStringBoundingBox(STR_JUST_CHECKMARK).width + WidgetDimensions::scaled.hsep_wide;
 	return dim;
 }
 

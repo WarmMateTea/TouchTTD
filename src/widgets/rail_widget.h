@@ -41,6 +41,8 @@ enum RailToolbarWidgets : WidgetID {
 	WID_RAT_SEL_ROTATE,     ///< Mobile layout: selection showing the Rotate button while a depot is in review.
 	WID_RAT_ROTATE,         ///< Mobile layout: turn the entrance of the depot in review.
 	WID_RAT_GAP_BOTTOM,     ///< Mobile layout: spacer filling the screen edge's inset at the bottom.
+	WID_RAT_SEL_CANCEL,     ///< Mobile layout: selection hiding Cancel while the tools are hidden by a sheet.
+	WID_RAT_SHOW_TOOLS,     ///< Mobile layout: closes the sheet that hides the tools.
 };
 
 /** Widgets of the mobile layout's More flyout of the rail toolbar. */

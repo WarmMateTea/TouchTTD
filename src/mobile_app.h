@@ -13,5 +13,8 @@
 void MobileAppWillEnterBackground();
 void MobileAppDidEnterForeground();
 void MobileAppTick();
+std::string GetMobileContinueSave();
+std::string GetMobileBackgroundSavePath();
+bool MobileContinueGame();
 
 #endif /* MOBILE_APP_H */

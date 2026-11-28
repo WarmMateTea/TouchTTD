@@ -46,6 +46,7 @@ enum QueryWidgets : WidgetID {
 	WID_Q_TEXT,    ///< Text of the query.
 	WID_Q_NO,      ///< Yes button.
 	WID_Q_YES,     ///< No button.
+	WID_Q_BODY,    ///< Mobile layout: panel with the text, under the title.
 };
 
 /** Widgets of the #TextfileWindow class. */

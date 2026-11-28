@@ -67,6 +67,7 @@ enum MobileMenuWidgets : WidgetID {
 	WID_MM_HELP,         ///< Help and manuals.
 	WID_MM_ABOUT,        ///< About OpenTTD.
 	WID_MM_QUIT,         ///< Quit to the main menu.
+	WID_MM_QUIT_GAME,    ///< Quit the game.
 };
 
 /** Widgets of the #MobileHubTabsWindow class. */
@@ -90,6 +91,115 @@ enum MobileNewsWidgets : WidgetID {
 /** Widgets of the #MobileMinimapWindow class. */
 enum MobileMinimapWidgets : WidgetID {
 	WID_MMB_BUTTON, ///< Opens the map of the world.
+};
+
+/** Widgets of the mobile depot sheet (#MobileDepotWindow). */
+enum MobileDepotWidgets : WidgetID {
+	WID_MDEP_TITLE, ///< Title: the depot's name.
+	WID_MDEP_CLOSE, ///< Close.
+	WID_MDEP_LIST, ///< The vehicle chains in the depot.
+	WID_MDEP_SCROLL, ///< Scrollbar of the list.
+	WID_MDEP_NEW, ///< Build a new train.
+	WID_MDEP_CLONE, ///< Clone a train.
+};
+
+/** Widgets of the mobile New train view (#MobileNewTrainWindow). */
+enum MobileNewTrainWidgets : WidgetID {
+	WID_MNT_BACK, ///< Back to the depot.
+	WID_MNT_TITLE, ///< Title.
+	WID_MNT_CLOSE, ///< Close.
+	WID_MNT_STRIP, ///< The train being built, with a sell button per vehicle.
+	WID_MNT_SUMMARY, ///< Summary line of the train being built.
+	WID_MNT_TAB_ENGINES, ///< Tab: engines.
+	WID_MNT_TAB_WAGONS, ///< Tab: wagons.
+	WID_MNT_LIST, ///< List of engines or wagons to buy.
+	WID_MNT_SCROLL, ///< Scrollbar of the list.
+	WID_MNT_SPENT, ///< How much was spent.
+	WID_MNT_NEXT, ///< Next: orders.
+};
+
+/** Widgets of the mobile train window (#MobileTrainWindow). */
+enum MobileTrainWidgets : WidgetID {
+	WID_MTR_TITLE, ///< Title: the train's name.
+	WID_MTR_RENAME, ///< Rename.
+	WID_MTR_CLOSE, ///< Close.
+	WID_MTR_STATUS, ///< State and detail lines.
+	WID_MTR_SEL_START, ///< Selection between Start and Stop.
+	WID_MTR_START, ///< Start the train.
+	WID_MTR_STOP, ///< Stop the train.
+	WID_MTR_TAB_ORDERS, ///< Tab: orders.
+	WID_MTR_TAB_DETAILS, ///< Tab: details.
+	WID_MTR_SEL_CONTENT, ///< Selection between the orders and the details.
+	WID_MTR_ORDERS, ///< List of orders.
+	WID_MTR_ORDERS_SCROLL, ///< Scrollbar of the orders.
+	WID_MTR_SEL_CHIPS, ///< Selection showing the suggested stations while adding stops.
+	WID_MTR_CHIP_FIRST, ///< First suggested station; the others follow.
+	WID_MTR_CHIP_LAST = WID_MTR_CHIP_FIRST + 2, ///< Last suggested station.
+	WID_MTR_ADD_STOPS, ///< Start adding stops.
+	WID_MTR_STRIP, ///< Details: the train, with a sell button per vehicle.
+	WID_MTR_ADD_VEHICLES, ///< Details: add vehicles.
+	WID_MTR_DETAILS, ///< Details: text.
+	WID_MTR_SHOW_ON_MAP, ///< Show the train on the map.
+	WID_MTR_DEPOT, ///< Send to depot.
+	WID_MTR_CLONE, ///< Clone the train.
+};
+
+/** Widgets of the mobile train list (#MobileTrainListWindow). */
+enum MobileTrainListWidgets : WidgetID {
+	WID_MTL_SEL_TITLE, ///< Selection showing the title when the list is filtered to a station.
+	WID_MTL_TITLE, ///< Title: "Trains calling at ...".
+	WID_MTL_CLOSE, ///< Close (with the title).
+	WID_MTL_SORT, ///< Sort order dropdown.
+	WID_MTL_LIST, ///< The trains.
+	WID_MTL_SCROLL, ///< Scrollbar of the list.
+	WID_MTL_TOTAL, ///< Total profit this year.
+};
+
+/** Widgets of the mobile save and load list (#MobileSaveLoadWindow). */
+enum MobileSaveLoadWidgets : WidgetID {
+	WID_MSL_TITLE, ///< Title.
+	WID_MSL_CLOSE, ///< Close (or back from the autosaves).
+	WID_MSL_SEL_SAVE, ///< Selection showing the name field when saving.
+	WID_MSL_NAME, ///< Name to save under.
+	WID_MSL_SAVE, ///< Save.
+	WID_MSL_LIST, ///< The saves.
+	WID_MSL_SCROLL, ///< Scrollbar of the list.
+	WID_MSL_SORT, ///< Sort order.
+};
+
+/** Widgets of the mobile New game screen (#MobileNewGameWindow). */
+enum MobileNewGameWidgets : WidgetID {
+	WID_MNG_BACK, ///< Back to the main menu.
+	WID_MNG_TITLE, ///< Title.
+	WID_MNG_START, ///< Start the game.
+	WID_MNG_PRESET_FIRST, ///< First rules preset; Classic, Relaxed, Sandbox follow.
+	WID_MNG_CLIMATE_FIRST = WID_MNG_PRESET_FIRST + 3, ///< First climate; four follow.
+	WID_MNG_SIZE_FIRST = WID_MNG_CLIMATE_FIRST + 4, ///< First map size; three follow.
+	WID_MNG_TOWNS_FIRST = WID_MNG_SIZE_FIRST + 3, ///< First number of towns; three follow.
+	WID_MNG_INDUSTRIES_FIRST = WID_MNG_TOWNS_FIRST + 3, ///< First number of industries; three follow.
+	WID_MNG_TERRAIN_FIRST = WID_MNG_INDUSTRIES_FIRST + 3, ///< First terrain; three follow.
+	WID_MNG_YEAR_DOWN = WID_MNG_TERRAIN_FIRST + 3, ///< Start year earlier.
+	WID_MNG_YEAR, ///< Start year.
+	WID_MNG_YEAR_UP, ///< Start year later.
+	WID_MNG_ADVANCED, ///< The desktop world generation window.
+};
+
+/** Widgets of the mobile settings (#MobileSettingsWindow). */
+enum MobileSettingsWidgets : WidgetID {
+	WID_MSET_BACK, ///< Back (or close).
+	WID_MSET_TITLE, ///< Title.
+	WID_MSET_SEARCH, ///< Search all settings.
+	WID_MSET_SECTIONS, ///< The sections.
+	WID_MSET_SEL_PANE, ///< Portrait: sections or settings.
+	WID_MSET_LIST, ///< The settings.
+	WID_MSET_SCROLL, ///< Scrollbar of the settings.
+};
+
+/** Widgets of the bar shown while adding stops (#MobileStopsBarWindow). */
+enum MobileStopsBarWidgets : WidgetID {
+	WID_MSB_STATUS, ///< Status line.
+	WID_MSB_DONE, ///< Stop adding stops.
+	WID_MSB_GAP_BOTTOM, ///< Spacer filling the screen edge's inset at the bottom.
 };
 
 #endif /* WIDGETS_MOBILE_WIDGET_H */

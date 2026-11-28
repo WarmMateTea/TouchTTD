@@ -27,6 +27,7 @@
 #include "zoom_func.h"
 #include "strings_func.h"
 #include "command_func.h"
+#include "string_func.h"
 #include "misc_cmd.h"
 #include "sound_func.h"
 #include "company_base.h"
@@ -40,6 +41,7 @@
 #include "toolbar_gui.h"
 #include "rail.h"
 #include "mobile_build.h"
+#include "mobile_settings_gui.h"
 #include "error.h"
 #include "tilehighlight_func.h"
 #include "smallmap_gui.h"
@@ -172,6 +174,15 @@ bool IsMobileLayout()
 }
 
 /**
+ * Use the mobile layout for menus and dialogs? Unlike #IsMobileLayout(), also at the main menu.
+ * @return \c true when the mobile layout setting is on, in a game or at the main menu.
+ */
+bool IsMobileMenus()
+{
+	return _settings_client.gui.mobile_layout && (_game_mode == GameMode::Normal || _game_mode == GameMode::Menu);
+}
+
+/**
  * Is the given window class one of the windows of the mobile shell?
  * @param cls The class to check.
  * @return \c true for the shell windows.
@@ -191,6 +202,7 @@ bool IsMobileShellWindow(WindowClass cls)
 		case WindowClass::MobileSheetFiller:
 		case WindowClass::MobileRailMore:
 		case WindowClass::MobileToolCancel:
+		case WindowClass::MobileStopsBar:
 			return true;
 		default:
 			return false;
@@ -408,6 +420,36 @@ static void OpenSheetContent(WindowClass cls, void (*open)())
 }
 
 /**
+ * The bar along the bottom that replaces the dock in portrait: the construction toolbar, or the bar shown while adding
+ * stops to a train.
+ * @return The bar, or \c nullptr.
+ */
+static Window *GetMobileBottomBar()
+{
+	if (Window *w = GetMobileRailToolbar(); w != nullptr) return w;
+	return FindWindowById(WindowClass::MobileStopsBar, 0);
+}
+
+/**
+ * Where floating chrome at the top of the screen goes, for a horizontal span.
+ * @param left Left edge of the span.
+ * @param right Right edge of the span.
+ * @param safe The safe area.
+ * @return The top of the chrome.
+ */
+static int GetTopChromeY(int left, int right, const Rect &safe)
+{
+	int margin = ScaleGUITrad(MOBILE_MARGIN);
+#ifdef __ANDROID__
+	if (int y = AndroidGetTopChromeY(left, right, margin); y >= 0) return y;
+#else
+	(void)left;
+	(void)right;
+#endif
+	return safe.top + margin;
+}
+
+/**
  * Get the rectangle of the sheet slot for the current orientation.
  * @return The slot, including the tab window at its top.
  */
@@ -422,7 +464,7 @@ static Rect GetSheetSlot()
 	}
 
 	/* Above the dock, or above the rail toolbar that replaces it in portrait. */
-	const Window *toolbar = GetMobileRailToolbar();
+	const Window *toolbar = GetMobileBottomBar();
 	int bottom = toolbar != nullptr ? toolbar->top : (dock != nullptr ? dock->top : safe.bottom + 1);
 	int full_height = bottom - safe.top - ScaleGUITrad(MOBILE_MAP_STRIP);
 	int height = _sheet.full ? full_height : std::min(ScaleGUITrad(MOBILE_HALF_SHEET_HEIGHT), full_height);
@@ -520,7 +562,12 @@ struct MobileStatusWindow : Window {
 		Rect tr = r.Shrink(ScaleGUITrad(7), 0);
 		int line_height = GetCharacterHeight(FontSize::Normal);
 		int top = CentreBounds(r.top, r.bottom, line_height * 2);
-		DrawString(tr.left, tr.right, top, GetString(STR_JUST_DATE_LONG, TimerGameCalendar::date), TextColour::White);
+		/* While paused the date reads "Paused", so a game left paused (e.g. by leaving the app) is obvious. */
+		if (_pause_mode.Any()) {
+			DrawString(tr.left, tr.right, top, STR_MOBILE_STATUS_PAUSED, TextColour::Yellow);
+		} else {
+			DrawString(tr.left, tr.right, top, GetString(STR_JUST_DATE_LONG, TimerGameCalendar::date), TextColour::White);
+		}
 
 		top += line_height;
 		if (_local_company == COMPANY_SPECTATOR) {
@@ -538,7 +585,10 @@ struct MobileStatusWindow : Window {
 	const IntervalTimer<TimerWindow> refresh_interval = {std::chrono::milliseconds(30), [this](auto) {
 		if (this->IsWidgetLowered(WID_MS_PAUSE) != _pause_mode.Any()) {
 			this->ToggleWidgetLoweredState(WID_MS_PAUSE);
+			/* Paused, the button shows what tapping it does: play. */
+			this->GetWidget<NWidgetCore>(WID_MS_PAUSE)->SetSprite(_pause_mode.Any() ? SPR_IMG_PLAY_MUSIC : SPR_IMG_PAUSE);
 			this->SetWidgetDirty(WID_MS_PAUSE);
+			this->SetWidgetDirty(WID_MS_INFO);
 		}
 		if (this->IsWidgetLowered(WID_MS_FFWD) != (_game_speed != 100)) {
 			this->ToggleWidgetLoweredState(WID_MS_FFWD);
@@ -936,7 +986,7 @@ struct MobileMenuWindow : Window {
 		switch (widget) {
 			case WID_MM_MESSAGES: ShowMessageHistory(); break;
 			case WID_MM_GAME_OPTIONS: ShowGameOptions(); break;
-			case WID_MM_SETTINGS: ShowGameSettings(); break;
+			case WID_MM_SETTINGS: ShowMobileSettings(); break;
 			case WID_MM_SCRIPTS: ShowAIConfigWindow(); break;
 			case WID_MM_NEWGRF: ShowNewGRFSettings(!_networking && _settings_client.gui.UserIsAllowedToChangeNewGRFs(), true, true, _grfconfig); break;
 			case WID_MM_TRANSPARENCY: ShowTransparencyToolbar(); break;
@@ -946,6 +996,7 @@ struct MobileMenuWindow : Window {
 			case WID_MM_HELP: ShowHelpWindow(); break;
 			case WID_MM_ABOUT: ShowAboutWindow(); break;
 			case WID_MM_QUIT: AskExitToGameMenu(); break;
+			case WID_MM_QUIT_GAME: AskExitGame(); break;
 		}
 	}
 
@@ -970,22 +1021,19 @@ struct MobileMenuWindow : Window {
 #define MOBILE_MENU_ROW(widget, string, colour) \
 	NWidget(WWT_PUSHTXTBTN, colour, widget), SetMinimalSize(180, 40), SetFill(1, 0), SetStringTip(string), SetAlignment({AlignmentH::Start, AlignmentV::Middle})
 
+/* The round 4 design, section 7: game options, AI/game scripts and NewGRFs moved into Settings; pause and speed stay in the pill. */
 static constexpr std::initializer_list<NWidgetPart> _nested_mobile_menu_one_column_widgets = {
 	NWidget(WWT_PANEL, Colours::Grey),
 		NWidget(NWID_VERTICAL), SetPadding(4),
-			MOBILE_MENU_ROW(WID_MM_MESSAGES, STR_MOBILE_MENU_MESSAGES, Colours::Grey),
-			MOBILE_MENU_ROW(WID_MM_GAME_OPTIONS, STR_SETTINGS_MENU_GAME_OPTIONS, Colours::Grey),
-			MOBILE_MENU_ROW(WID_MM_SETTINGS, STR_MOBILE_MENU_SETTINGS, Colours::Grey),
-			MOBILE_MENU_ROW(WID_MM_SCRIPTS, STR_MOBILE_MENU_SCRIPTS, Colours::Grey),
-			MOBILE_MENU_ROW(WID_MM_NEWGRF, STR_SETTINGS_MENU_NEWGRF_SETTINGS, Colours::Grey),
-			MOBILE_MENU_ROW(WID_MM_TRANSPARENCY, STR_SETTINGS_MENU_TRANSPARENCY_OPTIONS, Colours::Grey),
-			MOBILE_MENU_ROW(WID_MM_MAP_TOOLS, STR_MOBILE_MENU_MAP_TOOLS, Colours::Grey),
 			MOBILE_MENU_ROW(WID_MM_SAVE, STR_FILE_MENU_SAVE_GAME, Colours::Grey),
 			MOBILE_MENU_ROW(WID_MM_LOAD, STR_FILE_MENU_LOAD_GAME, Colours::Grey),
-			MOBILE_MENU_ROW(WID_MM_MUSIC, STR_MOBILE_MENU_MUSIC, Colours::Grey),
+			MOBILE_MENU_ROW(WID_MM_SETTINGS, STR_MOBILE_MENU_SETTINGS, Colours::Grey),
+			MOBILE_MENU_ROW(WID_MM_MESSAGES, STR_MOBILE_MENU_MESSAGES, Colours::Grey),
+			MOBILE_MENU_ROW(WID_MM_MAP_TOOLS, STR_MOBILE_MENU_MAP_TOOLS, Colours::Grey),
+			MOBILE_MENU_ROW(WID_MM_TRANSPARENCY, STR_SETTINGS_MENU_TRANSPARENCY_OPTIONS, Colours::Grey),
 			MOBILE_MENU_ROW(WID_MM_HELP, STR_ABOUT_MENU_HELP, Colours::Grey),
-			MOBILE_MENU_ROW(WID_MM_ABOUT, STR_ABOUT_MENU_ABOUT_OPENTTD, Colours::Grey),
 			MOBILE_MENU_ROW(WID_MM_QUIT, STR_MOBILE_MENU_QUIT, Colours::Red),
+			MOBILE_MENU_ROW(WID_MM_QUIT_GAME, STR_MOBILE_MENU_QUIT_GAME, Colours::Red),
 		EndContainer(),
 	EndContainer(),
 };
@@ -994,22 +1042,18 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_menu_two_colu
 	NWidget(WWT_PANEL, Colours::Grey),
 		NWidget(NWID_HORIZONTAL), SetPadding(4), SetPIP(0, 4, 0),
 			NWidget(NWID_VERTICAL),
-				MOBILE_MENU_ROW(WID_MM_MESSAGES, STR_MOBILE_MENU_MESSAGES, Colours::Grey),
-				MOBILE_MENU_ROW(WID_MM_GAME_OPTIONS, STR_SETTINGS_MENU_GAME_OPTIONS, Colours::Grey),
-				MOBILE_MENU_ROW(WID_MM_SETTINGS, STR_MOBILE_MENU_SETTINGS, Colours::Grey),
-				MOBILE_MENU_ROW(WID_MM_SCRIPTS, STR_MOBILE_MENU_SCRIPTS, Colours::Grey),
-				MOBILE_MENU_ROW(WID_MM_NEWGRF, STR_SETTINGS_MENU_NEWGRF_SETTINGS, Colours::Grey),
-				MOBILE_MENU_ROW(WID_MM_TRANSPARENCY, STR_SETTINGS_MENU_TRANSPARENCY_OPTIONS, Colours::Grey),
-				MOBILE_MENU_ROW(WID_MM_MAP_TOOLS, STR_MOBILE_MENU_MAP_TOOLS, Colours::Grey),
-			EndContainer(),
-			NWidget(NWID_VERTICAL),
 				MOBILE_MENU_ROW(WID_MM_SAVE, STR_FILE_MENU_SAVE_GAME, Colours::Grey),
 				MOBILE_MENU_ROW(WID_MM_LOAD, STR_FILE_MENU_LOAD_GAME, Colours::Grey),
-				MOBILE_MENU_ROW(WID_MM_MUSIC, STR_MOBILE_MENU_MUSIC, Colours::Grey),
-				MOBILE_MENU_ROW(WID_MM_HELP, STR_ABOUT_MENU_HELP, Colours::Grey),
-				MOBILE_MENU_ROW(WID_MM_ABOUT, STR_ABOUT_MENU_ABOUT_OPENTTD, Colours::Grey),
+				MOBILE_MENU_ROW(WID_MM_MAP_TOOLS, STR_MOBILE_MENU_MAP_TOOLS, Colours::Grey),
+				MOBILE_MENU_ROW(WID_MM_TRANSPARENCY, STR_SETTINGS_MENU_TRANSPARENCY_OPTIONS, Colours::Grey),
 				NWidget(NWID_SPACER), SetMinimalSize(0, 40), SetFill(0, 1),
+			EndContainer(),
+			NWidget(NWID_VERTICAL),
+				MOBILE_MENU_ROW(WID_MM_SETTINGS, STR_MOBILE_MENU_SETTINGS, Colours::Grey),
+				MOBILE_MENU_ROW(WID_MM_MESSAGES, STR_MOBILE_MENU_MESSAGES, Colours::Grey),
+				MOBILE_MENU_ROW(WID_MM_HELP, STR_ABOUT_MENU_HELP, Colours::Grey),
 				MOBILE_MENU_ROW(WID_MM_QUIT, STR_MOBILE_MENU_QUIT, Colours::Red),
+				MOBILE_MENU_ROW(WID_MM_QUIT_GAME, STR_MOBILE_MENU_QUIT_GAME, Colours::Red),
 			EndContainer(),
 		EndContainer(),
 	EndContainer(),
@@ -1100,7 +1144,8 @@ static bool WantToolCancel()
 {
 	if ((_thd.place_mode & HT_DRAG_MASK) == HT_NONE) return false;
 	const Window *w = _thd.GetCallbackWnd();
-	return w != nullptr && w != GetMobileRailToolbar() && w->window_class != WindowClass::MainWindow;
+	/* Not for the construction toolbar (it has its own Cancel), nor while adding stops (the stops bar has Done). */
+	return w != nullptr && w != GetMobileRailToolbar() && w->window_class != WindowClass::MainWindow && w->window_class != WindowClass::VehicleView;
 }
 
 /** The hub dock: a left rail in landscape and a bottom bar in portrait, with the same widgets. */
@@ -1280,7 +1325,7 @@ static WindowDesc _mobile_minimap_desc(
 
 /* --- News banner --- */
 
-/** The news banner: the scrolling ticker of the desktop status bar in its own window. */
+/** The news banner: the headline of the desktop status bar's ticker in its own window, shown for as long as the ticker runs. */
 struct MobileNewsWindow : Window {
 	static constexpr int TICKER_STOP = 1640; ///< Scrolling is finished when the counter reaches this value, as on the desktop status bar.
 	int ticker_scroll = 0; ///< Position of the scrolling text.
@@ -1296,9 +1341,10 @@ struct MobileNewsWindow : Window {
 		if (widget != WID_MN_TEXT) return;
 		const NewsItem *ni = GetStatusbarNews();
 		if (ni == nullptr) return;
-		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect, RectPadding::zero);
-		tr.top = CentreBounds(r.top, r.bottom, GetCharacterHeight(FontSize::Normal));
-		DrawScrollingStatusText(*ni, ScaleGUITrad(this->ticker_scroll), tr.left, tr.right, tr.top, tr.bottom, TextColour::Black);
+		/* A static headline, truncated with an ellipsis: scrolling text is hard to read on a phone and starts empty. */
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+		std::string headline = StrMakeValid(ni->GetStatusText(), StringValidationSetting::ReplaceTabCrNlWithSpace);
+		DrawString(tr.left, tr.right, CentreBounds(r.top, r.bottom, GetCharacterHeight(FontSize::Normal)), headline, TextColour::Black);
 	}
 
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
@@ -1467,6 +1513,8 @@ void RelocateMobileWindows()
 		RecreateMobileRailToolbar();
 		toolbar = GetMobileRailToolbar();
 	}
+	/* The bar shown while adding stops to a train takes the toolbar's place. */
+	if (toolbar == nullptr) toolbar = FindWindowById(WindowClass::MobileStopsBar, 0);
 
 	/* The dock and the toolbars reach the screen edges (their spacers fill the insets): resize them when the insets change. */
 	static Rect last_gaps{};
@@ -1522,18 +1570,23 @@ void RelocateMobileWindows()
 
 	if (landscape && toolbar != nullptr) {
 		/* Its tools don't fit beside a sheet: let it switch to status, Cancel and Build only (it asks IsMobileSheetOpen()). */
-		toolbar->InvalidateData();
+		UpdateMobileRailToolbarPlanes(toolbar);
 		/* Along the bottom of the map, between the dock and the sheet. */
 		FitWindowTo(toolbar, map_right - map_left, toolbar->height);
 		MoveWindowTo(toolbar, map_left, _screen.height - toolbar->height);
 	}
 
+	/* The floating chrome at the top: against the cutout's shape (and 8 from the rounded corners) where the platform says
+	 * where it is; otherwise below the safe area's top. See the round 4 design, section 2.4. */
+	int corner = ScaleGUITrad(8);
 	if (Window *status = FindWindowById(WindowClass::MobileStatus, 0); status != nullptr) {
-		MoveWindowTo(status, map_left + margin, safe.top + margin);
+		int x = landscape ? map_left + margin : std::max(map_left + margin, corner);
+		MoveWindowTo(status, x, GetTopChromeY(x, x + status->width - 1, safe));
 	}
 
 	if (Window *minimap = FindWindowById(WindowClass::MobileMinimap, 0); minimap != nullptr) {
-		MoveWindowTo(minimap, map_right - minimap->width - margin, safe.top + margin);
+		int x = landscape ? map_right - minimap->width - margin : std::min(map_right - minimap->width - margin, _screen.width - corner - minimap->width);
+		MoveWindowTo(minimap, x, GetTopChromeY(x, x + minimap->width - 1, safe));
 	}
 
 	for (WindowClass cls : {WindowClass::MobileNews, WindowClass::MobileError}) {
@@ -1607,7 +1660,7 @@ Rect GetMobileVisibleMapRect()
 	if (const Window *status = FindWindowById(WindowClass::MobileStatus, 0); status != nullptr) {
 		r.top = std::max(r.top, status->top + status->height + ScaleGUITrad(MOBILE_MARGIN));
 	}
-	if (const Window *toolbar = GetMobileRailToolbar(); toolbar != nullptr) {
+	if (const Window *toolbar = GetMobileBottomBar(); toolbar != nullptr) {
 		r.bottom = std::min(r.bottom, toolbar->top - 1);
 	}
 	if (IsSheetOpen()) {
@@ -1645,6 +1698,13 @@ void MobileShowInSheet(Window *w)
 	if (Window *old = GetSheetContent(); old != nullptr && old != w) old->Close();
 	_sheet.content_cls = w->window_class;
 	_sheet.content_num = w->window_number;
+	RelocateMobileWindows();
+}
+
+/** Close whatever fills the sheet slot (e.g. from the construction toolbar's "Show tools"). */
+void CloseMobileSheetPublic()
+{
+	CloseMobileSheet();
 	RelocateMobileWindows();
 }
 
@@ -1693,10 +1753,16 @@ void ShowMobileBuildFlyoutForToolbar(Window *toolbar, [[maybe_unused]] WidgetID 
 /** Errors outside construction toolbars: a red banner where the news banner goes. */
 struct MobileErrorWindow : Window {
 	std::string text; ///< The error.
+	bool resume = false; ///< A yellow "paused while you were away" banner; tapping it unpauses.
 
-	MobileErrorWindow(WindowDesc &desc, std::string &&text) : Window(desc), text(std::move(text))
+	MobileErrorWindow(WindowDesc &desc, std::string &&text, bool resume = false) : Window(desc), text(std::move(text)), resume(resume)
 	{
-		this->InitNested(0);
+		this->CreateNestedTree();
+		if (resume) {
+			this->GetWidget<NWidgetCore>(WID_MERR_TEXT)->colour = Colours::Yellow;
+			this->GetWidget<NWidgetCore>(WID_MERR_DISMISS)->colour = Colours::Yellow;
+		}
+		this->FinishInitNested(0);
 		this->flags.Reset(WindowFlag::WhiteBorder);
 	}
 
@@ -1709,11 +1775,12 @@ struct MobileErrorWindow : Window {
 	{
 		if (widget != WID_MERR_TEXT) return;
 		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
-		DrawStringMultiLineWithClipping(tr, this->text, TextColour::White, AlignmentH::Centre);
+		DrawStringMultiLineWithClipping(tr, this->text, this->resume ? TextColour::Black : TextColour::White, AlignmentH::Centre);
 	}
 
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
+		if (widget == WID_MERR_TEXT && this->resume && _pause_mode.Test(PauseMode::Normal)) Command<Commands::Pause>::Post(PauseMode::Normal, false);
 		if (widget == WID_MERR_TEXT || widget == WID_MERR_DISMISS) this->Close();
 	}
 
@@ -1769,6 +1836,15 @@ bool ShowMobileError(const std::string &summary, const std::string &detail)
 	return true;
 }
 
+/** Tell the player the game waited for them: a yellow banner; tapping it continues the game. */
+void ShowMobileResumeBanner()
+{
+	if (!IsMobileLayout() || _game_mode != GameMode::Normal || !_pause_mode.Test(PauseMode::Normal)) return;
+	CloseWindowById(WindowClass::MobileError, 0);
+	new MobileErrorWindow(_mobile_error_desc, GetString(STR_MOBILE_RESUME_BANNER), true);
+	RelocateMobileWindows();
+}
+
 /**
  * Close the flyouts when a tap lands outside them; the tap is consumed so it does not reach the map.
  * @param w The window under the tap.
@@ -1776,6 +1852,12 @@ bool ShowMobileError(const std::string &summary, const std::string &detail)
  */
 bool MobileConsumeOutsideTap(const Window *w)
 {
+	if (!IsMobileMenus()) return false;
+	/* A tap outside a confirmation cancels it. */
+	if (Window *query = FindWindowByClass(WindowClass::ConfirmPopupQuery); query != nullptr && w != query && (w == nullptr || w->window_class != WindowClass::DropdownMenu)) {
+		query->Close();
+		return true;
+	}
 	if (!IsMobileLayout()) return false;
 	if (w == nullptr || w->window_class == WindowClass::MobileMenu || w->window_class == WindowClass::MobileBuildMenu || w->window_class == WindowClass::MobileRailMore || w->window_class == WindowClass::DropdownMenu) return false;
 	if (!IsMobileFlyoutOpen()) return false;
@@ -1791,6 +1873,30 @@ bool MobileConsumeOutsideTap(const Window *w)
  */
 bool MobileHandleBack()
 {
+	if (!IsMobileMenus()) return false;
+
+	/* An open confirmation is cancelled; an open dropdown closes without changing anything. */
+	if (Window *query = FindWindowByClass(WindowClass::ConfirmPopupQuery); query != nullptr) {
+		query->Close();
+		return true;
+	}
+	if (Window *dropdown = FindWindowByClass(WindowClass::DropdownMenu); dropdown != nullptr) {
+		dropdown->Close();
+		return true;
+	}
+	/* Full-screen pages: Back goes back a level, or closes them. */
+	if (Window *settings = FindWindowById(WindowClass::MobileSettings, 0); settings != nullptr) {
+		settings->OnClick({}, WID_MSET_BACK, 1);
+		return true;
+	}
+	if (Window *new_game = FindWindowByClass(WindowClass::GenerateLandscape); new_game != nullptr && _game_mode == GameMode::Menu) {
+		new_game->Close();
+		return true;
+	}
+	if (Window *saveload = FindWindowById(WindowClass::SaveLoad, 0); saveload != nullptr && _game_mode == GameMode::Menu) {
+		saveload->Close();
+		return true;
+	}
 	if (!IsMobileLayout()) return false;
 
 	if (IsMobileFlyoutOpen()) {

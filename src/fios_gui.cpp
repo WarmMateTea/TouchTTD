@@ -37,6 +37,9 @@
 #include "table/sprites.h"
 #include "table/strings.h"
 
+#include "mobile_gui.h"
+#include "mobile_saveload_gui.h"
+
 #include "safeguards.h"
 
 LoadCheckData _load_check_data;    ///< Data loaded from save during SL_LOAD_CHECK.
@@ -1103,6 +1106,11 @@ static WindowDesc _save_dialog_desc(
 void ShowSaveLoadDialog(AbstractFileType abstract_filetype, SaveLoadOperation fop)
 {
 	CloseWindowById(WindowClass::SaveLoad, 0);
+
+	if (IsMobileMenus() && abstract_filetype == AbstractFileType::Savegame) {
+		ShowMobileSaveLoad(fop);
+		return;
+	}
 
 	if (fop == SaveLoadOperation::Save) {
 		new SaveLoadWindow(_save_dialog_desc, abstract_filetype, fop);

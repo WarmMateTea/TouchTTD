@@ -1403,10 +1403,12 @@ static uint GetWindowZPriority(WindowClass wc)
 		case WindowClass::MobileSheetFiller:
 		case WindowClass::MobileRailMore:
 		case WindowClass::MobileToolCancel:
+		case WindowClass::MobileStopsBar:
 			++z_priority;
 			[[fallthrough]];
 
 		case WindowClass::OnScreenKeyboard:
+		case WindowClass::MobileSettings: // Full screen over the mobile shell.
 			++z_priority;
 			[[fallthrough]];
 
@@ -3707,6 +3709,7 @@ void RelocateAllWindows(int neww, int newh)
 	}
 
 	RelocateMobileWindows();
+	RelocateMobileMainMenu();
 }
 
 /**

@@ -279,8 +279,16 @@ add_files(
     mobile_build.h
     mobile_gui.cpp
     mobile_gui.h
+    mobile_newgame_gui.cpp
+    mobile_newgame_gui.h
+    mobile_saveload_gui.cpp
+    mobile_saveload_gui.h
+    mobile_settings_gui.cpp
+    mobile_settings_gui.h
     mobile_touch.cpp
     mobile_touch.h
+    mobile_vehicle_gui.cpp
+    mobile_vehicle_gui.h
     music.cpp
     music_gui.cpp
     newgrf.cpp

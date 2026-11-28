@@ -19,6 +19,7 @@
 static constexpr int MOBILE_TEXT_INSET = 8;
 
 bool IsMobileLayout();
+bool IsMobileMenus();
 bool IsMobileShellWindow(WindowClass cls);
 void ShowMobileVitalWindows();
 void RelocateMobileWindows();
@@ -34,6 +35,9 @@ Point GetMobileMapCentreOffset();
 void MobileShowInSheet(Window *w);
 void MobileShowInfoWindow(Window *w);
 bool IsMobileSheetOpen();
+void CloseMobileSheetPublic();
+void ShowMobileResumeBanner();
+void RelocateMobileMainMenu();
 void ShowMobileBuildFlyoutForToolbar(Window *toolbar, WidgetID widget);
 bool ShowMobileError(const std::string &summary, const std::string &detail);
 void DrawMobileIconButton(const Rect &r, SpriteID sprite, StringID label, bool lowered, bool disabled, FontSize font_size = FontSize::Small);

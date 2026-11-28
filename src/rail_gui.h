@@ -34,6 +34,7 @@ void PostRailDepot(TileIndex tile, DiagDirection dir);
 struct Window *GetMobileRailToolbar();
 bool IsMobileRailToolbarLandscape(const struct Window *w);
 void RecreateMobileRailToolbar();
+void UpdateMobileRailToolbarPlanes(struct Window *w);
 
 /** Settings for which signals are shown by the signal GUI. */
 enum SignalGUISettings : uint8_t {
