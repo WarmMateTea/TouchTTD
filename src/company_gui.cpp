@@ -45,6 +45,8 @@
 #include "core/string_consumer.hpp"
 
 #include "widgets/company_widget.h"
+#include "mobile_gui.h"
+#include "mobile_company_gui.h"
 
 #include "table/strings.h"
 
@@ -576,6 +578,10 @@ static WindowDesc _company_finances_desc(
 void ShowCompanyFinances(CompanyID company)
 {
 	if (!Company::IsValidID(company)) return;
+	if (IsMobileLayout()) {
+		ShowMobileFinances(company);
+		return;
+	}
 	if (BringWindowToFrontById(WindowClass::Finances, company)) return;
 
 	new CompanyFinancesWindow(_company_finances_desc, company);

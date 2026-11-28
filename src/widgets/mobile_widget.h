@@ -202,6 +202,17 @@ enum MobileStopsBarWidgets : WidgetID {
 	WID_MSB_GAP_BOTTOM, ///< Spacer filling the screen edge's inset at the bottom.
 };
 
+/** Widgets of the mobile finances (round 5 design, batch 6). */
+enum MobileFinancesWidgets : WidgetID {
+	WID_MFIN_YEAR, ///< "<year> so far".
+	WID_MFIN_COMPARE, ///< The year compared with.
+	WID_MFIN_TABLE, ///< The groups, their categories and the profit.
+	WID_MFIN_SCROLL, ///< Scrollbar of the table.
+	WID_MFIN_LOAN, ///< Loan and bank balance.
+	WID_MFIN_BORROW, ///< Borrow dropdown.
+	WID_MFIN_REPAY, ///< Repay dropdown.
+};
+
 /** Widgets of the mobile refit window (round 5 design, 7.3). */
 enum MobileRefitWidgets : WidgetID {
 	WID_MRF_BACK, ///< Back to the window it was opened from.

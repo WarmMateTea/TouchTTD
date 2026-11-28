@@ -1178,6 +1178,29 @@ STR_MOBILE_NEW_SHIP                                             :New ship
 STR_MOBILE_NEW_AIRCRAFT                                         :New aircraft
 STR_MOBILE_NEW_VEHICLE_NONE                                     :Nothing can be bought here yet
 STR_MOBILE_NEW_VEHICLE_LINE                                     :{RAW_STRING} · {VELOCITY}
+STR_MOBILE_FINANCES_INCOME                                      :Income
+STR_MOBILE_FINANCES_RUNNING                                     :Running costs
+STR_MOBILE_FINANCES_CONSTRUCTION                                :Construction
+STR_MOBILE_FINANCES_NEW_VEHICLES                                :New vehicles
+STR_MOBILE_FINANCES_OTHER                                       :Other
+STR_MOBILE_FINANCES_PROFIT                                      :Profit
+STR_MOBILE_FINANCES_SO_FAR                                      :{NUM} so far
+STR_MOBILE_FINANCES_COMPARE_TOOLTIP                             :{BLACK}The year to compare with
+STR_MOBILE_FINANCES_OPEN                                        :{DOWN_ARROW}
+STR_MOBILE_FINANCES_CLOSED                                      :{RIGHT_ARROW}
+STR_MOBILE_FINANCES_DASH                                        :-
+STR_MOBILE_FINANCES_NEGATIVE                                    :-{CURRENCY_LONG}
+STR_MOBILE_FINANCES_LOAN                                        :Loan {CURRENCY_LONG} of {CURRENCY_LONG} · interest {NUM}%
+STR_MOBILE_FINANCES_BALANCE                                     :Bank balance {CURRENCY_LONG}
+STR_MOBILE_FINANCES_BORROW                                      :Borrow {DOWN_ARROW}
+STR_MOBILE_FINANCES_REPAY                                       :Repay {DOWN_ARROW}
+STR_MOBILE_FINANCES_BORROW_MAX                                  :Maximum ({CURRENCY_LONG})
+STR_MOBILE_FINANCES_REPAY_ALL                                   :Everything ({CURRENCY_LONG})
+STR_MOBILE_FINANCES_MAXIMUM_REACHED                             :Maximum reached
+STR_MOBILE_FINANCES_AMOUNT_OVER_MAXIMUM                         :{CURRENCY_LONG}: over the maximum
+STR_MOBILE_FINANCES_NO_LOAN                                     :No loan to repay
+STR_MOBILE_FINANCES_AMOUNT_MORE_THAN_LOAN                       :{CURRENCY_LONG}: more than the loan
+STR_MOBILE_FINANCES_AMOUNT_NOT_ENOUGH                           :{CURRENCY_LONG}: not enough money
 STR_MOBILE_REFIT_TITLE                                          :Refit {RAW_STRING}
 STR_MOBILE_REFIT_WHOLE_TRAIN                                    :Whole train
 STR_MOBILE_REFIT_ONLY_THIS                                      :Only this vehicle

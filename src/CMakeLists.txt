@@ -277,6 +277,8 @@ add_files(
     mobile_app.h
     mobile_build.cpp
     mobile_build.h
+    mobile_company_gui.cpp
+    mobile_company_gui.h
     mobile_gui.cpp
     mobile_gui.h
     mobile_newgame_gui.cpp

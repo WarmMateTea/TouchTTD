@@ -11,7 +11,8 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 | 3. Signals | done, headless |
 | 4. Road and tram | done, headless (tram untested: no tram types in the test game) |
 | 5. Other vehicles and refit | done, headless with road vehicles (ships, aircraft need docks and airports: batch 9) |
-| 6. Finances | next |
+| 6. Finances | done, headless |
+| 7. Industries | next |
 
 ## Batch 1: fonts, main menu, cells, fixes, leftovers (§2, §3)
 
@@ -124,3 +125,16 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 ### Not done
 - Subtypes of a cargo in the refit list (NewGRF), and refitting from the New train strip before the train exists is the same window.
 - Ships and aircraft tested only through the shared code (no docks or airports in the mobile layout yet).
+
+## Batch 6: Finances and the loan (§8)
+
+### Steps
+- **New file** `src/mobile_company_gui.cpp` (+ `.h`, in `src/CMakeLists.txt`) for the company's windows; `MobileFinancesWindow` (class `Finances`, so the Company hub's Finances tab and the status pill's money open it; `ShowCompanyFinances()` hooks it in the mobile layout). New widgets `WID_MFIN_*`.
+- **Table**: "<year> so far" against a year picked in a dropdown (last year by default, or the year before); group rows Income · Running costs (vehicles, property maintenance, loan interest) · Construction · New vehicles · Other, a tap opens a group's non-zero categories; Profit, shaded. Costs red with "-", zero as "-". The table scrolls by pixel (rows of 32 and 24).
+- **Loan**: "Loan £x of £max · interest y%" and the bank balance; **Borrow ▾** (£10,000 · £50,000 · Maximum) and **Repay ▾** (£10,000 · £50,000 · Everything) as touch dropdowns, impossible entries disabled with the reason as their text ("Maximum reached", "not enough money", "No loan to repay"); `IncreaseLoan`/`DecreaseLoan` with `LoanCommand::Amount` or `Max`, no confirmation.
+- Screenshot `L26`.
+
+### Findings
+- **`Company::yearly_expenses` keeps costs positive and income negative** (`[0]` is this year, `[1]` last year, `[2]` the year before); the table negates them.
+- The desktop's category names (`STR_FINANCES_SECTION_*`) carry `{GOLD}`; drawing them black needs `ExtendedTextColourFlag::Forced` (and `NoShade`, or they keep a shadow).
+- `Money` is `OverflowSafeInt`: a `?:` with a literal `0` on one side doesn't compile; write `Money{0}`.
