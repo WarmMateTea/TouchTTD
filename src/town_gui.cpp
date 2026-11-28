@@ -51,6 +51,7 @@
 #include "mobile_gui.h"
 
 #include "widgets/town_widget.h"
+#include "widgets/mobile_widget.h"
 
 #include "table/strings.h"
 
@@ -156,6 +157,7 @@ public:
 		return GetTownRatingString(rating);
 	}
 
+public:
 	/**
 	 * Name of a town rating.
 	 * @param rating The rating.
@@ -347,8 +349,342 @@ static WindowDesc _town_authority_desc(
 	_nested_town_authority_widgets
 );
 
+/** The local authority in the mobile layout: ratings, then the actions; a tap opens one (round 5 design, 10.1). */
+struct MobileTownAuthorityWindow : Window {
+	TownAction expanded = TownAction::End; ///< Action showing its description and button.
+	Scrollbar *vscroll = nullptr;
+
+	/** A line of the list. */
+	struct Row {
+		enum Kind : uint8_t { Header, Rating, NoRatings, Action } kind; ///< What it shows.
+		CompanyID company = CompanyID::Invalid(); ///< The company of a rating.
+		TownAction action = TownAction::End; ///< The action.
+		StringID header = STR_NULL; ///< The header's text.
+	};
+
+	MobileTownAuthorityWindow(WindowDesc &desc, TownID town, bool over_town) : Window(desc)
+	{
+		this->CreateNestedTree();
+		this->vscroll = this->GetScrollbar(WID_MTA_SCROLL);
+		this->GetWidget<NWidgetStacked>(WID_MTA_SEL_BACK)->SetDisplayedPlane(over_town ? 0 : SZSP_NONE);
+		this->FinishInitNested(town);
+		this->UpdateCount();
+	}
+
+	const Town *GetTown() const { return Town::GetIfValid(static_cast<TownID>(this->window_number)); }
+
+	/** @return The actions the game's settings allow, as the desktop window lists them. */
+	static TownActions GetEnabledActions()
+	{
+		TownActions enabled{};
+		enabled.Set();
+		if (!_settings_game.economy.fund_roads) enabled.Reset(TownAction::RoadRebuild);
+		if (!_settings_game.economy.fund_buildings) enabled.Reset(TownAction::FundBuildings);
+		if (!_settings_game.economy.exclusive_rights) enabled.Reset(TownAction::BuyRights);
+		if (!_settings_game.economy.bribe) enabled.Reset(TownAction::Bribe);
+		return enabled;
+	}
+
+	/**
+	 * Cost of an action.
+	 * @param action The action.
+	 * @return The cost.
+	 */
+	static Money GetCost(TownAction action)
+	{
+		return _price[Price::TownAction] * GetTownActionCost(action) >> 8;
+	}
+
+	/** @return The lines: the ratings, then the actions. */
+	std::vector<Row> GetRows() const
+	{
+		std::vector<Row> rows;
+		const Town *t = this->GetTown();
+		if (t == nullptr) return rows;
+		rows.push_back({Row::Header, CompanyID::Invalid(), TownAction::End, STR_MOBILE_AUTHORITY_RATINGS});
+		bool any = false;
+		for (const Company *c : Company::Iterate()) {
+			if (!t->have_ratings.Test(c->index) && t->exclusivity != c->index) continue;
+			rows.push_back({Row::Rating, c->index});
+			any = true;
+		}
+		if (!any) rows.push_back({Row::NoRatings});
+		rows.push_back({Row::Header, CompanyID::Invalid(), TownAction::End, STR_MOBILE_AUTHORITY_ACTIONS});
+		for (TownAction a : GetEnabledActions()) rows.push_back({Row::Action, CompanyID::Invalid(), a});
+		return rows;
+	}
+
+	/**
+	 * Height of a line.
+	 * @param row The line.
+	 * @param width Width of the list, for the description of an expanded action.
+	 * @return Its height in pixels.
+	 */
+	int GetRowHeight(const Row &row, int width) const
+	{
+		switch (row.kind) {
+			case Row::Action: {
+				int h = ScaleGUITrad(48);
+				if (row.action == this->expanded) {
+					h += GetStringHeight(GetDescription(row.action), width) + ScaleGUITrad(48);
+				}
+				return h;
+			}
+			default: return ScaleGUITrad(32);
+		}
+	}
+
+	/**
+	 * The description of an action (the desktop's tooltip text, with its cost).
+	 * @param action The action.
+	 * @return The text.
+	 */
+	static std::string GetDescription(TownAction action)
+	{
+		static const StringID descriptions[] = {
+			STR_LOCAL_AUTHORITY_ACTION_TOOLTIP_SMALL_ADVERTISING, STR_LOCAL_AUTHORITY_ACTION_TOOLTIP_MEDIUM_ADVERTISING,
+			STR_LOCAL_AUTHORITY_ACTION_TOOLTIP_LARGE_ADVERTISING, STR_LOCAL_AUTHORITY_ACTION_TOOLTIP_ROAD_RECONSTRUCTION_MONTHS,
+			STR_LOCAL_AUTHORITY_ACTION_TOOLTIP_STATUE_OF_COMPANY, STR_LOCAL_AUTHORITY_ACTION_TOOLTIP_NEW_BUILDINGS,
+			STR_LOCAL_AUTHORITY_ACTION_TOOLTIP_EXCLUSIVE_TRANSPORT_MONTHS, STR_LOCAL_AUTHORITY_ACTION_TOOLTIP_BRIBE,
+		};
+		StringID str = descriptions[to_underlying(action)];
+		if (TimerGameEconomy::UsingWallclockUnits()) {
+			if (action == TownAction::RoadRebuild) str = STR_LOCAL_AUTHORITY_ACTION_TOOLTIP_ROAD_RECONSTRUCTION_MINUTES;
+			if (action == TownAction::BuyRights) str = STR_LOCAL_AUTHORITY_ACTION_TOOLTIP_EXCLUSIVE_TRANSPORT_MINUTES;
+		}
+		return GetString(str, GetCost(action));
+	}
+
+	/**
+	 * Why an action can't be done now.
+	 * @param action The action.
+	 * @return The reason.
+	 */
+	StringID GetReason(TownAction action) const
+	{
+		const Town *t = this->GetTown();
+		if (!Company::IsValidID(_local_company) || GetCost(action) > GetAvailableMoney(_local_company)) return STR_MOBILE_AUTHORITY_NOT_ENOUGH_MONEY;
+		if (action == TownAction::BuildStatue && t->statues.Test(_local_company)) return STR_MOBILE_AUTHORITY_STATUE_BUILT;
+		if (action == TownAction::BuyRights && t->exclusivity == _local_company) return STR_MOBILE_AUTHORITY_HAS_RIGHTS;
+		if (action == TownAction::Bribe && t->unwanted[_local_company] > 0) return STR_MOBILE_AUTHORITY_NO_BRIBES;
+		return STR_MOBILE_AUTHORITY_NOT_NOW;
+	}
+
+	/** @return The width of the list's text. */
+	int GetTextWidth() const
+	{
+		const NWidgetBase *nwid = this->GetWidget<NWidgetBase>(WID_MTA_LIST);
+		return static_cast<int>(nwid->current_x) - WidgetDimensions::scaled.framerect.Horizontal() - 2 * ScaleGUITrad(MOBILE_TEXT_INSET);
+	}
+
+	/** The list scrolls by pixel: its content is as tall as its lines. */
+	void UpdateCount()
+	{
+		int height = 0;
+		int width = this->GetTextWidth();
+		for (const Row &row : this->GetRows()) height += this->GetRowHeight(row, width);
+		this->vscroll->SetCount(height);
+		this->vscroll->SetStepSize(ScaleGUITrad(32));
+	}
+
+	/**
+	 * The button of an expanded action.
+	 * @param row The action's area.
+	 * @return The button.
+	 */
+	static Rect GetActionButton(const Rect &row)
+	{
+		return row.WithY(row.bottom - ScaleGUITrad(48) + 1, row.bottom).Shrink(0, ScaleGUITrad(4));
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, Dimension &fill, Dimension &resize) override
+	{
+		switch (widget) {
+			case WID_MTA_TITLE: size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal)); break;
+			case WID_MTA_LIST:
+				fill.height = resize.height = 1;
+				size.height = 4 * ScaleGUITrad(48);
+				break;
+		}
+	}
+
+	void OnResize() override
+	{
+		this->vscroll->SetCapacityFromWidget(this, WID_MTA_LIST);
+		this->UpdateCount();
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		const Town *t = this->GetTown();
+		if (t == nullptr) return;
+		if (widget == WID_MTA_TITLE) {
+			DrawMobileTitle(r, GetString(STR_MOBILE_AUTHORITY_TITLE, t->index));
+			return;
+		}
+		if (widget != WID_MTA_LIST) return;
+
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+		int line = GetCharacterHeight(FontSize::Normal);
+		bool rtl = _current_text_dir == TD_RTL;
+		const ExtendedTextColour black{TextColour::Black, {ExtendedTextColourFlag::Forced, ExtendedTextColourFlag::NoShade}};
+		TownActions available = GetMaskOfTownActions(_local_company, t);
+		int y = tr.top - this->vscroll->GetPosition();
+		for (const Row &row : this->GetRows()) {
+			int h = this->GetRowHeight(row, tr.Width());
+			if (y + h <= r.top) {
+				y += h;
+				continue;
+			}
+			if (y >= r.bottom) break;
+			Rect rr = tr.WithY(y, y + h - 1);
+			int ty = CentreBounds(rr.top, std::min<int>(rr.bottom, rr.top + ScaleGUITrad(row.kind == Row::Action ? 48 : 32) - 1), line);
+			switch (row.kind) {
+				case Row::Header:
+					DrawString(rr.left, rr.right, ty, row.header, TextColour::Black);
+					break;
+
+				case Row::NoRatings:
+					DrawString(rr.left, rr.right, ty, STR_MOBILE_AUTHORITY_NO_RATINGS, TextColour::Black);
+					break;
+
+				case Row::Rating: {
+					Dimension icon = GetSpriteSize(SPR_COMPANY_ICON);
+					DrawCompanyIcon(row.company, rtl ? rr.right - icon.width + 1 : rr.left, CentreBounds(rr.top, rr.bottom, icon.height));
+					Rect text = rr.Indent(icon.width + WidgetDimensions::scaled.hsep_wide, rtl);
+					int rating = t->ratings[row.company];
+					StringID word = TownAuthorityWindow::GetTownRatingString(rating);
+					DrawString(text.left, text.right, ty, word, rating > RATING_MEDIOCRE ? TextColour::DarkGreen : TextColour::Red, AlignmentH::End);
+					DrawString(text.left, text.right - GetStringBoundingBox(word).width - WidgetDimensions::scaled.hsep_wide, ty, GetString(STR_COMPANY_NAME, row.company), TextColour::Black);
+					break;
+				}
+
+				case Row::Action: {
+					bool can = available.Test(row.action);
+					Money cost = GetCost(row.action);
+					std::string cost_text = GetString(STR_JUST_CURRENCY_LONG, cost);
+					DrawString(rr.left, rr.right, ty, cost_text, can ? TextColour::Black : TextColour::Grey, AlignmentH::End);
+					DrawString(rr.left, rr.right - GetStringBoundingBox(cost_text).width - WidgetDimensions::scaled.hsep_wide, ty, STR_LOCAL_AUTHORITY_ACTION_SMALL_ADVERTISING_CAMPAIGN + to_underlying(row.action), can ? black : ExtendedTextColour{TextColour::Grey, {ExtendedTextColourFlag::Forced, ExtendedTextColourFlag::NoShade}});
+					if (row.action == this->expanded) {
+						Rect desc = rr.WithY(rr.top + ScaleGUITrad(48), rr.bottom - ScaleGUITrad(48));
+						DrawStringMultiLine(desc, GetDescription(row.action), black);
+						Rect button = GetActionButton(rr);
+						bool bribe = row.action == TownAction::Bribe;
+						DrawFrameRect(button, !can ? Colours::Grey : (bribe ? Colours::Red : Colours::Green), {});
+						std::string label = can ? GetString(STR_MOBILE_AUTHORITY_DO, GetString(STR_LOCAL_AUTHORITY_ACTION_SMALL_ADVERTISING_CAMPAIGN + to_underlying(row.action)), cost) : GetString(this->GetReason(row.action));
+						DrawString(button.left, button.right, CentreBounds(button.top, button.bottom, line), label, can ? TextColour::White : TextColour::Black, AlignmentH::Centre);
+					}
+					break;
+				}
+			}
+			GfxFillRect(r.left, rr.bottom, r.right, rr.bottom, GetColourGradient(Colours::Brown, Shade::Dark));
+			y += h;
+		}
+	}
+
+	/**
+	 * Do an action.
+	 * @param action The action.
+	 */
+	void Execute(TownAction action)
+	{
+		const Town *t = this->GetTown();
+		if (action == TownAction::Bribe) {
+			/* A bribe can go wrong: it always asks. */
+			ShowQuery(GetEncodedString(STR_MOBILE_AUTHORITY_BRIBE_TITLE, t->index), GetEncodedString(STR_MOBILE_AUTHORITY_BRIBE_TEXT), this, [](Window *w, bool confirmed) {
+				if (!confirmed) return;
+				const Town *town = Town::GetIfValid(static_cast<TownID>(w->window_number));
+				if (town != nullptr) Command<Commands::TownAction>::Post(STR_ERROR_CAN_T_DO_THIS, town->xy, town->index, TownAction::Bribe);
+			}, false, STR_MOBILE_AUTHORITY_BRIBE_VERB, true);
+			return;
+		}
+		Command<Commands::TownAction>::Post(STR_ERROR_CAN_T_DO_THIS, t->xy, t->index, action);
+	}
+
+	void OnClick(Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		const Town *t = this->GetTown();
+		if (t == nullptr) return;
+		switch (widget) {
+			case WID_MTA_BACK:
+			case WID_MTA_CLOSE:
+				this->Close();
+				break;
+			case WID_MTA_LIST: {
+				const NWidgetBase *nwid = this->GetWidget<NWidgetBase>(WID_MTA_LIST);
+				Rect tr = nwid->GetCurrentRect().Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+				int y = tr.top - this->vscroll->GetPosition();
+				for (const Row &row : this->GetRows()) {
+					int h = this->GetRowHeight(row, tr.Width());
+					if (pt.y >= y && pt.y < y + h) {
+						if (row.kind != Row::Action) break;
+						Rect rr = tr.WithY(y, y + h - 1);
+						if (row.action == this->expanded && GetActionButton(rr).Contains(pt)) {
+							if (GetMaskOfTownActions(_local_company, t).Test(row.action)) this->Execute(row.action);
+						} else {
+							this->expanded = (row.action == this->expanded) ? TownAction::End : row.action;
+							this->UpdateCount();
+							this->SetDirty();
+						}
+						break;
+					}
+					y += h;
+				}
+				break;
+			}
+		}
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		if (!gui_scope) return;
+		this->UpdateCount();
+		this->SetDirty();
+	}
+
+	const IntervalTimer<TimerWindow> redraw_interval = {std::chrono::seconds(3), [this](auto) {
+		if (this->GetTown() == nullptr) {
+			this->Close();
+			return;
+		}
+		this->SetDirty();
+	}};
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_town_authority_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(NWID_SELECTION, Colours::Invalid, WID_MTA_SEL_BACK),
+			NWidget(WWT_PUSHTXTBTN, Colours::Brown, WID_MTA_BACK), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_BACK, STR_MOBILE_BACK_TOOLTIP),
+		EndContainer(),
+		NWidget(WWT_PANEL, Colours::Brown, WID_MTA_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHTXTBTN, Colours::Brown, WID_MTA_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Brown, WID_MTA_LIST), SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_MTA_SCROLL), EndContainer(),
+		NWidget(NWID_VSCROLLBAR, Colours::Brown, WID_MTA_SCROLL),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_town_authority_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::TownAuthority, WindowClass::None,
+	{},
+	_nested_mobile_town_authority_widgets
+);
+
 static void ShowTownAuthorityWindow(uint town)
 {
+	if (IsMobileLayout()) {
+		/* Over the town window in the sheet; Back returns to it. */
+		Window *w = BringWindowToFrontById(WindowClass::TownAuthority, town);
+		if (w == nullptr) w = new MobileTownAuthorityWindow(_mobile_town_authority_desc, static_cast<TownID>(town), IsMobileSheetOpen());
+		if (IsMobileSheetOpen()) {
+			MobileDockOverlayInSheet(w);
+		} else {
+			MobileShowInSheet(w);
+		}
+		return;
+	}
 	AllocateWindowDescFront<TownAuthorityWindow>(_town_authority_desc, town);
 }
 

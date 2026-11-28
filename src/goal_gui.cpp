@@ -26,6 +26,10 @@
 
 #include "widgets/goal_widget.h"
 
+#include "mobile_gui.h"
+#include "zoom_func.h"
+#include "widgets/mobile_widget.h"
+
 #include "table/strings.h"
 
 #include "safeguards.h"
@@ -304,12 +308,170 @@ static WindowDesc _goals_list_desc(
 	_nested_goals_list_widgets
 );
 
+/** The goals in the mobile layout: global goals, then the company's; a tap goes to a goal's place (round 5 design, 10.4). */
+struct MobileGoalsWindow : Window {
+	Scrollbar *vscroll = nullptr;
+
+	/** A line of the list: a section header, a goal, or "None". */
+	struct Row {
+		StringID header = STR_NULL; ///< A header's text, or STR_NULL.
+		const Goal *goal = nullptr; ///< The goal of a goal row.
+	};
+
+	MobileGoalsWindow(WindowDesc &desc, CompanyID company) : Window(desc)
+	{
+		this->CreateNestedTree();
+		this->vscroll = this->GetScrollbar(WID_MWL_SCROLL);
+		this->FinishInitNested(company);
+		this->UpdateCount();
+	}
+
+	/** @return The lines: global goals, then the company's (for a company). */
+	std::vector<Row> GetRows() const
+	{
+		std::vector<Row> rows;
+		CompanyID company = static_cast<CompanyID>(this->window_number);
+		for (bool global : {true, false}) {
+			if (!global && company == CompanyID::Invalid()) continue;
+			rows.push_back({global ? STR_MOBILE_GOALS_GLOBAL : STR_MOBILE_GOALS_COMPANY});
+			bool any = false;
+			for (const Goal *g : Goal::Iterate()) {
+				if (g->company != (global ? CompanyID::Invalid() : company)) continue;
+				rows.push_back({STR_NULL, g});
+				any = true;
+			}
+			if (!any) rows.push_back({STR_MOBILE_GOALS_NONE});
+		}
+		return rows;
+	}
+
+	/**
+	 * Height of a line.
+	 * @param row The line.
+	 * @return Its height in pixels.
+	 */
+	static int GetRowHeight(const Row &row)
+	{
+		return ScaleGUITrad(row.goal != nullptr ? 48 : 32);
+	}
+
+	void UpdateCount()
+	{
+		int height = 0;
+		for (const Row &row : this->GetRows()) height += GetRowHeight(row);
+		this->vscroll->SetCount(height);
+		this->vscroll->SetStepSize(ScaleGUITrad(48));
+	}
+
+	/**
+	 * Go to a goal's place, as the desktop's click does.
+	 * @param g The goal.
+	 */
+	void GoTo(const Goal *g)
+	{
+		TileIndex xy = INVALID_TILE;
+		switch (g->type) {
+			case GoalType::Company: ShowCompany(static_cast<CompanyID>(g->dst)); return;
+			case GoalType::Tile: if (IsValidTile(g->dst)) xy = TileIndex{g->dst}; break;
+			case GoalType::Industry: if (Industry::IsValidID(g->dst)) xy = Industry::Get(g->dst)->location.tile; break;
+			case GoalType::Town: if (Town::IsValidID(g->dst)) xy = Town::Get(g->dst)->xy; break;
+			case GoalType::StoryPage:
+				if (StoryPage::IsValidID(g->dst)) ShowStoryBook(static_cast<CompanyID>(this->window_number), static_cast<StoryPageID>(g->dst));
+				return;
+			default: return;
+		}
+		if (xy != INVALID_TILE) ScrollMainWindowToTile(xy);
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, Dimension &fill, Dimension &resize) override
+	{
+		if (widget != WID_MWL_LIST) return;
+		fill.height = resize.height = 1;
+		size.height = 4 * ScaleGUITrad(48);
+	}
+
+	void OnResize() override
+	{
+		this->vscroll->SetCapacityFromWidget(this, WID_MWL_LIST);
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (widget != WID_MWL_LIST) return;
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+		int line = GetCharacterHeight(FontSize::Normal);
+		const ExtendedTextColour black{TextColour::Black, {ExtendedTextColourFlag::Forced, ExtendedTextColourFlag::NoShade}};
+		int y = tr.top - this->vscroll->GetPosition();
+		for (const Row &row : this->GetRows()) {
+			int h = GetRowHeight(row);
+			if (y + h <= r.top) {
+				y += h;
+				continue;
+			}
+			if (y >= r.bottom) break;
+			Rect rr = tr.WithY(y, y + h - 1);
+			if (row.goal == nullptr) {
+				DrawString(rr.left, rr.right, CentreBounds(rr.top, rr.bottom, line), row.header, TextColour::Black);
+			} else {
+				int ty = CentreBounds(rr.top, rr.bottom, 2 * line);
+				DrawString(rr.left, rr.right, ty, row.goal->text.GetDecodedString(), black);
+				std::string progress = row.goal->progress.GetDecodedString();
+				if (!progress.empty()) DrawString(rr.left, rr.right, ty + line, progress, row.goal->completed ? ExtendedTextColour{TextColour::DarkGreen, {ExtendedTextColourFlag::Forced, ExtendedTextColourFlag::NoShade}} : black);
+			}
+			GfxFillRect(r.left, rr.bottom, r.right, rr.bottom, GetColourGradient(Colours::Brown, Shade::Dark));
+			y += h;
+		}
+	}
+
+	void OnClick(Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		if (widget != WID_MWL_LIST) return;
+		Rect tr = this->GetWidget<NWidgetBase>(WID_MWL_LIST)->GetCurrentRect().Shrink(WidgetDimensions::scaled.framerect);
+		int y = tr.top - this->vscroll->GetPosition();
+		for (const Row &row : this->GetRows()) {
+			int h = GetRowHeight(row);
+			if (pt.y >= y && pt.y < y + h) {
+				if (row.goal != nullptr) this->GoTo(row.goal);
+				break;
+			}
+			y += h;
+		}
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		if (!gui_scope) return;
+		this->UpdateCount();
+		this->SetDirty();
+	}
+};
+
+/* In the World hub, whose tabs are the title. */
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_goals_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Brown, WID_MWL_LIST), SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_MWL_SCROLL), EndContainer(),
+		NWidget(NWID_VSCROLLBAR, Colours::Brown, WID_MWL_SCROLL),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_goals_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::GoalList, WindowClass::None,
+	{},
+	_nested_mobile_goals_widgets
+);
+
 /**
  * Open a goal list window.
  * @param company %Company to display the goals for, use #CompanyID::Invalid() to display global goals.
  */
 void ShowGoalsList(CompanyID company)
 {
+	if (IsMobileLayout()) {
+		if (!Company::IsValidID(company)) company = CompanyID::Invalid();
+		if (BringWindowToFrontById(WindowClass::GoalList, company) == nullptr) new MobileGoalsWindow(_mobile_goals_desc, company);
+		return;
+	}
 	if (!Company::IsValidID(company)) company = (CompanyID)CompanyID::Invalid();
 
 	AllocateWindowDescFront<GoalListWindow>(_goals_list_desc, company);

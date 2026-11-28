@@ -19,6 +19,11 @@
 
 #include "widgets/subsidy_widget.h"
 
+#include "mobile_gui.h"
+#include "zoom_func.h"
+#include "timer/timer_game_economy.h"
+#include "widgets/mobile_widget.h"
+
 #include "table/strings.h"
 
 #include "safeguards.h"
@@ -286,7 +291,189 @@ static WindowDesc _subsidies_list_desc(
 );
 
 
+
+/** The subsidies in the mobile layout: offered, then awarded; From and To scroll the map to each end (round 5 design, 10.2). */
+struct MobileSubsidiesWindow : Window {
+	Scrollbar *vscroll = nullptr;
+
+	/** A line of the list: a section header, a subsidy, or "None". */
+	struct Row {
+		StringID header = STR_NULL; ///< A header's text, or STR_NULL.
+		const Subsidy *subsidy = nullptr; ///< The subsidy of a subsidy row.
+	};
+
+	MobileSubsidiesWindow(WindowDesc &desc) : Window(desc)
+	{
+		this->CreateNestedTree();
+		this->vscroll = this->GetScrollbar(WID_MWL_SCROLL);
+		this->FinishInitNested(0);
+		this->UpdateCount();
+	}
+
+	/** @return The lines. */
+	static std::vector<Row> GetRows()
+	{
+		std::vector<Row> rows;
+		for (bool awarded : {false, true}) {
+			rows.push_back({awarded ? STR_MOBILE_SUBSIDIES_AWARDED : STR_MOBILE_SUBSIDIES_OFFERED});
+			bool any = false;
+			for (const Subsidy *s : Subsidy::Iterate()) {
+				if (s->IsAwarded() != awarded) continue;
+				rows.push_back({STR_NULL, s});
+				any = true;
+			}
+			if (!any) rows.push_back({STR_MOBILE_SUBSIDIES_NONE});
+		}
+		return rows;
+	}
+
+	/**
+	 * Height of a line.
+	 * @param row The line.
+	 * @return Its height in pixels.
+	 */
+	static int GetRowHeight(const Row &row)
+	{
+		return ScaleGUITrad(row.subsidy != nullptr ? 48 : 32);
+	}
+
+	void UpdateCount()
+	{
+		int height = 0;
+		for (const Row &row : GetRows()) height += GetRowHeight(row);
+		this->vscroll->SetCount(height);
+		this->vscroll->SetStepSize(ScaleGUITrad(48));
+	}
+
+	/**
+	 * Where one end of a subsidy is.
+	 * @param src The end.
+	 * @return Its tile.
+	 */
+	static TileIndex GetEndTile(const Source &src)
+	{
+		switch (src.type) {
+			case SourceType::Industry: return Industry::Get(src.ToIndustryID())->location.tile;
+			case SourceType::Town: return Town::Get(src.ToTownID())->xy;
+			default: return INVALID_TILE;
+		}
+	}
+
+	/**
+	 * The From and To buttons of a subsidy row.
+	 * @param row The row.
+	 * @param to The To button, else the From button.
+	 * @return The button.
+	 */
+	static Rect GetEndButton(const Rect &row, bool to)
+	{
+		bool rtl = _current_text_dir == TD_RTL;
+		Rect buttons = row.WithWidth(2 * ScaleGUITrad(40) + ScaleGUITrad(4), !rtl).Shrink(0, ScaleGUITrad(4));
+		return buttons.WithWidth(ScaleGUITrad(40), to != rtl);
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, Dimension &fill, Dimension &resize) override
+	{
+		if (widget != WID_MWL_LIST) return;
+		fill.height = resize.height = 1;
+		size.height = 4 * ScaleGUITrad(48);
+	}
+
+	void OnResize() override
+	{
+		this->vscroll->SetCapacityFromWidget(this, WID_MWL_LIST);
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (widget != WID_MWL_LIST) return;
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+		int line = GetCharacterHeight(FontSize::Normal);
+		const TimerGameEconomy::YearMonthDay ymd = TimerGameEconomy::ConvertDateToYMD(TimerGameEconomy::date);
+		int y = tr.top - this->vscroll->GetPosition();
+		for (const Row &row : GetRows()) {
+			int h = GetRowHeight(row);
+			if (y + h <= r.top) {
+				y += h;
+				continue;
+			}
+			if (y >= r.bottom) break;
+			Rect rr = tr.WithY(y, y + h - 1);
+			if (row.subsidy == nullptr) {
+				DrawString(rr.left, rr.right, CentreBounds(rr.top, rr.bottom, line), row.header, TextColour::Black);
+			} else {
+				const Subsidy *s = row.subsidy;
+				for (bool to : {false, true}) {
+					Rect button = GetEndButton(rr, to);
+					DrawFrameRect(button, Colours::Brown, {});
+					DrawString(button.left, button.right, CentreBounds(button.top, button.bottom, line), to ? STR_MOBILE_SUBSIDY_TO : STR_MOBILE_SUBSIDY_FROM, TextColour::White, AlignmentH::Centre);
+				}
+				Rect text = rr.Indent(2 * ScaleGUITrad(40) + ScaleGUITrad(4) + WidgetDimensions::scaled.hsep_wide, _current_text_dir != TD_RTL);
+				int ty = CentreBounds(rr.top, rr.bottom, 2 * line);
+				const CargoSpec *cs = CargoSpec::Get(s->cargo_type);
+				DrawString(text.left, text.right, ty, GetString(STR_MOBILE_SUBSIDY_ROUTE, cs->name, s->src.GetFormat(), s->src.id, s->dst.GetFormat(), s->dst.id), TextColour::Black);
+				std::string when;
+				if (TimerGameEconomy::UsingWallclockUnits()) {
+					when = s->IsAwarded() ? GetString(STR_MOBILE_SUBSIDY_AWARDED_TO_TIME, s->awarded, s->remaining + 1) : GetString(STR_MOBILE_SUBSIDY_OFFER_ENDS_TIME, s->remaining + 1);
+				} else {
+					auto end = TimerGameEconomy::date.base() - ymd.day + s->remaining * 32;
+					when = s->IsAwarded() ? GetString(STR_MOBILE_SUBSIDY_AWARDED_TO, s->awarded, end) : GetString(STR_MOBILE_SUBSIDY_OFFER_ENDS, end);
+				}
+				DrawString(text.left, text.right, ty + line, when, TextColour::Black);
+			}
+			GfxFillRect(r.left, rr.bottom, r.right, rr.bottom, GetColourGradient(Colours::Brown, Shade::Dark));
+			y += h;
+		}
+	}
+
+	void OnClick(Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		if (widget != WID_MWL_LIST) return;
+		Rect tr = this->GetWidget<NWidgetBase>(WID_MWL_LIST)->GetCurrentRect().Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+		int y = tr.top - this->vscroll->GetPosition();
+		for (const Row &row : GetRows()) {
+			int h = GetRowHeight(row);
+			if (pt.y >= y && pt.y < y + h) {
+				if (row.subsidy == nullptr) break;
+				Rect rr = tr.WithY(y, y + h - 1);
+				for (bool to : {false, true}) {
+					if (!GetEndButton(rr, to).Contains(pt)) continue;
+					TileIndex tile = GetEndTile(to ? row.subsidy->dst : row.subsidy->src);
+					if (tile != INVALID_TILE) ScrollMainWindowToTile(tile);
+				}
+				break;
+			}
+			y += h;
+		}
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		if (!gui_scope) return;
+		this->UpdateCount();
+		this->SetDirty();
+	}
+};
+
+/* In the World hub, whose tabs are the title. */
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_subsidies_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Brown, WID_MWL_LIST), SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_MWL_SCROLL), EndContainer(),
+		NWidget(NWID_VSCROLLBAR, Colours::Brown, WID_MWL_SCROLL),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_subsidies_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::SubsidyList, WindowClass::None,
+	{},
+	_nested_mobile_subsidies_widgets
+);
 void ShowSubsidiesList()
 {
+	if (IsMobileLayout()) {
+		if (BringWindowToFrontById(WindowClass::SubsidyList, 0) == nullptr) new MobileSubsidiesWindow(_mobile_subsidies_desc);
+		return;
+	}
 	AllocateWindowDescFront<SubsidyListWindow>(_subsidies_list_desc, 0);
 }

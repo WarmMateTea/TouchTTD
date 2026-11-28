@@ -41,6 +41,7 @@
 #include "timer/timer_game_calendar.h"
 
 #include "widgets/news_widget.h"
+#include "widgets/mobile_widget.h"
 
 #include "table/strings.h"
 
@@ -718,6 +719,97 @@ private:
 
 /* static */ int NewsWindow::duration = 0; // Instance creation.
 
+/** The newspaper in the mobile layout: the date, the news, and Show on map (round 5 design, 10.5). */
+struct MobileNewspaperWindow : Window {
+	const NewsItem *ni; ///< The news item shown.
+
+	MobileNewspaperWindow(WindowDesc &desc, const NewsItem *ni, bool from_history) : Window(desc), ni(ni)
+	{
+		this->CreateNestedTree();
+		this->GetWidget<NWidgetStacked>(WID_MNP_SEL_BACK)->SetDisplayedPlane(from_history ? 0 : SZSP_NONE);
+		this->GetWidget<NWidgetStacked>(WID_MNP_SEL_LOCATION)->SetDisplayedPlane(GetReferenceTile(ni->ref1) != INVALID_TILE ? 0 : SZSP_HORIZONTAL);
+		this->FinishInitNested(0);
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, Dimension &fill, Dimension &resize) override
+	{
+		switch (widget) {
+			case WID_MNP_TITLE: size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal)); break;
+			case WID_MNP_TEXT:
+				fill.height = resize.height = 1;
+				size.height = 4 * GetCharacterHeight(FontSize::Large);
+				break;
+		}
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		switch (widget) {
+			case WID_MNP_TITLE:
+				DrawMobileTitle(r, GetString(STR_JUST_DATE_LONG, this->ni->date));
+				break;
+
+			case WID_MNP_TEXT: {
+				/* The headline, large, on newspaper white. */
+				GfxFillRect(r.Shrink(WidgetDimensions::scaled.bevel), PC_WHITE);
+				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), ScaleGUITrad(8));
+				std::string text = StrMakeValid(this->ni->headline.GetDecodedString(), StringValidationSetting::ReplaceTabCrNlWithSpace);
+				DrawStringMultiLine(tr, text, ExtendedTextColour{TextColour::Black, ExtendedTextColourFlag::Forced}, AlignmentH::Centre, false, FontSize::Large);
+				break;
+			}
+		}
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		switch (widget) {
+			case WID_MNP_BACK:
+			case WID_MNP_CLOSE:
+				this->Close();
+				break;
+			case WID_MNP_SHOW_ON_MAP: {
+				TileIndex tile = GetReferenceTile(this->ni->ref1);
+				if (tile != INVALID_TILE) ScrollMainWindowToTile(tile);
+				break;
+			}
+		}
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		/* The news item may be gone (deleted with what it was about). */
+		if (!gui_scope) return;
+		bool found = false;
+		for (const NewsItem &item : GetNews()) {
+			if (&item == this->ni) found = true;
+		}
+		if (!found) this->Close();
+	}
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_newspaper_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(NWID_SELECTION, Colours::Invalid, WID_MNP_SEL_BACK),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MNP_BACK), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_BACK, STR_MOBILE_BACK_TOOLTIP),
+		EndContainer(),
+		NWidget(WWT_PANEL, Colours::Grey, WID_MNP_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MNP_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Grey, WID_MNP_TEXT), SetFill(1, 1), SetResize(1, 1), EndContainer(),
+	NWidget(NWID_SELECTION, Colours::Invalid, WID_MNP_SEL_LOCATION),
+		NWidget(WWT_PANEL, Colours::Grey),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MNP_SHOW_ON_MAP), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), SetPadding(4), SetStringTip(STR_MOBILE_SHOW_ON_MAP, STR_NEWS_MESSAGE_CAPTION),
+		EndContainer(),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_newspaper_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::News, WindowClass::None,
+	{},
+	_nested_mobile_newspaper_widgets
+);
+
 /**
  * Open up an own newspaper window for the news item.
  * @param ni Iterator to the news message to show.
@@ -727,6 +819,17 @@ static void ShowNewspaper(const NewsItem *ni)
 	SoundFx sound = _news_type_data[ni->type].sound;
 	if (sound != 0 && _settings_client.sound.news_full) SndPlayFx(sound);
 
+	if (IsMobileLayout()) {
+		/* Over the message history when it is open (Back returns to it), else as the sheet. */
+		bool from_history = FindWindowById(WindowClass::MessageHistory, 0) != nullptr;
+		Window *w = new MobileNewspaperWindow(_mobile_newspaper_desc, ni, from_history);
+		if (from_history) {
+			MobileDockOverlayInSheet(w);
+		} else {
+			MobileShowInSheet(w);
+		}
+		return;
+	}
 	new NewsWindow(GetNewsWindowLayout(ni->style), ni);
 }
 
@@ -1373,8 +1476,106 @@ static WindowDesc _message_history_desc(
 );
 
 /** Display window with news messages history */
+/** The message history in the mobile layout: date and headline, newest first; a tap opens the newspaper. */
+struct MobileMessageHistoryWindow : Window {
+	Scrollbar *vscroll = nullptr;
+
+	MobileMessageHistoryWindow(WindowDesc &desc) : Window(desc)
+	{
+		this->CreateNestedTree();
+		this->vscroll = this->GetScrollbar(WID_MMH_SCROLL);
+		this->FinishInitNested(0);
+		this->OnInvalidateData(0);
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, Dimension &fill, Dimension &resize) override
+	{
+		switch (widget) {
+			case WID_MMH_TITLE: size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal)); break;
+			case WID_MMH_LIST:
+				fill.height = resize.height = 1;
+				size.height = 3 * ScaleGUITrad(48);
+				break;
+		}
+	}
+
+	void OnResize() override
+	{
+		const NWidgetBase *nwid = this->GetWidget<NWidgetBase>(WID_MMH_LIST);
+		this->vscroll->SetCapacity(std::max(1, (static_cast<int>(nwid->current_y) - static_cast<int>(WidgetDimensions::scaled.framerect.Vertical())) / ScaleGUITrad(48)));
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (widget == WID_MMH_TITLE) {
+			DrawMobileTitle(r, GetString(STR_MOBILE_MESSAGES_TITLE));
+			return;
+		}
+		if (widget != WID_MMH_LIST) return;
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+		if (std::empty(_news)) {
+			DrawString(tr, STR_MOBILE_MESSAGES_NONE, TextColour::Black);
+			return;
+		}
+		int row = ScaleGUITrad(48);
+		int line = GetCharacterHeight(FontSize::Normal);
+		auto [first, last] = this->vscroll->GetVisibleRangeIterators(_news);
+		for (auto ni = first; ni != last; ++ni) {
+			Rect rr = tr.WithHeight(row);
+			int y = CentreBounds(rr.top, rr.bottom, 2 * line);
+			DrawString(rr.left, rr.right, y, GetString(STR_JUST_DATE_LONG, ni->date), TextColour::Black);
+			std::string headline = StrMakeValid(ni->headline.GetDecodedString(), StringValidationSetting::ReplaceTabCrNlWithSpace);
+			DrawString(rr.left, rr.right, y + line, headline, ExtendedTextColour{TextColour::Black, {ExtendedTextColourFlag::Forced, ExtendedTextColourFlag::NoShade}});
+			GfxFillRect(r.left, rr.bottom, r.right, rr.bottom, GetColourGradient(Colours::Grey, Shade::Dark));
+			tr.top += row;
+		}
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		if (!gui_scope) return;
+		this->vscroll->SetCount(std::size(_news));
+		this->SetDirty();
+	}
+
+	void OnClick(Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		switch (widget) {
+			case WID_MMH_CLOSE: this->Close(); break;
+			case WID_MMH_LIST: {
+				this->vscroll->SetCount(std::size(_news));
+				auto ni = this->vscroll->GetScrolledItemFromWidget(_news, pt.y, this, widget, WidgetDimensions::scaled.framerect.top, ScaleGUITrad(48));
+				if (ni != std::end(_news)) ShowNewsMessage(ni);
+				break;
+			}
+		}
+	}
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_message_history_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Grey, WID_MMH_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MMH_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Grey, WID_MMH_LIST), SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_MMH_SCROLL), EndContainer(),
+		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_MMH_SCROLL),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_message_history_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::MessageHistory, WindowClass::None,
+	{},
+	_nested_mobile_message_history_widgets
+);
+
 void ShowMessageHistory()
 {
 	CloseWindowById(WindowClass::MessageHistory, 0);
+	if (IsMobileLayout()) {
+		MobileShowInSheet(new MobileMessageHistoryWindow(_mobile_message_history_desc));
+		return;
+	}
 	new MessageHistoryWindow(_message_history_desc);
 }

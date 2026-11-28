@@ -55,6 +55,23 @@ static constexpr std::initializer_list<NWidgetPart> _nested_land_info_widgets = 
 	NWidget(WWT_PANEL, Colours::Grey, WID_LI_BACKGROUND), EndContainer(),
 };
 
+/** The land information in the mobile layout's sheet slot: a title, then label and value rows (round 5 design, 10.6). */
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_land_info_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Grey, WID_LI_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHIMGBTN, Colours::Grey, WID_LI_LOCATION), SetMinimalSize(40, 40), SetSpriteTip(SPR_GOTO_LOCATION, STR_LAND_AREA_INFORMATION_LOCATION_TOOLTIP),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_LI_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Grey, WID_LI_BACKGROUND), SetFill(1, 1), SetResize(1, 1), EndContainer(),
+};
+
+static WindowDesc _mobile_land_info_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::LandInfo, WindowClass::None,
+	{},
+	_nested_mobile_land_info_widgets
+);
+
 /** Window definition for the land information window. */
 static WindowDesc _land_info_desc(
 	WindowPosition::Automatic, {}, 0, 0,
@@ -69,9 +86,46 @@ class LandInfoWindow : public Window {
 
 public:
 	TileIndex tile = INVALID_TILE;
+	const bool mobile; ///< Uses the mobile layout, in the sheet slot.
+
+	/**
+	 * Mobile layout: draw the information as rows, the label at the start and the value at the end.
+	 * @param r The panel.
+	 */
+	void DrawMobile(const Rect &r) const
+	{
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+		int line = GetCharacterHeight(FontSize::Normal);
+		int row = ScaleGUITrad(32);
+		/* The first line is the tile type, shown in the title. */
+		for (size_t i = 1; i < this->landinfo_data.size(); i++) {
+			const std::string &text = this->landinfo_data[i];
+			Rect rr = tr.WithHeight(row);
+			int y = CentreBounds(rr.top, rr.bottom, line);
+			size_t colon = text.find(": ");
+			if (colon == std::string::npos) {
+				DrawString(rr.left, rr.right, y, text, TextColour::Black);
+			} else {
+				std::string value = text.substr(colon + 2);
+				DrawString(rr.left, rr.right, y, value, TextColour::Black, AlignmentH::End);
+				DrawString(rr.left, rr.right - GetStringBoundingBox(value).width - WidgetDimensions::scaled.hsep_wide, y, text.substr(0, colon), ExtendedTextColour{TextColour::Black, {ExtendedTextColourFlag::Forced, ExtendedTextColourFlag::NoShade}});
+			}
+			GfxFillRect(r.left, rr.bottom, r.right, rr.bottom, GetColourGradient(Colours::Grey, Shade::Dark));
+			tr.top += row;
+		}
+		if (!this->cargo_acceptance.empty()) {
+			tr.top += ScaleGUITrad(4);
+			DrawStringMultiLine(tr, GetString(STR_JUST_RAW_STRING, this->cargo_acceptance), TextColour::Black);
+		}
+	}
 
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
+		if (this->mobile) {
+			if (widget == WID_LI_TITLE) DrawMobileTitle(r, GetString(STR_MOBILE_LAND_INFO_TITLE, this->landinfo_data.empty() ? std::string{} : this->landinfo_data[0]));
+			if (widget == WID_LI_BACKGROUND) this->DrawMobile(r);
+			return;
+		}
 		if (widget != WID_LI_BACKGROUND) return;
 
 		Rect ir = r.Shrink(WidgetDimensions::scaled.frametext);
@@ -87,6 +141,11 @@ public:
 
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
 	{
+		if (this->mobile) {
+			if (widget == WID_LI_TITLE) size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal));
+			if (widget == WID_LI_BACKGROUND) size.height = std::max<uint>(size.height, 4 * ScaleGUITrad(32));
+			return;
+		}
 		if (widget != WID_LI_BACKGROUND) return;
 
 		size.height = WidgetDimensions::scaled.frametext.Vertical();
@@ -104,7 +163,7 @@ public:
 		}
 	}
 
-	LandInfoWindow(Tile tile) : Window(_land_info_desc), tile(tile)
+	LandInfoWindow(Tile tile, bool mobile = false) : Window(mobile ? _mobile_land_info_desc : _land_info_desc), tile(tile), mobile(mobile)
 	{
 		this->InitNested();
 
@@ -284,6 +343,10 @@ public:
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
 		switch (widget) {
+			case WID_LI_CLOSE:
+				this->Close();
+				break;
+
 			case WID_LI_LOCATION:
 				if (IsCtrlPressed()) {
 					ShowExtraViewportWindow(this->tile);
@@ -314,6 +377,18 @@ public:
  */
 void ShowLandInfo(TileIndex tile)
 {
+	if (IsMobileLayout()) {
+		/* Another long press while it's open updates it in place. */
+		if (LandInfoWindow *w = dynamic_cast<LandInfoWindow *>(FindWindowById(WindowClass::LandInfo, 0)); w != nullptr && w->mobile) {
+			w->tile = tile;
+			w->ReInit();
+			w->SetDirty();
+			return;
+		}
+		CloseWindowById(WindowClass::LandInfo, 0);
+		MobileShowInfoWindow(new LandInfoWindow(tile, true));
+		return;
+	}
 	CloseWindowById(WindowClass::LandInfo, 0);
 	new LandInfoWindow(tile);
 }

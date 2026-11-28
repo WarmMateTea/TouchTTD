@@ -202,6 +202,41 @@ enum MobileStopsBarWidgets : WidgetID {
 	WID_MSB_GAP_BOTTOM, ///< Spacer filling the screen edge's inset at the bottom.
 };
 
+/** Widgets of the mobile local authority (round 5 design, 10.1). */
+enum MobileTownAuthorityWidgets : WidgetID {
+	WID_MTA_SEL_BACK, ///< Selection showing Back when opened over the town window.
+	WID_MTA_BACK, ///< Back to the town.
+	WID_MTA_TITLE, ///< "Local authority - <town>".
+	WID_MTA_CLOSE, ///< Close.
+	WID_MTA_LIST, ///< Ratings, then the actions.
+	WID_MTA_SCROLL, ///< Scrollbar of the list.
+};
+
+/** Widgets of the mobile subsidies and goals lists (round 5 design, 10.2 and 10.4). */
+enum MobileWorldListWidgets : WidgetID {
+	WID_MWL_LIST, ///< The rows.
+	WID_MWL_SCROLL, ///< Scrollbar of the list.
+};
+
+/** Widgets of the mobile newspaper (round 5 design, 10.5). */
+enum MobileNewspaperWidgets : WidgetID {
+	WID_MNP_SEL_BACK, ///< Selection showing Back when opened from the history.
+	WID_MNP_BACK, ///< Back to the history.
+	WID_MNP_TITLE, ///< The date.
+	WID_MNP_CLOSE, ///< Close.
+	WID_MNP_TEXT, ///< The headline and text.
+	WID_MNP_SEL_LOCATION, ///< Selection showing Show on map when the item has a place.
+	WID_MNP_SHOW_ON_MAP, ///< Scroll the map there.
+};
+
+/** Widgets of the mobile message history (round 5 design, 10.5). */
+enum MobileMessageHistoryWidgets : WidgetID {
+	WID_MMH_TITLE, ///< Title.
+	WID_MMH_CLOSE, ///< Close.
+	WID_MMH_LIST, ///< The messages, newest first.
+	WID_MMH_SCROLL, ///< Scrollbar of the list.
+};
+
 /** Widgets of the mobile industry window (round 5 design, 9.2). */
 enum MobileIndustryWidgets : WidgetID {
 	WID_MIV_SEL_BACK, ///< Selection showing Back when opened over the directory.

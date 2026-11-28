@@ -16,7 +16,7 @@ Last updated: 28 Nov 2026 (night, round 5). Read this first, then `README.md` (t
   - **Round 4 (27–28 Nov):** design fixes, touch dropdown, depot → New train → orders → Start, train list, main menu with Continue, New game with presets, confirmations, save/load, settings with search, top chrome against the cutout. Verified headless and partly on the phone. Log: `07-round4-implementation-log.md`.
   - **Android build:** `os/android/build.sh`, APK published as GitHub pre-releases (`android-<commit count>`); latest: `android-33331` (commit `d5986b7e62`, 28 Nov, round 4). Logs: `02-android-build-plan.md`, `03-android-build-log.md`.
 
-  - **Round 5 (28 Nov, in progress):** `handoffs/10-design-to-impl-round5.md`, built batch by batch in its order; progress table at the top of `08-round5-implementation-log.md`. Done: batch 1 (main menu logo/Continue, cells, settings fixes, dropdown titles), batch 2 (Settings with Game Options), batch 3 (signals), batch 4 (road and tram), batch 5 (other vehicles, refit), batch 6 (finances), batch 7 (industries). Next: batch 8, towns, subsidies, story, goals, news, land info (handoff §10).
+  - **Round 5 (28 Nov, in progress):** `handoffs/10-design-to-impl-round5.md`, built batch by batch in its order; progress table at the top of `08-round5-implementation-log.md`. Done: batch 1 (main menu logo/Continue, cells, settings fixes, dropdown titles), batch 2 (Settings with Game Options), batch 3 (signals), batch 4 (road and tram), batch 5 (other vehicles, refit), batch 6 (finances), batch 7 (industries), batch 8 (towns, subsidies, goals, news, land info). Next: batch 9, landscape, water, air (handoff §11).
 
 ## Waiting on
 

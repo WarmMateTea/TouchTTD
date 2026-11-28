@@ -14,6 +14,8 @@
 enum LandInfoWidgets : WidgetID {
 	WID_LI_LOCATION, ///< Scroll to location.
 	WID_LI_BACKGROUND, ///< Background of the window.
+	WID_LI_TITLE, ///< Mobile layout: "Land info - <tile type>".
+	WID_LI_CLOSE, ///< Mobile layout: close.
 };
 
 /** Widgets of the #TooltipsWindow class. */

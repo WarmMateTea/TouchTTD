@@ -13,7 +13,8 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 | 5. Other vehicles and refit | done, headless with road vehicles (ships, aircraft need docks and airports: batch 9) |
 | 6. Finances | done, headless |
 | 7. Industries | done, headless |
-| 8. Towns, news and land info | next |
+| 8. Towns, news and land info | done, headless (land info needs a long press: phone; story book still desktop) |
+| 9. Landscape, water and air | next |
 
 ## Batch 1: fonts, main menu, cells, fixes, leftovers (§2, §3)
 
@@ -158,3 +159,18 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 
 ### Not done
 - The pending industry's footprint isn't highlighted (only the tapped tile); the layout is chosen at the tap.
+
+## Batch 8: Towns, subsidies, story, goals, news, land info (§10)
+
+### Steps
+- **Local authority** (`MobileTownAuthorityWindow` in `town_gui.cpp`, widgets `WID_MTA_*`): over the town window in the sheet (Back returns); "Local authority · <town>"; ratings with the company icon and the rating word (green from Good up, red below); the actions the settings allow, each with its cost; a tap opens its description (the desktop's tooltip text) and "<action> · £x" (green; disabled actions say why: not enough money, statue already here, rights already held, no bribes now). **Bribe** asks first, with a red Bribe. `TownAuthorityWindow::GetTownRatingString()` became public for this.
+- **Subsidies** (`MobileSubsidiesWindow` in `subsidy_gui.cpp`, widgets `WID_MWL_*` shared with goals): Offered and Awarded; rows "Coal from A to B" / "Offer ends <date>" (or the company and until when), with **From** and **To** buttons that scroll the map to each end.
+- **Goals** (`MobileGoalsWindow` in `goal_gui.cpp`): global goals, then the company's; text / progress (green when completed); a tap goes to the goal's place (tile, industry, town, story page or company), as the desktop's click.
+- **News**: the newspaper (`MobileNewspaperWindow` in `news_gui.cpp`, `WID_MNP_*`) is a sheet with the date as title, the headline large on white, and Show on map when the item has a place; opened from the message history it's an overlay with Back. The **message history** (`MobileMessageHistoryWindow`, `WID_MMH_*`) lists date / headline, newest first. Menu › Messages and the news banner use them.
+- **Land info** (`LandInfoWindow` with `mobile`, new widgets `WID_LI_TITLE`, `WID_LI_CLOSE`): a sheet "Land info · <tile type>" with label ··· value rows (the desktop's lines split at ": "), Show on map, and the cargo acceptance below; another long press while it's open updates it in place.
+- Screenshots `L30`–`L33`.
+
+### Not done
+- **Story book**: still the desktop window in the World hub's tab (the page renderer works there; the 40-tall buttons and the title row with a page dropdown aren't built).
+- The newspaper doesn't show the news picture (vehicle, company face); the headline is the whole text.
+- Land info is untested on the phone (long press).

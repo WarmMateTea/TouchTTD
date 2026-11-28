@@ -1178,6 +1178,35 @@ STR_MOBILE_NEW_SHIP                                             :New ship
 STR_MOBILE_NEW_AIRCRAFT                                         :New aircraft
 STR_MOBILE_NEW_VEHICLE_NONE                                     :Nothing can be bought here yet
 STR_MOBILE_NEW_VEHICLE_LINE                                     :{RAW_STRING} · {VELOCITY}
+STR_MOBILE_AUTHORITY_TITLE                                      :Local authority · {TOWN}
+STR_MOBILE_AUTHORITY_RATINGS                                    :Ratings
+STR_MOBILE_AUTHORITY_NO_RATINGS                                 :No company is known here yet
+STR_MOBILE_AUTHORITY_ACTIONS                                    :Actions
+STR_MOBILE_AUTHORITY_DO                                         :{RAW_STRING} · {CURRENCY_LONG}
+STR_MOBILE_AUTHORITY_NOT_ENOUGH_MONEY                           :Not enough money
+STR_MOBILE_AUTHORITY_STATUE_BUILT                               :Your statue is already here
+STR_MOBILE_AUTHORITY_HAS_RIGHTS                                 :Exclusive rights already held
+STR_MOBILE_AUTHORITY_NO_BRIBES                                  :The town won't take a bribe now
+STR_MOBILE_AUTHORITY_NOT_NOW                                    :Not possible now
+STR_MOBILE_AUTHORITY_BRIBE_TITLE                                :Bribe the local authority of {TOWN}?
+STR_MOBILE_AUTHORITY_BRIBE_TEXT                                 :If you're caught, your rating drops sharply and the town won't deal with you for months.
+STR_MOBILE_AUTHORITY_BRIBE_VERB                                 :Bribe
+STR_MOBILE_SUBSIDIES_OFFERED                                    :Offered
+STR_MOBILE_SUBSIDIES_AWARDED                                    :Awarded
+STR_MOBILE_SUBSIDIES_NONE                                       :None
+STR_MOBILE_SUBSIDY_ROUTE                                        :{STRING} from {STRING1} to {STRING1}
+STR_MOBILE_SUBSIDY_OFFER_ENDS                                   :Offer ends {DATE_SHORT}
+STR_MOBILE_SUBSIDY_OFFER_ENDS_TIME                              :Offer ends within {UNITS_MONTHS_OR_MINUTES}
+STR_MOBILE_SUBSIDY_AWARDED_TO                                   :{COMPANY} · until {DATE_SHORT}
+STR_MOBILE_SUBSIDY_AWARDED_TO_TIME                              :{COMPANY} · {UNITS_MONTHS_OR_MINUTES} remaining
+STR_MOBILE_SUBSIDY_FROM                                         :From
+STR_MOBILE_SUBSIDY_TO                                           :To
+STR_MOBILE_GOALS_GLOBAL                                         :Global goals
+STR_MOBILE_GOALS_COMPANY                                        :Your goals
+STR_MOBILE_GOALS_NONE                                           :None
+STR_MOBILE_LAND_INFO_TITLE                                      :Land info · {RAW_STRING}
+STR_MOBILE_MESSAGES_TITLE                                       :Messages
+STR_MOBILE_MESSAGES_NONE                                        :No news yet
 STR_MOBILE_INDUSTRY_PRODUCED                                    :{CARGO_LONG} · {NUM}% transported
 STR_MOBILE_INDUSTRY_PRODUCES_NOTHING                            :Produces nothing
 STR_MOBILE_INDUSTRY_PRODUCES                                    :Produces
