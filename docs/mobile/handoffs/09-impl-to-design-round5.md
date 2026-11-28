@@ -106,3 +106,50 @@ Screenshots are in `docs/mobile/screenshots/round4/` (also sent as a zip):
 - Your choice for round 5. Candidates: road vehicles (buses, trucks: the round 2–4 patterns again); or the remaining info windows (finances, company, industries, subsidies, graphs); and in either case the menus in §3.
 - The two font answers (§3.1, §3.2).
 - Anything you'd change in the round 4 screenshots.
+
+---
+
+## 6. Everything still desktop: please take as much as you can in round 5
+
+The user would like a **large round 5**, enough for me to build through the night. Below is everything still on desktop UI underneath the mobile layout, grouped. Please cover as many groups as you can, ranked so I build in your order.
+
+**My suggestion:** groups A1–A3 (they reuse the rail patterns, so they're quick to specify), C1, C3 and D1.
+
+### A. Construction (the rail patterns of rounds 2–3)
+1. **Signals** (deferred from round 3): signal type picker; dragging signals along a track, with the spacing; removing signals; converting signals.
+2. **Road and tram:** toolbar, road/tram type choice, bus and truck stops (drive-through vs bay, orientation), road depots, one-way roads.
+3. **Landscape:** raise and lower land, level an area, plant trees (types), buy land, place and edit signs, transmitters and lighthouses (scenario only).
+4. **Water:** docks, canals, locks, ship depots, rivers (editor only).
+5. **Air:** airport picker (types, sizes, noise, catchment), hangars.
+
+### B. Vehicles beyond the first train
+1. **Road vehicles, ships, aircraft:** the depot → buy → orders → start flow of round 4 for each type, including the buy lists and depot sheets.
+2. **Refit:** changing what a wagon or vehicle carries, from the New train view and the train window.
+3. **Autoreplace and renewal.**
+4. **Vehicle groups** (the Vehicles hub with groups).
+5. **Timetables and service intervals.**
+6. **The full vehicle details** (reliability, breakdowns, capacity per wagon).
+
+### C. Info windows
+1. **Finances** (your idea: this year / last year columns) and the loan.
+2. **Company:** company view, colour scheme, president face, headquarters; league table and performance rating.
+3. **Industries:** the directory (sort, filter by cargo) and the industry window (production, acceptance, chain), and funding new industries.
+4. **Graphs:** operating profit, income, cargo delivered, performance history, payment rates, town cargo graph.
+5. **Subsidies, story book, goals.**
+6. **Town local authority:** ratings and the actions (advertise, fund buildings, build statue, …).
+7. **News:** the full newspaper, the message history.
+8. **Land info:** long press opens the desktop window today.
+
+### D. Menus and system
+1. **Game Options:** language, interface size, font size, autosave interval, currency and units, base graphics, sound and music volumes. Settings falls back to this desktop window today.
+2. **Online content download**, NewGRF settings, AI and game script settings.
+3. **Help, About, highscores.**
+4. **Multiplayer:** server list, join, company choice, chat.
+5. **Text input:** the rename dialog with the soft keyboard; a number keypad for numeric values (the design's "tap the value → keypad").
+6. **Tablets:** larger screens (e.g. 1280×800 at 200%): does the layout change, or does it just scale?
+7. **First run:** a short tutorial or tips for new players.
+
+### E. Small leftovers from earlier rounds
+1. The portrait dropdown sheet's title.
+2. Long-press drag to reorder orders (specified in round 4; I'll build it unless you change it).
+3. The "Building…" state for multiplayer (round 3).
