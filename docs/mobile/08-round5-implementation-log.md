@@ -9,7 +9,8 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 | 1. Fonts, main menu, cells, fixes, leftovers | done, headless (order drag needs the phone: touch only) |
 | 2. Settings with Game Options folded in | done, headless |
 | 3. Signals | done, headless |
-| 4. Road and tram | next |
+| 4. Road and tram | done, headless (tram untested: no tram types in the test game) |
+| 5. Other vehicles and refit | next |
 
 ## Batch 1: fonts, main menu, cells, fixes, leftovers (§2, §3)
 
@@ -76,3 +77,26 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 - **The toolbar's Remove is hidden while a picker fills the sheet** (the tools row goes to the picker plane), so the handoff's "Remove mode" row had no way in. The picker got a "Remove signals" toggle that drives the toolbar's remove mode (`ToggleRailButton_Remove()`); Change and Remove switch each other off.
 - `_tile_fract_coords` (`viewport_func.h`) is where in its tile the cursor is, 0–15 each way; `GenericPlaceSignals()` picks the track and side from it.
 - Changing only the text of existing strings rebuilds in seconds; adding string IDs regenerates `table/strings.h` and rebuilds most files.
+
+## Batch 4: Road and tram (§6)
+
+### Steps
+1. **Toolbar** (`road_gui.cpp`): `BuildRoadToolbarWindow` got the rail toolbar's mobile machinery: `mobile`/`landscape`, landscape bar and portrait two rows (`_nested_mobile_road_{landscape,portrait}_widgets`), status · Turn · ✕ · Build/Undo/Show tools, Exit, `UpdateMobileWidgets()`, `UpdateMobileHint()`, `GetToolKind()`. One layout serves road and tram; `OnInit()` sets the type's sprites and the tram tooltips. New widgets `WID_ROT_CATEGORY` … `WID_ROT_SHOW_TOOLS`, appended.
+2. **More flyout** (`MobileRoadMoreWindow`, reusing `WindowClass::MobileRailMore` and the `WID_RMORE_*` buttons; new `WID_RMORE_SEL_ROW2` hides the second row for four tools or fewer): road — one-way, convert, road NE-SW, road NW-SE (portrait: bridge and tunnel first); tram — the same without one-way.
+3. **Category** opens the Build flyout with **road or tram types** (`MobileBuildMenuWindow` now lists `TypeRow`s for rail or road); the flyout anchors to `WID_ROT_CATEGORY` for the road toolbar.
+4. **Mobile layout of the shell**: `GetMobileConstructionToolbar()` (rail or road) replaces `GetMobileRailToolbar()` in the layout pass, rotation (`RecreateMobileRoadToolbar()`) and plane updates (`UpdateMobileRoadToolbarPlanes()`).
+5. **Review flow** (`mobile_build.cpp`): selections know their toolbar (`PendingSelection::IsRoad()`); remove mode is per toolbar (`IsRemoveModeActive()`/`SetRemoveMode()`, new road exports `IsRoadRemoveModeActive()`, `SetRoadRemoveMode()`, `IsRoadOneWayModeActive()`, `SetRoadOneWayMode()`); depots (`PostRoadDepot()`, facing the only adjacent road of the kind being built) and tunnels (`PostRoadTunnel()`) as rail. Reviewed: autoroad/road X/Y (setting, or always when removing or one-way), stops, stop removal, road conversion, demolish, bridges.
+6. **One-way roads**: a tool of its own in the mobile layout (the desktop's toggle). It's autoroad with the one-way flag over existing road: pending "Change one-way · £0" → **Change**; each further tap on the pending stretch adds a turn ("Change one-way 2 times"), replayed that many times (`PendingSelection::one_way`, `cycles`).
+7. **Stops** behave as station footprints (`PendingSelection::IsRoadStop()`): a tap is one tile, a drag an area; catchment of bus or lorry stops; join candidates and the join dropdown as for stations (`PlaceRoadStop()` posts with the mobile join choice); Undo removes the stops (`RemoveRoadStop`, keeping the road). On a tapped tile a drive-through stop takes the road's axis and a bay faces the only adjacent road (`GetMobileRoadStopDirection()`). Status "1 bus stop · £150", "…, joins X", "Done · £x".
+8. **Stop picker** (`_nested_mobile_road_stop_picker_widgets`, `BuildRoadStationWindow` with `mobile`): in the sheet; title Bus stop / Lorry stop / Tram stop / Freight tram stop; Drive-through / Bay with previews; Facing (four previews) or "Follows the road"; Show catchment area; join dropdown; accepts/supplies once placed. Trams and drive-through-only NewGRF stops hide the bay choice. New widgets `WID_BROS_TITLE` … `WID_BROS_JOIN`, appended.
+9. Screenshots `L15`–`L20`, `P05`.
+
+### Findings
+- **A road stop's callback builds road to connect a bay** (`CcRoadStop` → `ConnectRoadToStructure()`), and that follow-up fails with "Already built" when the road is there. The capture took it for the result; road stops now use `CommandResultCapture::first_only`, as depots do.
+- `ShowBuildRoadToolbar()` keeps the open toolbar only for the same road/tram kind; switching kind closes and reopens.
+- The desktop's one-way button is disabled unless a road tool is selected (`UpdateOptionWidgetStatus()`); the mobile layout re-enables it after every click because it's a tool there.
+- A widget ID from one toolbar's enum used on the other toolbar silently picks an unrelated widget (the flyout first anchored to a road button through `WID_RAT_CATEGORY`).
+
+### Not done
+- Road waypoints have no mobile tool (not in the handoff's toolbar table).
+- The "Type" dropdown for NewGRF road stop classes (as for rail stations, backlog).

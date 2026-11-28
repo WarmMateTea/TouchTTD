@@ -27,6 +27,21 @@ enum RoadToolbarWidgets : WidgetID {
 	WID_ROT_BUILD_TUNNEL,   ///< Build tunnel.
 	WID_ROT_REMOVE,         ///< Remove road.
 	WID_ROT_CONVERT_ROAD,   ///< Convert road.
+	WID_ROT_CATEGORY,       ///< Mobile layout: road (or tram) type and construction category flyout.
+	WID_ROT_MORE,           ///< Mobile layout: flyout with the less used tools.
+	WID_ROT_STATUS,         ///< Mobile layout: status line.
+	WID_ROT_CANCEL,         ///< Mobile layout: cancel the selection in review.
+	WID_ROT_CONFIRM,        ///< Mobile layout: build (or remove, demolish, convert, change) the selection in review.
+	WID_ROT_UNDO,           ///< Mobile layout: undo the last construction.
+	WID_ROT_EXIT,           ///< Mobile layout: leave build mode (portrait, where the dock is hidden).
+	WID_ROT_SEL_TOOLS,      ///< Mobile layout: selection hiding the tools while a picker fills the sheet.
+	WID_ROT_SEL_CONFIRM,    ///< Mobile layout: selection between confirm, undo and Show tools.
+	WID_ROT_SEL_HIDDEN,     ///< Mobile layout: never shown; holds the tools that are in the More flyout.
+	WID_ROT_SEL_ROTATE,     ///< Mobile layout: selection showing the Rotate button while a depot is in review.
+	WID_ROT_ROTATE,         ///< Mobile layout: turn the entrance of the depot in review.
+	WID_ROT_GAP_BOTTOM,     ///< Mobile layout: spacer filling the screen edge's inset at the bottom.
+	WID_ROT_SEL_CANCEL,     ///< Mobile layout: selection hiding Cancel while the tools are hidden by a sheet.
+	WID_ROT_SHOW_TOOLS,     ///< Mobile layout: closes the sheet that hides the tools.
 };
 
 /** Widgets of the #BuildRoadDepotWindow class. */
@@ -53,6 +68,15 @@ enum BuildRoadStationWidgets : WidgetID {
 	WID_BROS_LT_ON,                  ///< Turn on area highlight.
 	WID_BROS_ACCEPTANCE,             ///< Station acceptance info.
 	WID_BROS_AVAILABLE_ORIENTATIONS, ///< Selection for selecting 6 or 2 orientations.
+	WID_BROS_TITLE,                  ///< Mobile layout: title of the picker.
+	WID_BROS_CLOSE,                  ///< Mobile layout: close, which drops the stop tool.
+	WID_BROS_SEL_KIND,               ///< Mobile layout: selection hiding the drive-through/bay choice (trams).
+	WID_BROS_DRIVE_THROUGH,          ///< Mobile layout: drive-through stops.
+	WID_BROS_BAY,                    ///< Mobile layout: bays.
+	WID_BROS_SEL_FACING,             ///< Mobile layout: the facing of a bay, or "follows the road".
+	WID_BROS_COVERAGE_TOGGLE,        ///< Mobile layout: show the catchment area, on or off.
+	WID_BROS_SEL_JOIN,               ///< Mobile layout: selection hiding the join dropdown when there is nothing to join.
+	WID_BROS_JOIN,                   ///< Mobile layout: which station the stop joins.
 };
 
 #endif /* WIDGETS_ROAD_WIDGET_H */

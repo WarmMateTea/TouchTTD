@@ -40,6 +40,10 @@
 #include "company_func.h"
 #include "openttd.h"
 #include "rail_map.h"
+#include "road_gui.h"
+#include "road_map.h"
+#include "road_cmd.h"
+#include "station_cmd.h"
 #include "station_map.h"
 #include "station_gui.h"
 #include "station_cmd.h"
@@ -74,7 +78,14 @@ struct PendingSelection {
 	DiagDirection depot_dir = DiagDirection::NE; ///< Direction the depot's entrance faces.
 	bool depot_faces_track = false; ///< The direction was found from track next to the depot.
 	Point fract{}; ///< Where in its tile a single tile was tapped (#_tile_fract_coords): which track and side a signal goes on.
-	uint8_t cycles = 1; ///< Turning a signal: how many times to turn it (each tap on the pending signal adds one).
+	uint8_t cycles = 1; ///< Turning a signal, or a one-way road: how many times to turn it (each tap on the pending selection adds one).
+	bool one_way = false; ///< The road toolbar's one-way tool: toggles the direction of existing road.
+
+	/** @return Whether the selection belongs to the road (or tram) toolbar. */
+	bool IsRoad() const { return this->num == TransportType::Road; }
+
+	/** @return Whether the selection places road stops (bus, lorry or tram stops). */
+	bool IsRoadStop() const { return this->proc == DDSP_BUILD_BUSSTOP || this->proc == DDSP_BUILD_TRUCKSTOP; }
 
 	/** @return Whether the selection places, turns, converts or removes signals. */
 	bool IsSignals() const { return this->proc == DDSP_BUILD_SIGNALS; }
@@ -162,7 +173,31 @@ static void SetMobileBuildDirty()
  */
 static bool IsReviewToolbar(const Window *w)
 {
-	return w != nullptr && IsMobileLayout() && w->window_class == WindowClass::BuildToolbar && w->window_number == TransportType::Rail;
+	return w != nullptr && IsMobileLayout() && w->window_class == WindowClass::BuildToolbar && (w->window_number == TransportType::Rail || w->window_number == TransportType::Road);
+}
+
+/**
+ * Is a toolbar in remove mode?
+ * @param road The road toolbar, else the rail toolbar.
+ * @return \c true when building tools remove instead.
+ */
+static bool IsRemoveModeActive(bool road)
+{
+	return road ? IsRoadRemoveModeActive() : IsRailRemoveModeActive();
+}
+
+/**
+ * Switch a toolbar's remove mode without touching its buttons.
+ * @param road The road toolbar, else the rail toolbar.
+ * @param remove Whether building tools remove instead.
+ */
+static void SetRemoveMode(bool road, bool remove)
+{
+	if (road) {
+		SetRoadRemoveMode(remove);
+	} else {
+		SetRailRemoveMode(remove);
+	}
 }
 
 static Window *GetSelectionToolbar(const PendingSelection &sel)
@@ -192,23 +227,35 @@ static void ReplaySelection(const PendingSelection &sel)
 	Window *w = GetSelectionToolbar(sel);
 	if (w == nullptr) return;
 
+	bool road = sel.IsRoad();
 	if (sel.depot) {
-		PostRailDepot(sel.StartTile(), sel.depot_dir);
+		if (road) {
+			PostRoadDepot(sel.StartTile(), sel.depot_dir);
+		} else {
+			PostRailDepot(sel.StartTile(), sel.depot_dir);
+		}
 		return;
 	}
 
-	bool old_remove = IsRailRemoveModeActive();
-	SetRailRemoveMode(sel.remove);
+	bool old_remove = IsRemoveModeActive(road);
+	SetRemoveMode(road, sel.remove);
+	bool old_one_way = IsRoadOneWayModeActive();
+	if (road) SetRoadOneWayMode(sel.one_way);
 	if (sel.tunnel) {
-		PostRailTunnel(sel.tunnel_start);
+		if (road) {
+			PostRoadTunnel(sel.tunnel_start);
+		} else {
+			PostRailTunnel(sel.tunnel_start);
+		}
 	} else {
 		RestoreSelection(sel);
 		/* A tapped signal goes on the track and side under the finger; turning repeats for each tap. */
 		_tile_fract_coords = sel.fract;
-		int times = sel.IsSignals() && sel.IsSingleTile() ? sel.cycles : 1;
+		int times = (sel.IsSignals() && sel.IsSingleTile()) || sel.one_way ? sel.cycles : 1;
 		for (int i = 0; i < times; i++) w->OnPlaceMouseUp(sel.method, sel.proc, sel.selend, sel.StartTile(), sel.EndTile());
 	}
-	SetRailRemoveMode(old_remove);
+	SetRemoveMode(road, old_remove);
+	SetRoadOneWayMode(old_one_way);
 }
 
 /**
@@ -220,8 +267,8 @@ static void ReplaySelection(const PendingSelection &sel)
 static BuildResult TrySelection(const PendingSelection &sel, bool estimate_only)
 {
 	CommandResultCapture capture(estimate_only);
-	/* Building a depot also lays track to connect it where it can; whether that works doesn't matter. */
-	capture.first_only = sel.depot;
+	/* Building a depot (or a road stop) also lays track or road to connect it where it can; whether that works doesn't matter. */
+	capture.first_only = sel.depot || sel.IsRoadStop();
 	ReplaySelection(sel);
 
 	BuildResult result;
@@ -253,7 +300,8 @@ static PendingSelection SnapshotSelection(const Window *w)
 	sel.selstart = _thd.selstart;
 	sel.selend = _thd.selend;
 	sel.drawstyle = _thd.drawstyle;
-	sel.remove = IsRailRemoveModeActive();
+	sel.remove = IsRemoveModeActive(sel.IsRoad());
+	sel.one_way = sel.IsRoad() && IsRoadOneWayModeActive();
 	sel.fract = _tile_fract_coords;
 	return sel;
 }
@@ -268,10 +316,16 @@ static void ReleaseHighlight()
 	MarkWholeScreenDirty();
 }
 
-/** Catchment radius of rail stations. */
-static int GetRailStationCatchmentRadius()
+/**
+ * Catchment radius of the station a footprint builds.
+ * @param sel The selection.
+ * @return The radius.
+ */
+static int GetStationCatchmentRadius(const PendingSelection &sel)
 {
-	return _settings_game.station.modified_catchment ? CA_TRAIN : CA_UNMODIFIED;
+	if (!_settings_game.station.modified_catchment) return CA_UNMODIFIED;
+	if (sel.IsRoadStop()) return sel.proc == DDSP_BUILD_BUSSTOP ? CA_BUS : CA_TRUCK;
+	return CA_TRAIN;
 }
 
 /**
@@ -286,7 +340,7 @@ static void ShowFrozen(const PendingSelection &sel)
 	_thd.next_drawstyle = sel.drawstyle;
 	if (sel.tunnel) VpSetPresizeRange(sel.tunnel_start, sel.tunnel_end);
 	if (sel.station && _settings_client.gui.station_show_coverage) {
-		int rad = GetRailStationCatchmentRadius();
+		int rad = GetStationCatchmentRadius(sel);
 		SetTileSelectBigSize(-rad, -rad, 2 * rad, 2 * rad);
 	} else {
 		SetTileSelectBigSize(0, 0, 0, 0);
@@ -362,6 +416,14 @@ static void SetState(MobileBuildState state)
 }
 
 /** Drop the pending selection, if any, and return to the selected tool. */
+/** Let the open station or stop picker show the pending footprint. */
+static void InvalidateStationPickers()
+{
+	InvalidateWindowData(WindowClass::BuildStation, TransportType::Rail);
+	InvalidateWindowData(WindowClass::BuildBusStation, TransportType::Road);
+	InvalidateWindowData(WindowClass::BuildTruckStation, TransportType::Road);
+}
+
 static void DropPending()
 {
 	if (_mb.state == MobileBuildState::BridgePicking) CloseWindowByClass(WindowClass::BuildBridge);
@@ -372,7 +434,7 @@ static void DropPending()
 	_mb.sel.station = false;
 	_mb.join_candidates.clear();
 	SetState(MobileBuildState::Idle);
-	InvalidateWindowData(WindowClass::BuildStation, TransportType::Rail);
+	InvalidateStationPickers();
 }
 
 /* --- The live label above the finger --- */
@@ -481,6 +543,18 @@ static std::string GetSelectionCostText(const PendingSelection &sel, Money cost)
 				return GetString(STR_MOBILE_BUILD_STATUS_SIGNALS, GetSignalCount(sel, cost, _price[Price::BuildSignals]), density, money);
 		}
 	}
+	if (sel.station && sel.IsRoadStop()) {
+		bool tram = RoadTypeIsTram(GetCurrentRoadType());
+		StringID what = sel.proc == DDSP_BUILD_BUSSTOP ? (tram ? STR_MOBILE_BUILD_STOPS_TRAM_PASSENGER : STR_MOBILE_BUILD_STOPS_BUS) : (tram ? STR_MOBILE_BUILD_STOPS_TRAM_FREIGHT : STR_MOBILE_BUILD_STOPS_LORRY);
+		std::string stops = GetString(what, sel.TileCount());
+		StationID join = GetMobileStationJoinShown();
+		if (join != NEW_STATION && Station::IsValidID(join)) return GetString(STR_MOBILE_BUILD_STATUS_STOP_JOIN, stops, join, money);
+		return GetString(STR_MOBILE_BUILD_STATUS_STOP, stops, money);
+	}
+	if (sel.one_way) {
+		if (sel.cycles > 1) return GetString(STR_MOBILE_BUILD_STATUS_ONE_WAY_TIMES, sel.cycles, money);
+		return GetString(STR_MOBILE_BUILD_STATUS_ONE_WAY, money);
+	}
 	if (sel.station) {
 		TileArea ta = sel.Area();
 		uint tracks, length;
@@ -577,6 +651,18 @@ bool MobileBuildReviewWanted(const Window *w)
 		case DDSP_BUILD_BRIDGE:
 		case DDSP_BUILD_SIGNALS: // Signals are always reviewed (round 5 design, batch 3).
 			return true;
+
+		/* Road and tram, as rail (round 5 design, batch 4). */
+		case DDSP_PLACE_ROAD_X_DIR:
+		case DDSP_PLACE_ROAD_Y_DIR:
+		case DDSP_PLACE_AUTOROAD:
+			return _settings_client.gui.mobile_confirm_build || IsRoadRemoveModeActive() || IsRoadOneWayModeActive();
+		case DDSP_BUILD_BUSSTOP:
+		case DDSP_BUILD_TRUCKSTOP:
+		case DDSP_REMOVE_BUSSTOP:
+		case DDSP_REMOVE_TRUCKSTOP:
+		case DDSP_CONVERT_ROAD:
+			return true;
 		default:
 			return false;
 	}
@@ -612,6 +698,7 @@ static PendingSelection MovedSelection()
  */
 static bool IsStationPlacement(const PendingSelection &sel)
 {
+	if (sel.IsRoadStop()) return !sel.remove;
 	return sel.proc == DDSP_BUILD_STATION && sel.method == VPM_X_AND_Y_LIMITED && !sel.remove;
 }
 
@@ -663,15 +750,15 @@ void MobileBuildOnRelease(Window *w)
 				/* A tap: the picker's size, centred on the tapped tile so the finger isn't at a corner. */
 				_mb.station_anchor = _mb.sel.StartTile();
 				_mb.station_centred = true;
-				uint x, y;
-				GetRailStationFootprintSize(x, y);
+				uint x = 1, y = 1; // A road stop is one tile.
+				if (!_mb.sel.IsRoadStop()) GetRailStationFootprintSize(x, y);
 				PlaceStationFootprint(x, y);
 			} else {
 				/* A dragged area: its sides become tracks and length. */
 				TileArea ta = _mb.sel.Area();
 				_mb.station_anchor = ta.tile;
 				_mb.station_centred = false;
-				SetRailStationSizeFromFootprint(ta.w, ta.h);
+				if (!_mb.sel.IsRoadStop()) SetRailStationSizeFromFootprint(ta.w, ta.h);
 			}
 		}
 	}
@@ -697,7 +784,7 @@ void MobileBuildOnRelease(Window *w)
 
 	_mb.estimate = TrySelection(_mb.sel, true);
 	SetState(MobileBuildState::Pending);
-	InvalidateWindowData(WindowClass::BuildStation, TransportType::Rail);
+	InvalidateStationPickers();
 }
 
 /**
@@ -840,9 +927,9 @@ MobileViewportClick MobileBuildOnViewportClick(const Viewport &vp, int x, int y)
 
 		case MobileBuildState::Pending: {
 			if (_mb.sel.tunnel) return MobileViewportClick::Pan;
-			if (_mb.sel.IsSignals() && GetMobileBuildKind() == MobileBuildKind::Change) {
+			if ((_mb.sel.IsSignals() || _mb.sel.one_way) && GetMobileBuildKind() == MobileBuildKind::Change) {
 				Point pt = GetTileBelowCursor();
-				if (pt.x != -1 && TileVirtXY(pt.x, pt.y) == _mb.sel.StartTile()) {
+				if (pt.x != -1 && (_mb.sel.one_way ? _mb.sel.Area().Contains(TileVirtXY(pt.x, pt.y)) : TileVirtXY(pt.x, pt.y) == _mb.sel.StartTile())) {
 					_mb.sel.cycles++;
 					_mb.estimate = TrySelection(_mb.sel, true);
 					SetState(MobileBuildState::Pending);
@@ -920,7 +1007,11 @@ bool MobileBuildTunnelTap(Window *w, TileIndex tile)
 	_mb.message.clear();
 	ClearUndo();
 	/* Find the other end, as the desktop does while hovering. */
-	Command<Commands::BuildTunnel>::Do(DoCommandFlag::Auto, tile, TransportType::Rail, GetCurrentRailType(), INVALID_ROADTYPE);
+	if (w->window_number == TransportType::Road) {
+		Command<Commands::BuildTunnel>::Do(DoCommandFlag::Auto, tile, TransportType::Road, INVALID_RAILTYPE, GetCurrentRoadType());
+	} else {
+		Command<Commands::BuildTunnel>::Do(DoCommandFlag::Auto, tile, TransportType::Rail, GetCurrentRailType(), INVALID_ROADTYPE);
+	}
 	VpSetPresizeRange(tile, _build_tunnel_endtile == INVALID_TILE ? tile : _build_tunnel_endtile);
 	UpdateTileSelection();
 
@@ -943,10 +1034,24 @@ bool MobileBuildTunnelTap(Window *w, TileIndex tile)
  * @param[out] faces_track Whether a track was found.
  * @return The direction of the entrance.
  */
-static DiagDirection GetAutoDepotDirection(TileIndex tile, bool &faces_track)
+static DiagDirection GetAutoDepotDirection(TileIndex tile, bool &faces_track, bool road)
 {
 	DiagDirection found = DiagDirection::Invalid;
 	int count = 0;
+	if (road) {
+		/* Road (or tram track) of the kind being built, in the neighbour, that ends at the depot. */
+		RoadTramType rtt = GetRoadTramType(GetCurrentRoadType());
+		for (DiagDirection dir : EnumRange(DiagDirection::End)) {
+			TileIndex neighbour = TileAddByDiagDir(tile, dir);
+			if (!IsValidTile(neighbour) || !IsNormalRoadTile(neighbour) || !HasTileRoadType(neighbour, rtt)) continue;
+			if (GetRoadBits(neighbour, rtt).Any(DiagDirToRoadBits(ReverseDiagDir(dir)))) {
+				found = dir;
+				count++;
+			}
+		}
+		faces_track = count == 1;
+		return faces_track ? found : GetRoadDepotDirection();
+	}
 	for (DiagDirection dir : EnumRange(DiagDirection::End)) {
 		TileIndex neighbour = TileAddByDiagDir(tile, dir);
 		if (!IsValidTile(neighbour) || !IsPlainRailTile(neighbour) || !IsTileOwner(neighbour, _local_company)) continue;
@@ -981,7 +1086,7 @@ bool MobileBuildDepotTap(Window *w, TileIndex tile)
 	sel.place_mode = _thd.place_mode;
 	SetSelectionArea(sel, tile, tile);
 	sel.depot = true;
-	sel.depot_dir = GetAutoDepotDirection(tile, sel.depot_faces_track);
+	sel.depot_dir = GetAutoDepotDirection(tile, sel.depot_faces_track, sel.IsRoad());
 	_mb.sel = sel;
 	ShowFrozen(sel);
 
@@ -1159,10 +1264,26 @@ void MobileBuildBridgeListClosed()
  */
 static bool SelectionHasTrack(const PendingSelection &sel)
 {
+	/* Removing what was built would remove what was there before too. */
 	for (TileIndex tile : TileArea(sel.StartTile(), sel.EndTile())) {
-		if (IsTileType(tile, TileType::Railway)) return true;
+		if (IsTileType(tile, sel.IsRoad() ? TileType::Road : TileType::Railway)) return true;
 	}
 	return false;
+}
+
+/**
+ * Remove (or, under an estimating capture, test removing) the station part of the last construction.
+ * @param undo What was built.
+ */
+static void PostStationUndo(const PendingSelection &undo)
+{
+	if (undo.IsRoadStop()) {
+		TileArea ta = undo.Area();
+		/* Drive-through stops keep the road they were built on. */
+		Command<Commands::RemoveRoadStop>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, ta.tile, ta.w, ta.h, undo.proc == DDSP_BUILD_BUSSTOP ? RoadStopType::Bus : RoadStopType::Truck, false);
+		return;
+	}
+	Command<Commands::RemoveFromRailStation>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, undo.EndTile(), undo.StartTile(), _mb.undo_keep_rail);
 }
 
 /**
@@ -1188,6 +1309,8 @@ void MobileBuildConfirm()
 	bool offer_undo = GetMobileBuildKind() == MobileBuildKind::Build && !sel.tunnel && !sel.depot && !sel.station && (is_waypoint || !SelectionHasTrack(sel));
 	/* A station over existing track is undone keeping the track; over an existing station, not at all. */
 	bool undo_station = sel.station && !SelectionHasStation(sel);
+	/* One-way changes and conversions have no undo of their own. */
+	if (sel.one_way) offer_undo = false;
 	bool keep_rail = SelectionHasTrack(sel);
 
 	ReleaseHighlight();
@@ -1229,7 +1352,7 @@ void MobileBuildConfirm()
 			undo_estimate.cost = capture.cost;
 		} else if (_mb.undo.station) {
 			CommandResultCapture capture(true);
-			Command<Commands::RemoveFromRailStation>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, _mb.undo.EndTile(), _mb.undo.StartTile(), _mb.undo_keep_rail);
+			PostStationUndo(_mb.undo);
 			undo_estimate.failed = capture.failed;
 			undo_estimate.cost = capture.cost;
 		} else {
@@ -1262,7 +1385,7 @@ void MobileBuildUndo()
 		if (capture.failed) result.error = capture.error.GetDecodedString();
 	} else if (_mb.undo.station) {
 		CommandResultCapture capture(false);
-		Command<Commands::RemoveFromRailStation>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, _mb.undo.EndTile(), _mb.undo.StartTile(), _mb.undo_keep_rail);
+		PostStationUndo(_mb.undo);
 		result.failed = capture.failed;
 		if (capture.failed) result.error = capture.error.GetDecodedString();
 	} else {
@@ -1320,7 +1443,7 @@ void MobileBuildSetToolHint(StringID hint)
 void MobileBuildReestimate()
 {
 	if (_mb.state != MobileBuildState::Pending) return;
-	_mb.sel.remove = IsRailRemoveModeActive();
+	_mb.sel.remove = IsRemoveModeActive(_mb.sel.IsRoad());
 	_mb.estimate = TrySelection(_mb.sel, true);
 	SetMobileBuildDirty();
 }
@@ -1336,7 +1459,13 @@ MobileBuildKind GetMobileBuildKind()
 {
 	switch (_mb.sel.proc) {
 		case DDSP_DEMOLISH_AREA: return MobileBuildKind::Demolish;
-		case DDSP_CONVERT_RAIL: return MobileBuildKind::Convert;
+		case DDSP_CONVERT_RAIL:
+		case DDSP_CONVERT_ROAD: return MobileBuildKind::Convert;
+		case DDSP_PLACE_ROAD_X_DIR:
+		case DDSP_PLACE_ROAD_Y_DIR:
+		case DDSP_PLACE_AUTOROAD:
+			if (_mb.sel.one_way) return MobileBuildKind::Change;
+			return _mb.sel.remove ? MobileBuildKind::Remove : MobileBuildKind::Build;
 		case DDSP_BUILD_SIGNALS:
 			if (_mb.sel.remove) return MobileBuildKind::Remove;
 			if (IsMobileSignalConvertOn()) return MobileBuildKind::Convert;
@@ -1368,10 +1497,11 @@ std::string GetMobileBuildStatus(TextColour &colour)
 
 		case MobileBuildState::Done: {
 			std::string money = _mb.done_cost < 0 ? GetString(STR_MOBILE_BUILD_REFUND, -_mb.done_cost) : GetString(STR_JUST_CURRENCY_LONG, _mb.done_cost);
+			if (_mb.sel.station && _mb.sel.IsRoadStop()) return GetString(STR_MOBILE_BUILD_STATUS_DONE, money);
 			if (_mb.sel.station) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_STATION, money);
 			if (_mb.sel.depot) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_DEPOT, money);
 			if (_mb.sel.IsWaypoint()) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_WAYPOINT, money);
-			if (_mb.sel.IsSignals()) return GetString(STR_MOBILE_BUILD_STATUS_DONE, money);
+			if (_mb.sel.IsSignals() || _mb.sel.one_way) return GetString(STR_MOBILE_BUILD_STATUS_DONE, money);
 			return GetString(STR_MOBILE_BUILD_STATUS_BUILT, _mb.done_tiles, money);
 		}
 
@@ -1432,7 +1562,7 @@ bool IsMobileBuildHandleTile(TileIndex tile)
  */
 bool MobileBuildHandleError(const std::string &message)
 {
-	if (!IsMobileLayout() || FindWindowById(WindowClass::BuildToolbar, TransportType::Rail) == nullptr) return false;
+	if (!IsMobileLayout() || !IsReviewToolbar(FindWindowByClass(WindowClass::BuildToolbar))) return false;
 	_mb.message = message;
 	SetMobileBuildDirty();
 	return true;

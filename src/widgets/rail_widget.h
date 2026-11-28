@@ -50,6 +50,7 @@ enum MobileRailMoreWidgets : WidgetID {
 	WID_RMORE_FIRST, ///< First tool button; the others follow.
 	WID_RMORE_LAST = WID_RMORE_FIRST + 7, ///< Last possible tool button.
 	WID_RMORE_SEL_EXTRA, ///< Selection hiding the last two buttons when there are only six tools.
+	WID_RMORE_SEL_ROW2, ///< Road toolbar's flyout: selection hiding the second row when there are only four tools.
 };
 
 /** Widgets of the #BuildRailStationWindow class. */

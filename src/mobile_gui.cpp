@@ -73,6 +73,7 @@
 #	include "os/android/android_bridge.h"
 #endif
 #include "widgets/mobile_widget.h"
+#include "widgets/road_widget.h"
 #include "widgets/rail_widget.h"
 
 #include "table/strings.h"
@@ -424,9 +425,19 @@ static void OpenSheetContent(WindowClass cls, void (*open)())
  * stops to a train.
  * @return The bar, or \c nullptr.
  */
-static Window *GetMobileBottomBar()
+/**
+ * The construction toolbar of the mobile layout: rail, or road and tram.
+ * @return The toolbar, or \c nullptr when none is open.
+ */
+static Window *GetMobileConstructionToolbar()
 {
 	if (Window *w = GetMobileRailToolbar(); w != nullptr) return w;
+	return GetMobileRoadToolbar();
+}
+
+static Window *GetMobileBottomBar()
+{
+	if (Window *w = GetMobileConstructionToolbar(); w != nullptr) return w;
 	return FindWindowById(WindowClass::MobileStopsBar, 0);
 }
 
@@ -822,22 +833,47 @@ void MobileStatusWindow::OnClick([[maybe_unused]] Point pt, WidgetID widget, [[m
 
 /** The flyout picking a construction category. */
 struct MobileBuildMenuWindow : Window {
-	static constexpr int RAILTYPE_ROW_HEIGHT = 40; ///< Height of a rail type row, in GUI pixels at 1x.
+	static constexpr int RAILTYPE_ROW_HEIGHT = 40; ///< Height of a rail (or road) type row, in GUI pixels at 1x.
+
+	/** A rail or road type in the list below the categories. */
+	struct TypeRow {
+		int type; ///< The RailType or RoadType.
+		SpriteID sprite; ///< Its icon.
+		StringID name; ///< Its name.
+		Money cost; ///< Its cost per piece.
+		bool available; ///< Whether the company can build it.
+	};
+
 	Window *toolbar; ///< The construction toolbar this was opened from, if any.
-	std::vector<RailType> railtypes; ///< Rail types listed.
+	std::vector<TypeRow> types; ///< Types listed: rail types for the rail toolbar, road or tram types for the road toolbar.
+	bool road = false; ///< The types are road (or tram) types.
 
 	MobileBuildMenuWindow(WindowDesc &desc, Window *toolbar = nullptr) : Window(desc), toolbar(toolbar)
 	{
+		const Company *company = Company::GetIfValid(_local_company);
 		if (toolbar != nullptr && toolbar->window_number == TransportType::Rail) {
 			RailTypes used = GetRailTypes(true);
 			used.Reset(_railtypes_hidden_mask);
 			for (RailType rt : _sorted_railtypes) {
-				if (used.Test(rt)) this->railtypes.push_back(rt);
+				if (!used.Test(rt)) continue;
+				const RailTypeInfo *rti = GetRailTypeInfo(rt);
+				this->types.push_back({rt, rti->gui_sprites.build_x_rail, rti->strings.menu_text, RailBuildCost(rt), company != nullptr && company->avail_railtypes.Test(rt)});
+			}
+		} else if (toolbar != nullptr && toolbar->window_number == TransportType::Road) {
+			/* Road types, or tram types, as the toolbar builds. */
+			this->road = true;
+			RoadTramType rtt = GetRoadTramType(GetCurrentRoadType());
+			RoadTypes used = GetRoadTypes(true);
+			used.Reset(_roadtypes_hidden_mask);
+			for (RoadType rt : _sorted_roadtypes) {
+				if (!used.Test(rt) || GetRoadTramType(rt) != rtt) continue;
+				const RoadTypeInfo *rti = GetRoadTypeInfo(rt);
+				this->types.push_back({rt, rti->gui_sprites.build_x_road, rti->strings.menu_text, RoadBuildCost(rt), company != nullptr && company->avail_roadtypes.Test(rt)});
 			}
 		}
 
 		this->CreateNestedTree();
-		this->GetWidget<NWidgetStacked>(WID_MB_SEL_RAILTYPES)->SetDisplayedPlane(this->railtypes.empty() ? SZSP_NONE : 0);
+		this->GetWidget<NWidgetStacked>(WID_MB_SEL_RAILTYPES)->SetDisplayedPlane(this->types.empty() ? SZSP_NONE : 0);
 		this->FinishInitNested(0);
 		this->flags.Reset(WindowFlag::WhiteBorder);
 		for (BuildCategory c = BuildCategory::Rail; c != BuildCategory::End; c = static_cast<BuildCategory>(to_underlying(c) + 1)) {
@@ -846,33 +882,31 @@ struct MobileBuildMenuWindow : Window {
 		if (toolbar != nullptr) this->LowerWidget(WID_MB_RAIL + to_underlying(_last_build_category == BuildCategory::End ? BuildCategory::Rail : _last_build_category));
 	}
 
+	/**
+	 * Is a listed type the one the toolbar builds now?
+	 * @param row The type.
+	 * @return \c true for the current type.
+	 */
+	bool IsCurrent(const TypeRow &row) const
+	{
+		return this->road ? row.type == GetCurrentRoadType() : row.type == GetCurrentRailType();
+	}
+
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
 	{
 		if (widget != WID_MB_RAILTYPES) return;
-		/* As wide as the longest row, so NewGRF rail type names aren't cut; at most the visible map width less 16. */
+		/* As wide as the longest row, so NewGRF type names aren't cut; at most the visible map width less 16. */
 		uint longest = 0;
-		for (RailType rt : this->railtypes) {
-			const RailTypeInfo *rti = GetRailTypeInfo(rt);
-			uint row = GetSpriteSize(rti->gui_sprites.build_x_rail).width + GetStringBoundingBox(rti->strings.menu_text).width +
-					GetStringBoundingBox(GetString(STR_JUST_CURRENCY_SHORT, RailBuildCost(rt))).width + 2 * WidgetDimensions::scaled.hsep_wide;
-			longest = std::max(longest, row);
+		for (const TypeRow &row : this->types) {
+			uint width = GetSpriteSize(row.sprite).width + GetStringBoundingBox(row.name).width +
+					GetStringBoundingBox(GetString(STR_JUST_CURRENCY_SHORT, row.cost)).width + 2 * WidgetDimensions::scaled.hsep_wide;
+			longest = std::max(longest, width);
 		}
 		longest += WidgetDimensions::scaled.framerect.Horizontal() + padding.width;
 		Rect map = GetMobileVisibleMapRect();
 		uint cap = std::max<int>(ScaleGUITrad(176), map.Width() - ScaleGUITrad(16));
 		size.width = std::max<uint>(size.width, std::min(std::max<uint>(longest, ScaleGUITrad(176)), cap));
-		size.height = ScaleGUITrad(RAILTYPE_ROW_HEIGHT) * std::max<size_t>(1, this->railtypes.size());
-	}
-
-	/**
-	 * Is a rail type available to the company?
-	 * @param rt The rail type.
-	 * @return \c true when it can be built.
-	 */
-	static bool IsRailTypeAvailable(RailType rt)
-	{
-		const Company *c = Company::GetIfValid(_local_company);
-		return c != nullptr && c->avail_railtypes.Test(rt);
+		size.height = ScaleGUITrad(RAILTYPE_ROW_HEIGHT) * std::max<size_t>(1, this->types.size());
 	}
 
 	void DrawWidget(const Rect &r, WidgetID widget) const override
@@ -881,18 +915,16 @@ struct MobileBuildMenuWindow : Window {
 		if (widget == WID_MB_RAILTYPES) {
 			int row_height = ScaleGUITrad(RAILTYPE_ROW_HEIGHT);
 			Rect row = r.WithHeight(row_height).Shrink(WidgetDimensions::scaled.framerect.left, 0);
-			for (RailType rt : this->railtypes) {
-				const RailTypeInfo *rti = GetRailTypeInfo(rt);
-				bool available = IsRailTypeAvailable(rt);
-				if (rt == GetCurrentRailType()) GfxFillRect(row, GetColourGradient(Colours::Grey, Shade::Lighter));
-				Dimension icon = GetSpriteSize(rti->gui_sprites.build_x_rail);
-				DrawSprite(rti->gui_sprites.build_x_rail, available ? PAL_NONE : PALETTE_TO_GREY, row.left, CentreBounds(row.top, row.bottom, icon.height));
+			for (const TypeRow &type : this->types) {
+				if (this->IsCurrent(type)) GfxFillRect(row, GetColourGradient(Colours::Grey, Shade::Lighter));
+				Dimension icon = GetSpriteSize(type.sprite);
+				DrawSprite(type.sprite, type.available ? PAL_NONE : PALETTE_TO_GREY, row.left, CentreBounds(row.top, row.bottom, icon.height));
 				Rect text = row.Indent(icon.width + WidgetDimensions::scaled.hsep_wide, false);
 				int y = CentreBounds(row.top, row.bottom, GetCharacterHeight(FontSize::Normal));
-				TextColour colour = available ? TextColour::Black : TextColour::Grey;
-				std::string cost = GetString(STR_JUST_CURRENCY_SHORT, RailBuildCost(rt));
+				TextColour colour = type.available ? TextColour::Black : TextColour::Grey;
+				std::string cost = GetString(STR_JUST_CURRENCY_SHORT, type.cost);
 				int cost_width = DrawString(text.left, text.right, y, cost, colour, AlignmentH::End);
-				DrawString(text.left, cost_width - WidgetDimensions::scaled.hsep_wide, y, rti->strings.menu_text, colour);
+				DrawString(text.left, cost_width - WidgetDimensions::scaled.hsep_wide, y, type.name, colour);
 				row = row.Translate(0, row_height);
 			}
 			return;
@@ -906,19 +938,36 @@ struct MobileBuildMenuWindow : Window {
 		if (widget == WID_MB_RAILTYPES) {
 			const NWidgetBase *list = this->GetWidget<NWidgetBase>(WID_MB_RAILTYPES);
 			size_t index = (pt.y - list->pos_y) / ScaleGUITrad(RAILTYPE_ROW_HEIGHT);
-			if (index >= this->railtypes.size() || !IsRailTypeAvailable(this->railtypes[index])) return;
-			RailType rt = this->railtypes[index];
+			if (index >= this->types.size() || !this->types[index].available) return;
+			int type = this->types[index].type;
+			bool road = this->road;
 			this->Close();
-			/* Switch the open toolbar to the rail type; the tool and any selection in review stay. */
-			_last_built_railtype = rt;
-			ShowBuildRailToolbar(rt);
+			/* Switch the open toolbar to the type; the tool and any selection in review stay. */
+			if (road) {
+				RoadType rt = static_cast<RoadType>(type);
+				if (RoadTypeIsRoad(rt)) {
+					_last_built_roadtype = rt;
+				} else {
+					_last_built_tramtype = rt;
+				}
+				ShowBuildRoadToolbar(rt);
+			} else {
+				_last_built_railtype = static_cast<RailType>(type);
+				ShowBuildRailToolbar(static_cast<RailType>(type));
+			}
 			return;
 		}
 		if (widget < WID_MB_RAIL || widget > WID_MB_LANDSCAPE) return;
 		BuildCategory category = static_cast<BuildCategory>(widget - WID_MB_RAIL);
-		if (this->toolbar != nullptr && category == BuildCategory::Rail && this->toolbar->window_number == TransportType::Rail) {
-			this->Close();
-			return;
+		/* The category of the open toolbar just closes the flyout. */
+		if (this->toolbar != nullptr) {
+			bool same = false;
+			if (this->toolbar->window_number == TransportType::Rail) same = category == BuildCategory::Rail;
+			if (this->toolbar->window_number == TransportType::Road) same = category == (RoadTypeIsRoad(GetCurrentRoadType()) ? BuildCategory::Road : BuildCategory::Tram);
+			if (same) {
+				this->Close();
+				return;
+			}
 		}
 		OpenBuildCategory(category);
 	}
@@ -1145,7 +1194,7 @@ static bool WantToolCancel()
 	if ((_thd.place_mode & HT_DRAG_MASK) == HT_NONE) return false;
 	const Window *w = _thd.GetCallbackWnd();
 	/* Not for the construction toolbar (it has its own Cancel), nor while adding stops (the stops bar has Done). */
-	return w != nullptr && w != GetMobileRailToolbar() && w->window_class != WindowClass::MainWindow && w->window_class != WindowClass::VehicleView;
+	return w != nullptr && w != GetMobileConstructionToolbar() && w->window_class != WindowClass::MainWindow && w->window_class != WindowClass::VehicleView;
 }
 
 /** The hub dock: a left rail in landscape and a bottom bar in portrait, with the same widgets. */
@@ -1508,10 +1557,14 @@ void RelocateMobileWindows()
 		CloseMobileFlyouts();
 	}
 	if (dock == nullptr) dock = new MobileDockWindow(landscape ? _mobile_dock_landscape_desc : _mobile_dock_portrait_desc, landscape);
-	Window *toolbar = GetMobileRailToolbar();
-	if (toolbar != nullptr && IsMobileRailToolbarLandscape(toolbar) != landscape) {
-		RecreateMobileRailToolbar();
-		toolbar = GetMobileRailToolbar();
+	Window *toolbar = GetMobileConstructionToolbar();
+	if (toolbar != nullptr && (IsMobileRailToolbarLandscape(toolbar) || IsMobileRoadToolbarLandscape(toolbar)) != landscape) {
+		if (toolbar->window_number == TransportType::Rail) {
+			RecreateMobileRailToolbar();
+		} else {
+			RecreateMobileRoadToolbar();
+		}
+		toolbar = GetMobileConstructionToolbar();
 	}
 	/* The bar shown while adding stops to a train takes the toolbar's place. */
 	if (toolbar == nullptr) toolbar = FindWindowById(WindowClass::MobileStopsBar, 0);
@@ -1571,6 +1624,7 @@ void RelocateMobileWindows()
 	if (landscape && toolbar != nullptr) {
 		/* Its tools don't fit beside a sheet: let it switch to status, Cancel and Build only (it asks IsMobileSheetOpen()). */
 		UpdateMobileRailToolbarPlanes(toolbar);
+		UpdateMobileRoadToolbarPlanes(toolbar);
 		/* Along the bottom of the map, between the dock and the sheet. */
 		FitWindowTo(toolbar, map_right - map_left, toolbar->height);
 		MoveWindowTo(toolbar, map_left, _screen.height - toolbar->height);
@@ -1620,7 +1674,7 @@ void RelocateMobileWindows()
 	if (MobileBuildMenuWindow *build = dynamic_cast<MobileBuildMenuWindow *>(FindWindowById(WindowClass::MobileBuildMenu, 0)); build != nullptr) {
 		if (build->toolbar != nullptr && build->toolbar == toolbar) {
 			/* Above the toolbar's category button, left edges aligned. */
-			const NWidgetBase *button = toolbar->GetWidget<NWidgetBase>(WID_RAT_CATEGORY);
+			const NWidgetBase *button = toolbar->GetWidget<NWidgetBase>(toolbar->window_number == TransportType::Road ? static_cast<WidgetID>(WID_ROT_CATEGORY) : static_cast<WidgetID>(WID_RAT_CATEGORY));
 			int x = toolbar->left + button->pos_x;
 			MoveWindowTo(build, Clamp(x, safe.left, std::max(safe.left, safe.right + 1 - build->width)), std::max(safe.top, toolbar->top + (int)button->pos_y - build->height));
 		} else {

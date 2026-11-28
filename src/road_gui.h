@@ -22,4 +22,17 @@ DropDownList GetRoadTypeDropDownList(RoadTramTypes rtts, bool for_replacement = 
 DropDownList GetScenRoadTypeDropDownList(RoadTramTypes rtts);
 void SetDefaultRoadGui();
 
+RoadType GetCurrentRoadType();
+bool IsRoadRemoveModeActive();
+void SetRoadRemoveMode(bool remove);
+bool IsRoadOneWayModeActive();
+void SetRoadOneWayMode(bool one_way);
+DiagDirection GetRoadDepotDirection();
+void PostRoadDepot(TileIndex tile, DiagDirection dir);
+void PostRoadTunnel(TileIndex tile);
+struct Window *GetMobileRoadToolbar();
+bool IsMobileRoadToolbarLandscape(const struct Window *w);
+void RecreateMobileRoadToolbar();
+void UpdateMobileRoadToolbarPlanes(struct Window *w);
+
 #endif /* ROAD_GUI_H */

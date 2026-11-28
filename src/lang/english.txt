@@ -946,6 +946,14 @@ STR_MOBILE_BUILD_STATUS_SIGNAL_CONVERT                          :Convert {COMMA}
 STR_MOBILE_BUILD_STATUS_SIGNAL_REMOVE_ONE                       :Remove 1 signal · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_SIGNAL_REMOVE                           :Remove {COMMA} signal{P "" s} · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_DONE                                    :Done · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_STOP                                    :{RAW_STRING} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_STOP_JOIN                               :{RAW_STRING}, joins {STATION} · {RAW_STRING}
+STR_MOBILE_BUILD_STOPS_BUS                                      :{COMMA} bus stop{P "" s}
+STR_MOBILE_BUILD_STOPS_LORRY                                    :{COMMA} lorry stop{P "" s}
+STR_MOBILE_BUILD_STOPS_TRAM_PASSENGER                           :{COMMA} tram stop{P "" s}
+STR_MOBILE_BUILD_STOPS_TRAM_FREIGHT                             :{COMMA} freight tram stop{P "" s}
+STR_MOBILE_BUILD_STATUS_ONE_WAY                                 :Change one-way · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_ONE_WAY_TIMES                           :Change one-way {COMMA} times · {RAW_STRING}
 STR_MOBILE_SIGNAL_TITLE                                         :Signals
 STR_MOBILE_SIGNAL_CLOSE_TOOLTIP                                 :{BLACK}Close, and stop placing signals
 STR_MOBILE_SIGNAL_ELECTRIC                                      :Electric
@@ -973,6 +981,18 @@ STR_MOBILE_BUILD_EXIT_TOOLTIP                                   :{BLACK}Leave bu
 STR_MOBILE_BUILD_RAILTYPE_TOOLTIP                               :{BLACK}Rail type to build
 STR_MOBILE_BUILD_HINT_STATION                                   :Tap to place · drag for any size
 STR_MOBILE_BUILD_HINT_DEPOT                                     :Tap to place a depot
+STR_MOBILE_BUILD_HINT_ROAD                                      :Drag to build road
+STR_MOBILE_BUILD_HINT_REMOVE_ROAD                               :Drag to remove road
+STR_MOBILE_BUILD_HINT_ONE_WAY                                   :Tap or drag over a road to make it one-way
+STR_MOBILE_BUILD_HINT_CONVERT_ROAD                              :Drag over an area to convert the road
+STR_MOBILE_BUILD_HINT_CONVERT_TRAM                              :Drag over an area to convert the tram track
+STR_MOBILE_BUILD_HINT_STOP                                      :Tap a road to place a stop · drag for more
+STR_MOBILE_BUILD_HINT_REMOVE_STOP                               :Tap or drag over stops to remove them
+STR_MOBILE_ROAD_CATEGORY_TOOLTIP                                :{BLACK}Change the road type, or build something else
+STR_MOBILE_ROAD_MORE_TOOLTIP                                    :{BLACK}More tools: one-way roads, conversion, road in one direction
+STR_MOBILE_ROAD_ONE_WAY                                         :One-way
+STR_MOBILE_ROAD_X                                               :Road NE-SW
+STR_MOBILE_ROAD_Y                                               :Road NW-SE
 STR_MOBILE_BUILD_HINT_WAYPOINT                                  :Tap or drag along a straight track
 STR_MOBILE_BUILD_STATUS_STATION                                 :Station {NUM}×{NUM} · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_STATION_JOIN                            :Station {NUM}×{NUM} · joins {STATION} · {RAW_STRING}
@@ -999,6 +1019,19 @@ STR_MOBILE_STATION_SHOW_CATCHMENT                               :Show catchment 
 STR_MOBILE_STATION_COVERAGE_LATER                               :{BLACK}Accepts and supplies appear once the station is placed.
 STR_MOBILE_STATION_JOIN                                         :Join {STATION}
 STR_MOBILE_STATION_NEW                                          :New station
+STR_MOBILE_STOP_TITLE_BUS                                       :Bus stop
+STR_MOBILE_STOP_TITLE_LORRY                                     :Lorry stop
+STR_MOBILE_STOP_TITLE_TRAM                                      :Tram stop
+STR_MOBILE_STOP_TITLE_TRAM_FREIGHT                              :Freight tram stop
+STR_MOBILE_STOP_CLOSE_TOOLTIP                                   :{BLACK}Stop building stops
+STR_MOBILE_STOP_DRIVE_THROUGH                                   :Drive-through
+STR_MOBILE_STOP_DRIVE_THROUGH_TOOLTIP                           :{BLACK}A stop on the road, which vehicles drive through
+STR_MOBILE_STOP_BAY                                             :Bay
+STR_MOBILE_STOP_BAY_TOOLTIP                                     :{BLACK}A stop beside the road, which vehicles enter and leave the same way
+STR_MOBILE_STOP_FACING                                          :Facing
+STR_MOBILE_STOP_FACING_TOOLTIP                                  :{BLACK}Which way the bay opens; a bay next to one road faces it by itself
+STR_MOBILE_STOP_FOLLOWS_ROAD                                    :Follows the road
+STR_MOBILE_STOP_COVERAGE_LATER                                  :{BLACK}Accepts and supplies appear once the stop is placed.
 STR_MOBILE_STATION_JOIN_TOOLTIP                                 :{BLACK}Which station the new part belongs to
 STR_MOBILE_STATUS_PAUSED                                        :Paused
 STR_MOBILE_RESUME_BANNER                                        :Paused while you were away · tap {RIGHT_ARROW} to continue
