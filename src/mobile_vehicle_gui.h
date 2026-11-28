@@ -22,11 +22,12 @@
 struct BaseStation;
 struct Vehicle;
 
-void ShowMobileDepotWindow(TileIndex tile);
+void ShowMobileDepotWindow(TileIndex tile, VehicleType type);
+void ShowMobileRefitWindow(const Vehicle *v);
 void ShowMobileNewTrainWindow(TileIndex tile, VehicleID target);
 void ShowMobileTrainWindow(const Vehicle *v, bool add_stops = false, bool show_details = false);
 void MobileStopAddingStops();
-void ShowMobileTrainList(WindowNumber number, StationID station);
+void ShowMobileTrainList(WindowNumber number, StationID station, VehicleType type);
 bool MobileVehicleOnStationSignClick(const BaseStation *st);
 void CcMobileBuildTrainPart(Commands cmd, const CommandCost &result, VehicleID new_veh_id, uint, uint16_t, CargoArray, TileIndex tile, EngineID, bool, CargoType, ClientID);
 

@@ -998,6 +998,7 @@ STR_MOBILE_BUILD_STATUS_STATION                                 :Station {NUM}×
 STR_MOBILE_BUILD_STATUS_STATION_JOIN                            :Station {NUM}×{NUM} · joins {STATION} · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_BUILT_STATION                           :Built station · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_DEPOT_FACES_TRACK                       :Depot faces the track · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_DEPOT_FACES_ROAD                        :Depot faces the road · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_DEPOT_CHECK                             :Depot · {RAW_STRING} · check the entrance
 STR_MOBILE_BUILD_STATUS_BUILT_DEPOT                             :Built depot · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_WAYPOINT                                :Waypoint {COMMA} tile{P "" s} · {RAW_STRING}
@@ -1166,10 +1167,28 @@ STR_MOBILE_MAP_HINT                                             :Tap to go there
 STR_MOBILE_ELLIPSIS                                             :...
 STR_MOBILE_BACK                                                 :{BLACK}{LEFT_ARROW}
 STR_MOBILE_BACK_TOOLTIP                                         :{BLACK}Back
-STR_MOBILE_DEPOT_EMPTY                                          :No trains here yet
+STR_MOBILE_DEPOT_EMPTY                                          :No vehicles here yet
 STR_MOBILE_DEPOT_FREE_WAGONS                                    :Wagons without an engine
 STR_MOBILE_DEPOT_NEW_TRAIN                                      :{WHITE}+ New train
-STR_MOBILE_DEPOT_CLONE                                          :{BLACK}Clone a train
+STR_MOBILE_DEPOT_NEW_ROAD_VEHICLE                               :{WHITE}+ New road vehicle
+STR_MOBILE_DEPOT_NEW_SHIP                                       :{WHITE}+ New ship
+STR_MOBILE_DEPOT_NEW_AIRCRAFT                                   :{WHITE}+ New aircraft
+STR_MOBILE_NEW_ROAD_VEHICLE                                     :New road vehicle
+STR_MOBILE_NEW_SHIP                                             :New ship
+STR_MOBILE_NEW_AIRCRAFT                                         :New aircraft
+STR_MOBILE_NEW_VEHICLE_NONE                                     :Nothing can be bought here yet
+STR_MOBILE_NEW_VEHICLE_LINE                                     :{RAW_STRING} · {VELOCITY}
+STR_MOBILE_REFIT_TITLE                                          :Refit {RAW_STRING}
+STR_MOBILE_REFIT_WHOLE_TRAIN                                    :Whole train
+STR_MOBILE_REFIT_ONLY_THIS                                      :Only this vehicle
+STR_MOBILE_REFIT_CAPACITY                                       :{RAW_STRING} {RIGHT_ARROW} {RAW_STRING}
+STR_MOBILE_REFIT_COST                                           :Cost {CURRENCY_LONG}
+STR_MOBILE_REFIT_NONE                                           :It can't carry anything else
+STR_MOBILE_REFIT_PICK                                           :Pick what to carry
+STR_MOBILE_REFIT_STOP_IN_DEPOT                                  :Stop in a depot to refit
+STR_MOBILE_REFIT_REFIT                                          :{WHITE}Refit
+STR_MOBILE_VEHICLE_SUMMARY                                      :{RAW_STRING} · {VELOCITY}
+STR_MOBILE_DEPOT_CLONE                                          :{BLACK}Clone
 STR_MOBILE_TRAIN_NAME                                           :{VEHICLE}
 STR_MOBILE_TRAIN_STOPPED                                        :Stopped
 STR_MOBILE_TRAIN_STOPPED_NO_ORDERS                              :Stopped · no orders
@@ -1210,7 +1229,7 @@ STR_MOBILE_TRAIN_SPENT                                          :{BLACK}Spent {C
 STR_MOBILE_TRAIN_NEXT_ORDERS                                    :{WHITE}Next: orders {RIGHT_ARROW}
 STR_MOBILE_TRAIN_LIST_TOTAL                                     :{BLACK}Profit this year: {CURRENCY_LONG}
 STR_MOBILE_TRAIN_LIST_AT_STATION                                :Trains calling at {STATION}
-STR_MOBILE_TRAIN_LIST_EMPTY                                     :No trains yet
+STR_MOBILE_TRAIN_LIST_EMPTY                                     :No vehicles yet
 STR_MOBILE_ORDERS_EMPTY                                         :No stops yet
 STR_MOBILE_ORDERS_MENU                                          :...
 STR_MOBILE_ORDERS_ADD_STOPS                                     :+ Add stops

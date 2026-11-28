@@ -202,4 +202,18 @@ enum MobileStopsBarWidgets : WidgetID {
 	WID_MSB_GAP_BOTTOM, ///< Spacer filling the screen edge's inset at the bottom.
 };
 
+/** Widgets of the mobile refit window (round 5 design, 7.3). */
+enum MobileRefitWidgets : WidgetID {
+	WID_MRF_BACK, ///< Back to the window it was opened from.
+	WID_MRF_TITLE, ///< "Refit <vehicle>".
+	WID_MRF_CLOSE, ///< Close.
+	WID_MRF_SEL_SCOPE, ///< Selection hiding the whole train / only this wagon choice (not a train, or a single vehicle).
+	WID_MRF_WHOLE, ///< Refit the whole train.
+	WID_MRF_ONLY_THIS, ///< Refit only this wagon.
+	WID_MRF_LIST, ///< The cargoes.
+	WID_MRF_SCROLL, ///< Scrollbar of the list.
+	WID_MRF_COST, ///< Cost, or why it can't refit.
+	WID_MRF_REFIT, ///< Refit.
+};
+
 #endif /* WIDGETS_MOBILE_WIDGET_H */

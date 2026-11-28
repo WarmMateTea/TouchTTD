@@ -39,6 +39,14 @@
 #include "engine_func.h"
 #include "engine_gui.h"
 #include "train.h"
+#include "roadveh.h"
+#include "road_map.h"
+#include "aircraft.h"
+#include "station_func.h"
+#include "waypoint_base.h"
+#include "road.h"
+#include "articulated_vehicles.h"
+#include "cargotype.h"
 #include "train_cmd.h"
 #include "vehicle_cmd.h"
 #include "vehicle_func.h"
@@ -80,6 +88,9 @@ static VehicleID _mobile_train_sell = VehicleID::Invalid();
 
 /** The train that vehicles bought in the New train view are added to. */
 static VehicleID _mobile_train_target = VehicleID::Invalid();
+
+/** A road vehicle, ship or aircraft was just bought in the mobile buy view: its window opens adding stops. */
+static bool _mobile_open_adding_stops = false;
 
 /**
  * Callback of buying a vehicle in the New train view: the first engine becomes the train being built; later
@@ -148,6 +159,30 @@ static void DrawTrainStrip(const Train *t, const Rect &r, bool cells, std::vecto
 }
 
 /**
+ * Draw a vehicle as a strip: a train's vehicles side by side (see DrawTrainStrip()); any other vehicle (with its
+ * articulated parts) as one cell.
+ * @param v The vehicle (first part).
+ * @param r Where to draw.
+ * @param cells Draw the vehicle as a cell, and report where it is.
+ * @param[out] out With \p cells, the cells.
+ */
+static void DrawVehicleStrip(const Vehicle *v, const Rect &r, bool cells, std::vector<std::pair<Rect, VehicleID>> *out)
+{
+	if (v->type == VehicleType::Train) {
+		DrawTrainStrip(Train::From(v), r, cells, out);
+		return;
+	}
+	if (out != nullptr) out->clear();
+	bool rtl = _current_text_dir == TD_RTL;
+	Rect box = r.WithWidth(std::min(r.Width(), ScaleGUITrad(cells ? 64 : 48)), rtl);
+	if (cells) {
+		DrawFrameRect(box, Colours::Grey, {});
+		if (out != nullptr) out->emplace_back(box, v->index);
+	}
+	DrawVehicleImage(v, box.Shrink(ScaleGUITrad(4), 0), VehicleID::Invalid(), EngineImageType::InDepot, 0);
+}
+
+/**
  * Find the vehicle cell under a point.
  * @param cells The cells, as DrawTrainStrip() reported them, in window coordinates.
  * @param pt The point.
@@ -201,6 +236,11 @@ static void ShowVehicleCellMenu(Window *w, WidgetID widget, VehicleID id)
  */
 static void SellTrainVehicle(Window *parent, VehicleID id)
 {
+	if (const Vehicle *other = Vehicle::GetIfValid(id); other != nullptr && other->type != VehicleType::Train) {
+		/* A road vehicle, ship or aircraft is sold whole. */
+		Command<Commands::SellVehicle>::Post(GetCmdSellVehMsg(other), other->tile, other->index, true, false, ClientID::Invalid);
+		return;
+	}
 	const Train *v = Train::GetIfValid(id);
 	if (v == nullptr) return;
 	if (v->IsFrontEngine() && v->Next() != nullptr) {
@@ -239,17 +279,41 @@ static std::string GetTrainSummary(const Train *t)
 	return GetString(STR_MOBILE_TRAIN_SUMMARY, vehicles, length, cargo.empty() ? GetString(STR_MOBILE_TRAIN_NO_CARGO) : cargo, PackVelocity(t->GetDisplayMaxSpeed(), VehicleType::Train));
 }
 
+/**
+ * Summary of a vehicle: for a train its vehicles, length, capacity and speed; otherwise capacity and speed.
+ * @param v The vehicle.
+ * @return The text.
+ */
+static std::string GetVehicleSummary(const Vehicle *v)
+{
+	if (v->type == VehicleType::Train) return GetTrainSummary(Train::From(v));
+	CargoArray capacity{};
+	for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+		if (IsValidCargoType(u->cargo_type)) capacity[u->cargo_type] += u->cargo_cap;
+	}
+	std::string cargo;
+	for (CargoType c : EnumRange(NUM_CARGO)) {
+		if (capacity[c] == 0) continue;
+		if (!cargo.empty()) cargo += ", ";
+		cargo += GetString(STR_JUST_CARGO, c, capacity[c]);
+	}
+	return GetString(STR_MOBILE_VEHICLE_SUMMARY, cargo.empty() ? GetString(STR_MOBILE_TRAIN_NO_CARGO) : cargo, PackVelocity(v->GetDisplayMaxSpeed(), v->type));
+}
+
 /* --- Depot sheet --- */
 
-/** The depot in the sheet slot: the trains in it, New train and Clone. */
+/** The depot in the sheet slot: the vehicles in it, New and Clone (any vehicle type; round 5 design, 7.1). */
 struct MobileDepotWindow : Window {
-	std::vector<const Train *> chains; ///< Trains and free wagon chains in the depot.
+	VehicleType type; ///< The vehicles this depot (or hangar) serves.
+	std::vector<const Vehicle *> chains; ///< Vehicles (and for trains free wagon chains) in the depot.
 	Scrollbar *vscroll = nullptr;
 
-	MobileDepotWindow(WindowDesc &desc, TileIndex tile) : Window(desc)
+	MobileDepotWindow(WindowDesc &desc, TileIndex tile, VehicleType type) : Window(desc), type(type)
 	{
 		this->CreateNestedTree();
 		this->vscroll = this->GetScrollbar(WID_MDEP_SCROLL);
+		static const StringID new_labels[] = {STR_MOBILE_DEPOT_NEW_TRAIN, STR_MOBILE_DEPOT_NEW_ROAD_VEHICLE, STR_MOBILE_DEPOT_NEW_SHIP, STR_MOBILE_DEPOT_NEW_AIRCRAFT};
+		this->GetWidget<NWidgetCore>(WID_MDEP_NEW)->SetString(new_labels[to_underlying(type)]);
 		this->FinishInitNested(tile);
 		this->owner = GetTileOwner(tile);
 		this->BuildList();
@@ -258,9 +322,17 @@ struct MobileDepotWindow : Window {
 	void BuildList()
 	{
 		this->chains.clear();
-		for (const Train *t : Train::Iterate()) {
-			if (t->tile != static_cast<TileIndex>(this->window_number) || !t->IsInDepot() || t->Previous() != nullptr) continue;
-			if (t->IsFrontEngine() || t->IsFreeWagon()) this->chains.push_back(t);
+		TileIndex tile = static_cast<TileIndex>(this->window_number);
+		if (this->type == VehicleType::Train) {
+			for (const Train *t : Train::Iterate()) {
+				if (t->tile != tile || !t->IsInDepot() || t->Previous() != nullptr) continue;
+				if (t->IsFrontEngine() || t->IsFreeWagon()) this->chains.push_back(t);
+			}
+		} else {
+			for (const Vehicle *v : Vehicle::Iterate()) {
+				if (v->type != this->type || !v->IsPrimaryVehicle() || v->tile != tile || !v->IsInDepot()) continue;
+				this->chains.push_back(v);
+			}
 		}
 		this->vscroll->SetCount(this->chains.size());
 	}
@@ -291,7 +363,7 @@ struct MobileDepotWindow : Window {
 	{
 		switch (widget) {
 			case WID_MDEP_TITLE:
-				DrawMobileTitle(r, GetString(STR_DEPOT_NAME, VehicleType::Train, GetDepotDestinationIndex(static_cast<TileIndex>(this->window_number))));
+				DrawMobileTitle(r, GetString(STR_DEPOT_NAME, this->type, GetDepotDestinationIndex(static_cast<TileIndex>(this->window_number))));
 				break;
 
 			case WID_MDEP_LIST: {
@@ -304,16 +376,16 @@ struct MobileDepotWindow : Window {
 				auto [first, last] = this->vscroll->GetVisibleRangeIterators(this->chains);
 				bool rtl = _current_text_dir == TD_RTL;
 				for (auto it = first; it != last; ++it) {
-					const Train *t = *it;
+					const Vehicle *t = *it;
 					Rect rr = tr.WithHeight(row);
 					Rect arrow = rr.WithWidth(ScaleGUITrad(40), !rtl);
 					DrawString(arrow.left, arrow.right, CentreBounds(rr.top, rr.bottom, GetCharacterHeight(FontSize::Normal)), STR_JUST_RIGHT_ARROW, TextColour::Black, AlignmentH::Centre);
 					Rect content = rr.Indent(ScaleGUITrad(40), !rtl).Indent(ScaleGUITrad(MOBILE_TEXT_INSET), rtl);
 					int line = GetCharacterHeight(FontSize::Normal);
 					Rect strip = content.WithHeight(rr.Height() - 2 * line);
-					DrawTrainStrip(t, strip, false, nullptr);
+					DrawVehicleStrip(t, strip, false, nullptr);
 					int y = rr.bottom - 2 * line;
-					if (t->IsFrontEngine()) {
+					if (t->IsPrimaryVehicle()) {
 						DrawString(content.left, content.right, y, GetString(STR_MOBILE_TRAIN_NAME, t->index), TextColour::Black);
 						bool no_orders = t->GetNumManualOrders() == 0;
 						DrawString(content.left, content.right, y + line, no_orders ? STR_MOBILE_TRAIN_STOPPED_NO_ORDERS : STR_MOBILE_TRAIN_STOPPED, no_orders ? TextColour::Red : TextColour::Black);
@@ -335,14 +407,16 @@ struct MobileDepotWindow : Window {
 				_mobile_train_target = VehicleID::Invalid();
 				ShowMobileNewTrainWindow(static_cast<TileIndex>(this->window_number), VehicleID::Invalid());
 				break;
-			case WID_MDEP_CLONE:
-				/* As on desktop: pick the train to clone on the map or in a list. */
-				SetObjectToPlaceWnd(SPR_CURSOR_CLONE_TRAIN, PAL_NONE, HT_VEHICLE, this);
+			case WID_MDEP_CLONE: {
+				/* As on desktop: pick the vehicle to clone on the map or in a list. */
+				static const CursorID cursors[] = {SPR_CURSOR_CLONE_TRAIN, SPR_CURSOR_CLONE_ROADVEH, SPR_CURSOR_CLONE_SHIP, SPR_CURSOR_CLONE_AIRPLANE};
+				SetObjectToPlaceWnd(cursors[to_underlying(this->type)], PAL_NONE, HT_VEHICLE, this);
 				break;
+			}
 			case WID_MDEP_LIST: {
 				auto it = this->vscroll->GetScrolledItemFromWidget(this->chains, pt.y, this, WID_MDEP_LIST, WidgetDimensions::scaled.framerect.top, ScaleGUITrad(DEPOT_ROW));
 				if (it == this->chains.end()) break;
-				if ((*it)->IsFrontEngine()) ShowMobileTrainWindow(*it);
+				if ((*it)->IsPrimaryVehicle()) ShowMobileTrainWindow(*it);
 				break;
 			}
 		}
@@ -350,8 +424,8 @@ struct MobileDepotWindow : Window {
 
 	bool OnVehicleSelect(const Vehicle *v) override
 	{
-		if (v->type != VehicleType::Train) return false;
-		Command<Commands::CloneVehicle>::Post(STR_ERROR_CAN_T_BUY_TRAIN, CcCloneVehicle, static_cast<TileIndex>(this->window_number), v->First()->index, false);
+		if (v->type != this->type) return false;
+		Command<Commands::CloneVehicle>::Post(GetCmdBuildVehMsg(this->type), CcCloneVehicle, static_cast<TileIndex>(this->window_number), v->First()->index, false);
 		ResetObjectToPlace();
 		return true;
 	}
@@ -390,10 +464,10 @@ static WindowDesc _mobile_depot_desc(
  * Show a train depot in the sheet slot.
  * @param tile The depot.
  */
-void ShowMobileDepotWindow(TileIndex tile)
+void ShowMobileDepotWindow(TileIndex tile, VehicleType type)
 {
 	Window *w = BringWindowToFrontById(WindowClass::VehicleDepot, tile);
-	if (w == nullptr) w = new MobileDepotWindow(_mobile_depot_desc, tile);
+	if (w == nullptr) w = new MobileDepotWindow(_mobile_depot_desc, tile, type);
 	MobileShowInSheet(w);
 }
 
@@ -590,7 +664,7 @@ struct MobileNewTrainWindow : Window {
 		TileIndex tile = static_cast<TileIndex>(this->window_number);
 		switch (widget) {
 			case WID_MNT_CLOSE: this->Close(); break;
-			case WID_MNT_BACK: ShowMobileDepotWindow(tile); break;
+			case WID_MNT_BACK: ShowMobileDepotWindow(tile, VehicleType::Train); break;
 			case WID_MNT_TAB_ENGINES:
 			case WID_MNT_TAB_WAGONS:
 				this->wagons = widget == WID_MNT_TAB_WAGONS;
@@ -668,8 +742,161 @@ static WindowDesc _mobile_new_train_desc(
 	_nested_mobile_new_train_widgets
 );
 
+/** Buying a road vehicle, ship or aircraft: one list; "+ £x" buys a complete vehicle and opens its window (round 5 design, 7.1). */
+struct MobileNewVehicleWindow : Window {
+	VehicleType type; ///< What the depot builds.
+	std::vector<EngineID> engines; ///< The list shown.
+	Scrollbar *vscroll = nullptr;
+
+	MobileNewVehicleWindow(WindowDesc &desc, TileIndex tile, VehicleType type) : Window(desc), type(type)
+	{
+		this->CreateNestedTree();
+		this->vscroll = this->GetScrollbar(WID_MNT_SCROLL);
+		this->FinishInitNested(tile);
+		this->owner = _local_company;
+		this->BuildList();
+	}
+
+	void BuildList()
+	{
+		this->engines.clear();
+		TileIndex tile = static_cast<TileIndex>(this->window_number);
+		RoadType roadtype = INVALID_ROADTYPE;
+		if (this->type == VehicleType::Road) {
+			roadtype = GetRoadTypeRoad(tile);
+			if (roadtype == INVALID_ROADTYPE) roadtype = GetRoadTypeTram(tile);
+		}
+		const Station *st = this->type == VehicleType::Aircraft ? Station::GetByTile(tile) : nullptr;
+		for (const Engine *e : Engine::IterateType(this->type)) {
+			if (e->IsVariantHidden(_local_company)) continue;
+			if (!IsEngineBuildable(e->index, this->type, _local_company)) continue;
+			/* As the desktop's purchase list: road vehicles for the depot's road type, aircraft the hangar's airport takes. */
+			if (roadtype != INVALID_ROADTYPE && !HasPowerOnRoad(e->VehInfo<RoadVehicleInfo>().roadtype, roadtype)) continue;
+			if (st != nullptr && !CanVehicleUseStation(e->index, st)) continue;
+			this->engines.push_back(e->index);
+		}
+		std::ranges::sort(this->engines, [](EngineID a, EngineID b) { return Engine::Get(a)->GetCost() < Engine::Get(b)->GetCost(); });
+		this->vscroll->SetCount(this->engines.size());
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		if (!gui_scope) return;
+		this->BuildList();
+		this->SetDirty();
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, Dimension &fill, Dimension &resize) override
+	{
+		switch (widget) {
+			case WID_MNT_LIST:
+				fill.height = resize.height = 1;
+				size.height = 2 * ScaleGUITrad(MOBILE_ROW);
+				break;
+			case WID_MNT_TITLE:
+				size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal));
+				break;
+		}
+	}
+
+	void OnResize() override
+	{
+		this->vscroll->SetCapacity(GetRowCapacity(this, WID_MNT_LIST, ScaleGUITrad(MOBILE_ROW)));
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		switch (widget) {
+			case WID_MNT_TITLE: {
+				static const StringID titles[] = {STR_MOBILE_TRAIN_NEW_TITLE, STR_MOBILE_NEW_ROAD_VEHICLE, STR_MOBILE_NEW_SHIP, STR_MOBILE_NEW_AIRCRAFT};
+				DrawMobileTitle(r, GetString(titles[to_underlying(this->type)]));
+				break;
+			}
+
+			case WID_MNT_LIST: {
+				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
+				if (this->engines.empty()) {
+					DrawString(tr.Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0), STR_MOBILE_NEW_VEHICLE_NONE, TextColour::Black);
+					break;
+				}
+				int row = ScaleGUITrad(MOBILE_ROW);
+				bool rtl = _current_text_dir == TD_RTL;
+				int line = GetCharacterHeight(FontSize::Normal);
+				auto [first, last] = this->vscroll->GetVisibleRangeIterators(this->engines);
+				for (auto it = first; it != last; ++it) {
+					const Engine *e = Engine::Get(*it);
+					Rect rr = tr.WithHeight(row);
+					Rect buy = MobileNewTrainWindow::GetBuyButton(rr);
+					DrawFrameRect(buy, Colours::Green, {});
+					DrawString(buy.left, buy.right, CentreBounds(buy.top, buy.bottom, line), GetString(STR_MOBILE_TRAIN_BUY, e->GetCost()), TextColour::White, AlignmentH::Centre);
+
+					int sprite_width = ScaleGUITrad(70);
+					Rect sprite = rr.WithWidth(sprite_width, rtl);
+					int x = CentreBounds(sprite.left, sprite.right, 0);
+					int y = CentreBounds(rr.top, rr.bottom, 0);
+					PaletteID pal = GetEnginePalette(e->index, _local_company);
+					switch (this->type) {
+						case VehicleType::Road: DrawRoadVehEngine(sprite.left, sprite.right, x, y, e->index, pal, EngineImageType::Purchase); break;
+						case VehicleType::Ship: DrawShipEngine(sprite.left, sprite.right, x, y, e->index, pal, EngineImageType::Purchase); break;
+						case VehicleType::Aircraft: DrawAircraftEngine(sprite.left, sprite.right, x, y, e->index, pal, EngineImageType::Purchase); break;
+						default: break;
+					}
+
+					Rect text = rr.Indent(sprite_width, rtl).Indent(buy.Width() + WidgetDimensions::scaled.hsep_wide, !rtl);
+					int ty = CentreBounds(rr.top, rr.bottom, 2 * line);
+					DrawString(text.left, text.right, ty, GetString(STR_ENGINE_NAME, e->index), TextColour::Black);
+					std::string cargo = IsValidCargoType(e->GetDefaultCargoType()) ? GetString(STR_JUST_CARGO, e->GetDefaultCargoType(), e->GetDisplayDefaultCapacity()) : std::string{};
+					DrawString(text.left, text.right, ty + line, GetString(STR_MOBILE_NEW_VEHICLE_LINE, cargo, PackVelocity(e->GetDisplayMaxSpeed(), this->type)), TextColour::Black);
+					tr.top += row;
+				}
+				break;
+			}
+		}
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		TileIndex tile = static_cast<TileIndex>(this->window_number);
+		switch (widget) {
+			case WID_MNT_CLOSE: this->Close(); break;
+			case WID_MNT_BACK: ShowMobileDepotWindow(tile, this->type); break;
+			case WID_MNT_LIST: {
+				auto it = this->vscroll->GetScrolledItemFromWidget(this->engines, pt.y, this, WID_MNT_LIST, WidgetDimensions::scaled.framerect.top, ScaleGUITrad(MOBILE_ROW));
+				if (it == this->engines.end()) break;
+				/* Only the "+ £x" button buys; the rest of the row is for reading. */
+				const NWidgetBase *list = this->GetWidget<NWidgetBase>(WID_MNT_LIST);
+				Rect rr = list->GetCurrentRect().Shrink(WidgetDimensions::scaled.framerect);
+				if (!MobileNewTrainWindow::GetBuyButton(rr).WithY(0, INT32_MAX / 2).Contains({pt.x, 1})) break;
+				const Engine *e = Engine::Get(*it);
+				_mobile_open_adding_stops = true;
+				Command<Commands::BuildVehicle>::Post(GetCmdBuildVehMsg(this->type), CcBuildPrimaryVehicle, tile, e->index, true, e->GetDefaultCargoType(), ClientID::Invalid);
+				break;
+			}
+		}
+	}
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_new_vehicle_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MNT_BACK), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_BACK, STR_MOBILE_BACK_TOOLTIP),
+		NWidget(WWT_PANEL, Colours::Grey, WID_MNT_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MNT_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Grey, WID_MNT_LIST), SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_MNT_SCROLL), EndContainer(),
+		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_MNT_SCROLL),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_new_vehicle_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::BuildVehicle, WindowClass::None,
+	{},
+	_nested_mobile_new_vehicle_widgets
+);
+
 /**
- * Show the New train view for a depot in the sheet slot.
+ * Show the New train (or road vehicle, ship, aircraft) view for a depot in the sheet slot.
  * @param tile The depot.
  * @param target Train to add vehicles to, or \c VehicleID::Invalid() for a new train.
  */
@@ -677,7 +904,289 @@ void ShowMobileNewTrainWindow(TileIndex tile, VehicleID target)
 {
 	if (target != VehicleID::Invalid()) _mobile_train_target = target;
 	CloseWindowById(WindowClass::BuildVehicle, tile);
+	VehicleType type = GetDepotVehicleType(tile);
+	if (type != VehicleType::Train) {
+		MobileShowInSheet(new MobileNewVehicleWindow(_mobile_new_vehicle_desc, tile, type));
+		return;
+	}
 	MobileShowInSheet(new MobileNewTrainWindow(_mobile_new_train_desc, tile));
+}
+
+/* --- Refit --- */
+
+/** Changing what a vehicle carries: the cargoes it can take with their capacity, the cost, Refit (round 5 design, 7.3). */
+struct MobileRefitWindow : Window {
+	VehicleID vehicle; ///< The vehicle (for a train: the wagon or engine it was opened for).
+	bool only_this; ///< A train: refit only this vehicle, not the whole train.
+	std::vector<CargoType> cargoes; ///< The cargoes it can carry.
+	CargoType selected = INVALID_CARGO; ///< The cargo picked.
+	Scrollbar *vscroll = nullptr;
+
+	MobileRefitWindow(WindowDesc &desc, const Vehicle *v, bool only_this) : Window(desc), vehicle(v->index), only_this(only_this)
+	{
+		this->CreateNestedTree();
+		this->vscroll = this->GetScrollbar(WID_MRF_SCROLL);
+		/* The choice only matters for a train of more than one vehicle. */
+		bool train = v->type == VehicleType::Train && (v->First()->Next() != nullptr);
+		this->GetWidget<NWidgetStacked>(WID_MRF_SEL_SCOPE)->SetDisplayedPlane(train ? 0 : SZSP_HORIZONTAL);
+		this->FinishInitNested(v->index);
+		this->owner = v->owner;
+		this->BuildList();
+	}
+
+	/** @return The vehicle refitted first: the one picked, or the train's front for the whole train. */
+	const Vehicle *GetVehicle() const
+	{
+		const Vehicle *v = Vehicle::GetIfValid(this->vehicle);
+		if (v == nullptr) return nullptr;
+		return this->only_this ? v : v->First();
+	}
+
+	/** @return How many vehicles the command refits: 1 for only this one (with its articulated parts), else all. */
+	uint8_t GetNumVehicles() const
+	{
+		return this->only_this ? 1 : 0;
+	}
+
+	void BuildList()
+	{
+		this->cargoes.clear();
+		const Vehicle *v = this->GetVehicle();
+		if (v == nullptr) return;
+		CargoTypes mask{};
+		for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+			if (u != v && this->only_this && !u->IsArticulatedPart()) break;
+			mask.Set(GetUnionOfArticulatedRefitMasks(u->engine_type, true));
+		}
+		for (const CargoSpec *cs : _sorted_cargo_specs) {
+			if (mask.Test(cs->Index())) this->cargoes.push_back(cs->Index());
+		}
+		this->vscroll->SetCount(this->cargoes.size());
+	}
+
+	/**
+	 * The capacity a refit to a cargo gives, and what it costs.
+	 * @param cargo The cargo.
+	 * @param[out] cost The cost.
+	 * @return The capacity; 0 when the refit can't be done.
+	 */
+	uint GetRefitCapacity(CargoType cargo, Money &cost) const
+	{
+		const Vehicle *v = this->GetVehicle();
+		cost = 0;
+		if (v == nullptr) return 0;
+		auto [result, capacity, mail_capacity, cargo_capacities] = Command<Commands::RefitVehicle>::Do(DoCommandFlag::QueryCost, v->index, cargo, 0, false, this->only_this, this->GetNumVehicles());
+		if (result.Failed()) return 0;
+		cost = result.GetCost();
+		return capacity;
+	}
+
+	/**
+	 * The current capacity of the refitted vehicles for their cargo.
+	 * @param[out] cargo Their cargo.
+	 * @return The capacity.
+	 */
+	uint GetCurrentCapacity(CargoType &cargo) const
+	{
+		const Vehicle *v = this->GetVehicle();
+		cargo = INVALID_CARGO;
+		uint capacity = 0;
+		for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+			if (u != v && this->only_this && !u->IsArticulatedPart()) break;
+			if (u->cargo_cap == 0) continue;
+			if (cargo == INVALID_CARGO) cargo = u->cargo_type;
+			if (u->cargo_type == cargo) capacity += u->cargo_cap;
+		}
+		return capacity;
+	}
+
+	/** @return Whether the vehicle is where it can be refitted: stopped in a depot or hangar. */
+	bool CanRefitNow() const
+	{
+		const Vehicle *v = this->GetVehicle();
+		return v != nullptr && v->First()->IsStoppedInDepot();
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, Dimension &fill, Dimension &resize) override
+	{
+		switch (widget) {
+			case WID_MRF_LIST:
+				fill.height = resize.height = 1;
+				size.height = 3 * ScaleGUITrad(40);
+				break;
+			case WID_MRF_TITLE:
+				size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal));
+				break;
+		}
+	}
+
+	void OnResize() override
+	{
+		this->vscroll->SetCapacity(GetRowCapacity(this, WID_MRF_LIST, ScaleGUITrad(40)));
+	}
+
+	void OnPaint() override
+	{
+		bool can = this->CanRefitNow();
+		CargoType current;
+		this->GetCurrentCapacity(current);
+		this->SetWidgetDisabledState(WID_MRF_REFIT, !can || this->selected == INVALID_CARGO || this->selected == current);
+		this->GetWidget<NWidgetCore>(WID_MRF_REFIT)->colour = this->IsWidgetDisabled(WID_MRF_REFIT) ? Colours::Grey : Colours::Green;
+		this->SetWidgetLoweredState(WID_MRF_WHOLE, !this->only_this);
+		this->SetWidgetLoweredState(WID_MRF_ONLY_THIS, this->only_this);
+		this->DrawWidgets();
+	}
+
+	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
+	{
+		if (widget == WID_MRF_COST) {
+			if (!this->CanRefitNow()) return GetString(STR_MOBILE_REFIT_STOP_IN_DEPOT);
+			if (this->selected == INVALID_CARGO) return GetString(STR_MOBILE_REFIT_PICK);
+			Money cost;
+			this->GetRefitCapacity(this->selected, cost);
+			return GetString(STR_MOBILE_REFIT_COST, cost);
+		}
+		return this->Window::GetWidgetString(widget, stringid);
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		const Vehicle *v = Vehicle::GetIfValid(this->vehicle);
+		if (v == nullptr) return;
+		switch (widget) {
+			case WID_MRF_TITLE:
+				DrawMobileTitle(r, GetString(STR_MOBILE_REFIT_TITLE, this->only_this ? GetString(STR_ENGINE_NAME, v->engine_type) : GetString(STR_MOBILE_TRAIN_NAME, v->First()->index)));
+				break;
+
+			case WID_MRF_LIST: {
+				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+				bool can = this->CanRefitNow();
+				CargoType current;
+				uint current_capacity = this->GetCurrentCapacity(current);
+				int row = ScaleGUITrad(40);
+				int line = GetCharacterHeight(FontSize::Normal);
+				bool rtl = _current_text_dir == TD_RTL;
+				if (this->cargoes.empty()) {
+					DrawString(tr.left, tr.right, tr.top + ScaleGUITrad(8), STR_MOBILE_REFIT_NONE, TextColour::Black);
+					break;
+				}
+				auto [first, last] = this->vscroll->GetVisibleRangeIterators(this->cargoes);
+				for (auto it = first; it != last; ++it) {
+					CargoType cargo = *it;
+					Rect rr = tr.WithHeight(row);
+					if (cargo == this->selected) DrawFrameRect(rr.Shrink(-ScaleGUITrad(MOBILE_TEXT_INSET), 0), Colours::Grey, FrameFlag::Lowered);
+					TextColour tc = can ? TextColour::Black : TextColour::Grey;
+					int y = CentreBounds(rr.top, rr.bottom, line);
+					/* The cargo's colour, its name, and the capacity it gives. */
+					const CargoSpec *cs = CargoSpec::Get(cargo);
+					int sq = line - ScaleGUITrad(2);
+					Rect swatch = rr.WithWidth(sq, rtl).WithY(CentreBounds(rr.top, rr.bottom, sq), CentreBounds(rr.top, rr.bottom, sq) + sq - 1);
+					GfxFillRect(swatch, PC_BLACK);
+					GfxFillRect(swatch.Shrink(WidgetDimensions::scaled.bevel), cs->legend_colour);
+					Rect text = rr.Indent(sq + WidgetDimensions::scaled.hsep_wide, rtl);
+					std::string capacity;
+					if (cargo == current) {
+						capacity = GetString(STR_JUST_CARGO, current, current_capacity);
+					} else {
+						Money cost;
+						uint cap = this->GetRefitCapacity(cargo, cost);
+						capacity = current == INVALID_CARGO ? GetString(STR_JUST_CARGO, cargo, cap) : GetString(STR_MOBILE_REFIT_CAPACITY, GetString(STR_JUST_CARGO, current, current_capacity), GetString(STR_JUST_CARGO, cargo, cap));
+					}
+					DrawString(text.left, text.right, y, capacity, tc, AlignmentH::End);
+					DrawString(text.left, text.right - GetStringBoundingBox(capacity).width - WidgetDimensions::scaled.hsep_wide, y, cs->name, cargo == current ? TextColour::DarkGreen : tc);
+					tr.top += row;
+				}
+				break;
+			}
+		}
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		const Vehicle *v = this->GetVehicle();
+		if (v == nullptr) return;
+		switch (widget) {
+			case WID_MRF_BACK:
+			case WID_MRF_CLOSE:
+				this->Close();
+				break;
+			case WID_MRF_WHOLE:
+			case WID_MRF_ONLY_THIS:
+				this->only_this = widget == WID_MRF_ONLY_THIS;
+				this->selected = INVALID_CARGO;
+				this->BuildList();
+				this->SetDirty();
+				break;
+			case WID_MRF_LIST: {
+				if (!this->CanRefitNow()) break;
+				auto it = this->vscroll->GetScrolledItemFromWidget(this->cargoes, pt.y, this, WID_MRF_LIST, WidgetDimensions::scaled.framerect.top, ScaleGUITrad(40));
+				if (it == this->cargoes.end()) break;
+				this->selected = *it;
+				this->SetDirty();
+				break;
+			}
+			case WID_MRF_REFIT:
+				if (this->selected == INVALID_CARGO) break;
+				if (Command<Commands::RefitVehicle>::Post(GetCmdRefitVehMsg(v), v->tile, v->index, this->selected, 0, false, this->only_this, this->GetNumVehicles())) {
+					this->selected = INVALID_CARGO;
+					this->SetDirty();
+				}
+				break;
+		}
+	}
+
+	const IntervalTimer<TimerWindow> refresh = {std::chrono::milliseconds(500), [this](auto) {
+		if (Vehicle::GetIfValid(this->vehicle) == nullptr) {
+			this->Close();
+			return;
+		}
+		this->SetDirty();
+	}};
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_refit_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MRF_BACK), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_BACK, STR_MOBILE_BACK_TOOLTIP),
+		NWidget(WWT_PANEL, Colours::Grey, WID_MRF_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MRF_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
+	EndContainer(),
+	NWidget(NWID_SELECTION, Colours::Invalid, WID_MRF_SEL_SCOPE),
+		NWidget(WWT_PANEL, Colours::Grey),
+			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize), SetPadding(4), SetPIP(0, 4, 0),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_MRF_WHOLE), SetMinimalSize(60, 32), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_REFIT_WHOLE_TRAIN),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_MRF_ONLY_THIS), SetMinimalSize(60, 32), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_REFIT_ONLY_THIS),
+			EndContainer(),
+		EndContainer(),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Grey, WID_MRF_LIST), SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_MRF_SCROLL), EndContainer(),
+		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_MRF_SCROLL),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Grey),
+		NWidget(NWID_HORIZONTAL), SetPadding(4), SetPIP(0, 4, 0),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_MRF_COST), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET), SetTextStyle(TextColour::Black, FontSize::Normal), SetAlignment({AlignmentH::Start, AlignmentV::Middle}),
+			NWidget(WWT_PUSHTXTBTN, Colours::Green, WID_MRF_REFIT), SetMinimalSize(100, 40), SetStringTip(STR_MOBILE_REFIT_REFIT),
+		EndContainer(),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_refit_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::VehicleRefit, WindowClass::None,
+	{},
+	_nested_mobile_refit_widgets
+);
+
+/**
+ * Show the refit view over the window it was opened from, in the sheet slot.
+ * @param v The vehicle (for a train: the wagon or engine tapped; only it is refitted unless the player picks the whole train).
+ */
+void ShowMobileRefitWindow(const Vehicle *v)
+{
+	CloseWindowByClass(WindowClass::VehicleRefit);
+	bool only_this = v->type == VehicleType::Train && v->First()->Next() != nullptr;
+	Window *w = new MobileRefitWindow(_mobile_refit_desc, v, only_this);
+	MobileDockOverlayInSheet(w);
 }
 
 /* --- Train window --- */
@@ -754,7 +1263,7 @@ struct MobileTrainWindow : Window {
 	VehicleID cell_vehicle = VehicleID::Invalid(); ///< Vehicle whose cell menu is open.
 	Scrollbar *vscroll = nullptr;
 
-	MobileTrainWindow(WindowDesc &desc, const Train *v) : Window(desc)
+	MobileTrainWindow(WindowDesc &desc, const Vehicle *v) : Window(desc)
 	{
 		this->CreateNestedTree();
 		this->vscroll = this->GetScrollbar(WID_MTR_ORDERS_SCROLL);
@@ -763,7 +1272,8 @@ struct MobileTrainWindow : Window {
 		this->UpdateState();
 	}
 
-	const Train *GetTrain() const { return Train::GetIfValid(static_cast<VehicleID>(this->window_number)); }
+	/** @return The vehicle (a train, road vehicle, ship or aircraft; round 5 design, 7.1). */
+	const Vehicle *GetTrain() const { return Vehicle::GetIfValid(static_cast<VehicleID>(this->window_number)); }
 
 	void Close(int data = 0) override
 	{
@@ -774,7 +1284,7 @@ struct MobileTrainWindow : Window {
 	/** Update the planes and buttons to the train's state. */
 	void UpdateState()
 	{
-		const Train *v = this->GetTrain();
+		const Vehicle *v = this->GetTrain();
 		if (v == nullptr) return;
 		bool reinit = false;
 		auto set_plane = [&](WidgetID widget, int plane) {
@@ -797,7 +1307,8 @@ struct MobileTrainWindow : Window {
 		this->SetWidgetDisabledState(WID_MTR_START, !can_start);
 		this->GetWidget<NWidgetCore>(WID_MTR_START)->colour = can_start ? Colours::Green : Colours::Grey;
 		this->SetWidgetDisabledState(WID_MTR_DEPOT, v->IsInDepot());
-		this->SetWidgetDisabledState(WID_MTR_ADD_VEHICLES, !v->IsStoppedInDepot());
+		/* Only trains get more vehicles; other vehicles are bought whole. */
+		this->SetWidgetDisabledState(WID_MTR_ADD_VEHICLES, v->type != VehicleType::Train || !v->IsStoppedInDepot());
 		this->SetWidgetLoweredState(WID_MTR_TAB_ORDERS, !this->details);
 		this->SetWidgetLoweredState(WID_MTR_TAB_DETAILS, this->details);
 		this->SetWidgetLoweredState(WID_MTR_ADD_STOPS, this->adding);
@@ -809,15 +1320,29 @@ struct MobileTrainWindow : Window {
 		this->SetDirty();
 	}
 
-	/** Suggested stations: the two most recently built train stations, then the one nearest the depot. */
+	/**
+	 * Can the vehicle stop at a station or waypoint? Ships also go to buoys.
+	 * @param st The station or waypoint.
+	 * @return \c true when it can be an order of the vehicle.
+	 */
+	bool CanStopAt(const BaseStation *st) const
+	{
+		const Vehicle *v = this->GetTrain();
+		if (v == nullptr || st == nullptr) return false;
+		if (v->type == VehicleType::Ship && Waypoint::IsExpected(st) && st->facilities.Test(StationFacility::Dock)) return true;
+		if (!Station::IsExpected(st) || st->owner != _local_company) return false;
+		return CanVehicleUseStation(v, Station::From(st));
+	}
+
+	/** Suggested stations: the two most recently built stations the vehicle can use, then the one nearest the depot. */
 	void UpdateChips()
 	{
 		this->chips.clear();
-		const Train *v = this->GetTrain();
+		const Vehicle *v = this->GetTrain();
 		if (v == nullptr) return;
 		std::vector<const Station *> own;
 		for (const Station *st : Station::Iterate()) {
-			if (st->owner == _local_company && st->facilities.Test(StationFacility::Train)) own.push_back(st);
+			if (this->CanStopAt(st)) own.push_back(st);
 		}
 		std::ranges::sort(own, [](const Station *a, const Station *b) { return a->build_date > b->build_date; });
 		for (const Station *st : own) {
@@ -867,10 +1392,10 @@ struct MobileTrainWindow : Window {
 	 */
 	void AddStop(const BaseStation *st)
 	{
-		const Train *v = this->GetTrain();
+		const Vehicle *v = this->GetTrain();
 		MobileStopsBarWindow *bar = dynamic_cast<MobileStopsBarWindow *>(FindWindowById(WindowClass::MobileStopsBar, 0));
 		if (v == nullptr || bar == nullptr) return;
-		if (st == nullptr || !Station::IsExpected(st) || st->owner != _local_company || !st->facilities.Test(StationFacility::Train)) {
+		if (!this->CanStopAt(st)) {
 			bar->SetMessage(GetString(STR_MOBILE_ORDERS_NOT_A_STATION));
 			return;
 		}
@@ -884,9 +1409,14 @@ struct MobileTrainWindow : Window {
 			}
 		}
 		Order order;
-		order.MakeGoToStation(st->index);
-		if (_settings_client.gui.new_nonstop) order.SetNonStopType(OrderNonStopFlag::NonStop);
-		order.SetStopLocation(static_cast<OrderStopLocation>(_settings_client.gui.stop_location));
+		if (Waypoint::IsExpected(st)) {
+			order.MakeGoToWaypoint(st->index); // A buoy.
+		} else {
+			order.MakeGoToStation(st->index);
+		}
+		if (_settings_client.gui.new_nonstop && (v->type == VehicleType::Train || v->type == VehicleType::Road)) order.SetNonStopType(OrderNonStopFlag::NonStop);
+		/* Where in the platform to stop is for trains only; other vehicles' orders must say "far end", as the desktop's do. */
+		order.SetStopLocation(v->type == VehicleType::Train ? static_cast<OrderStopLocation>(_settings_client.gui.stop_location) : OrderStopLocation::FarEnd);
 		bar->SetMessage({});
 		Command<Commands::InsertOrder>::Post(STR_ERROR_CAN_T_INSERT_NEW_ORDER, v->tile, v->index, count, order);
 		MarkTileDirtyByTile(st->xy);
@@ -955,7 +1485,7 @@ struct MobileTrainWindow : Window {
 	std::string GetMobileDropDownTitle(WidgetID widget) const override
 	{
 		if (widget == WID_MTR_ORDERS) {
-			const Train *v = this->GetTrain();
+			const Vehicle *v = this->GetTrain();
 			const Order *o = v == nullptr ? nullptr : v->GetOrder(this->menu_order);
 			return o == nullptr ? std::string{} : GetOrderName(*o);
 		}
@@ -994,7 +1524,7 @@ struct MobileTrainWindow : Window {
 
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
-		const Train *v = this->GetTrain();
+		const Vehicle *v = this->GetTrain();
 		if (v == nullptr) return;
 		bool rtl = _current_text_dir == TD_RTL;
 		int line = GetCharacterHeight(FontSize::Normal);
@@ -1035,7 +1565,7 @@ struct MobileTrainWindow : Window {
 					} else {
 						state = GetString(STR_MOBILE_TRAIN_RUNNING);
 					}
-					detail = GetString(STR_MOBILE_TRAIN_SPEED_PROFIT, PackVelocity(v->GetDisplaySpeed(), VehicleType::Train), v->GetDisplayProfitThisYear());
+					detail = GetString(STR_MOBILE_TRAIN_SPEED_PROFIT, PackVelocity(v->GetDisplaySpeed(), v->type), v->GetDisplayProfitThisYear());
 				}
 				DrawString(tr.left, tr.right, y, state, stopped ? TextColour::Red : TextColour::DarkGreen);
 				DrawString(tr.left, tr.right, y + line, detail, TextColour::Black);
@@ -1081,12 +1611,12 @@ struct MobileTrainWindow : Window {
 			}
 
 			case WID_MTR_STRIP:
-				DrawTrainStrip(v, r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0), true, &this->cells);
+				DrawVehicleStrip(v, r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0), true, &this->cells);
 				break;
 
 			case WID_MTR_DETAILS: {
 				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
-				tr.top = DrawStringMultiLine(tr, GetTrainSummary(v), TextColour::Black);
+				tr.top = DrawStringMultiLine(tr, GetVehicleSummary(v), TextColour::Black);
 				tr.top = DrawStringMultiLine(tr, GetString(STR_MOBILE_TRAIN_DETAILS_AGE, v->age, v->max_age), TextColour::Black);
 				tr.top = DrawStringMultiLine(tr, GetString(STR_MOBILE_TRAIN_DETAILS_RELIABILITY, ToPercent16(v->reliability)), TextColour::Black);
 				tr.top = DrawStringMultiLine(tr, GetString(STR_MOBILE_TRAIN_DETAILS_RUNNING_COST, v->GetDisplayRunningCost()), TextColour::Black);
@@ -1102,7 +1632,7 @@ struct MobileTrainWindow : Window {
 	 */
 	void ShowOrderMenu(VehicleOrderID index)
 	{
-		const Train *v = this->GetTrain();
+		const Vehicle *v = this->GetTrain();
 		const Order *o = v == nullptr ? nullptr : v->GetOrder(index);
 		if (o == nullptr) return;
 		this->menu_order = index;
@@ -1135,7 +1665,7 @@ struct MobileTrainWindow : Window {
 	 */
 	int GetOrderRowAt(int y) const
 	{
-		const Train *v = this->GetTrain();
+		const Vehicle *v = this->GetTrain();
 		if (v == nullptr || v->GetNumOrders() == 0) return -1;
 		int row = (y - this->GetWidget<NWidgetBase>(WID_MTR_ORDERS)->pos_y - WidgetDimensions::scaled.framerect.top) / ScaleGUITrad(MOBILE_ORDER_ROW);
 		return Clamp(this->vscroll->GetPosition() + row, 0, v->GetNumOrders() - 1);
@@ -1162,7 +1692,7 @@ struct MobileTrainWindow : Window {
 
 	void OnLongPressEnd(Point pt, bool cancelled) override
 	{
-		const Train *v = this->GetTrain();
+		const Vehicle *v = this->GetTrain();
 		if (!cancelled && v != nullptr && this->drag_order >= 0) {
 			int target = this->GetOrderRowAt(pt.y);
 			if (target >= 0 && target != this->drag_order) {
@@ -1186,7 +1716,7 @@ struct MobileTrainWindow : Window {
 			return;
 		}
 		if (widget != WID_MTR_ORDERS) return;
-		const Train *v = this->GetTrain();
+		const Vehicle *v = this->GetTrain();
 		const Order *o = v == nullptr ? nullptr : v->GetOrder(this->menu_order);
 		if (o == nullptr) return;
 		auto modify = [&](ModifyOrderFlags mof, uint16_t value) {
@@ -1214,12 +1744,12 @@ struct MobileTrainWindow : Window {
 
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
-		const Train *v = this->GetTrain();
+		const Vehicle *v = this->GetTrain();
 		if (v == nullptr) return;
 		switch (widget) {
 			case WID_MTR_CLOSE: this->Close(); break;
 			case WID_MTR_RENAME:
-				ShowQueryString(GetString(STR_VEHICLE_NAME, v->index), STR_QUERY_RENAME_TRAIN_CAPTION, MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+				ShowQueryString(GetString(STR_VEHICLE_NAME, v->index), STR_QUERY_RENAME_TRAIN_CAPTION + to_underlying(v->type), MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
 				break;
 			case WID_MTR_START:
 			case WID_MTR_STOP:
@@ -1246,9 +1776,9 @@ struct MobileTrainWindow : Window {
 				break;
 			case WID_MTR_CLONE:
 				if (v->IsInDepot()) {
-					Command<Commands::CloneVehicle>::Post(STR_ERROR_CAN_T_BUY_TRAIN, CcCloneVehicle, v->tile, v->index, false);
+					Command<Commands::CloneVehicle>::Post(GetCmdBuildVehMsg(v), CcCloneVehicle, v->tile, v->index, false);
 				} else {
-					ShowErrorMessage(GetEncodedString(STR_ERROR_CAN_T_BUY_TRAIN), GetEncodedString(STR_MOBILE_TRAIN_CLONE_IN_DEPOT), WarningLevel::Info);
+					ShowErrorMessage(GetEncodedString(GetCmdBuildVehMsg(v)), GetEncodedString(STR_MOBILE_TRAIN_CLONE_IN_DEPOT), WarningLevel::Info);
 				}
 				break;
 			case WID_MTR_STRIP:
@@ -1273,7 +1803,8 @@ struct MobileTrainWindow : Window {
 	void OnQueryTextFinished(std::optional<std::string> str) override
 	{
 		if (!str.has_value()) return;
-		Command<Commands::RenameVehicle>::Post(STR_ERROR_CAN_T_RENAME_TRAIN, static_cast<VehicleID>(this->window_number), *str);
+		const Vehicle *v = this->GetTrain();
+		Command<Commands::RenameVehicle>::Post(v != nullptr ? STR_ERROR_CAN_T_RENAME_TRAIN + to_underlying(v->type) : STR_ERROR_CAN_T_RENAME_TRAIN, static_cast<VehicleID>(this->window_number), *str);
 	}
 
 	const IntervalTimer<TimerWindow> refresh = {std::chrono::milliseconds(250), [this](auto) {
@@ -1347,10 +1878,13 @@ static WindowDesc _mobile_train_desc(
  */
 void ShowMobileTrainWindow(const Vehicle *v, bool add_stops, bool show_details)
 {
-	if (v == nullptr || v->type != VehicleType::Train) return;
+	if (v == nullptr) return;
 	v = v->First();
+	/* Just bought in the buy view: start with adding stops. */
+	if (_mobile_open_adding_stops && v->type != VehicleType::Train && v->IsStoppedInDepot()) add_stops = true;
+	_mobile_open_adding_stops = false;
 	Window *w = BringWindowToFrontById(WindowClass::VehicleView, v->index);
-	if (w == nullptr) w = new MobileTrainWindow(_mobile_train_desc, Train::From(v));
+	if (w == nullptr) w = new MobileTrainWindow(_mobile_train_desc, v);
 	MobileShowInfoWindow(w);
 	if (add_stops) static_cast<MobileTrainWindow *>(w)->SetAdding(true);
 	if (show_details) {
@@ -1393,13 +1927,14 @@ bool MobileVehicleOnStationSignClick(const BaseStation *st)
 /** The company's trains, or those calling at a station: name and state, profit, and a row opens the train. */
 struct MobileTrainListWindow : Window {
 	StationID station; ///< Only trains calling here, or invalid for all.
-	std::vector<const Train *> trains; ///< The trains listed.
+	VehicleType type; ///< The vehicles listed.
+	std::vector<const Vehicle *> trains; ///< The vehicles listed.
 	int sort = 0; ///< Index into #sort_names.
 	Scrollbar *vscroll = nullptr;
 
 	static inline const StringID sort_names[] = {STR_SORT_BY_NAME, STR_SORT_BY_PROFIT_THIS_YEAR, STR_SORT_BY_PROFIT_LAST_YEAR, STR_SORT_BY_AGE, STR_SORT_BY_RELIABILITY};
 
-	MobileTrainListWindow(WindowDesc &desc, WindowNumber number, StationID station) : Window(desc), station(station)
+	MobileTrainListWindow(WindowDesc &desc, WindowNumber number, StationID station, VehicleType type) : Window(desc), station(station), type(type)
 	{
 		this->CreateNestedTree();
 		this->vscroll = this->GetScrollbar(WID_MTL_SCROLL);
@@ -1415,7 +1950,7 @@ struct MobileTrainListWindow : Window {
 	 * @param t The train.
 	 * @return \c true when one of its orders goes there.
 	 */
-	bool CallsAtStation(const Train *t) const
+	bool CallsAtStation(const Vehicle *t) const
 	{
 		for (const Order &o : t->Orders()) {
 			if ((o.IsType(OT_GOTO_STATION) || o.IsType(OT_IMPLICIT)) && o.GetDestination() == this->station) return true;
@@ -1426,17 +1961,17 @@ struct MobileTrainListWindow : Window {
 	void BuildList()
 	{
 		this->trains.clear();
-		for (const Train *t : Train::Iterate()) {
-			if (!t->IsFrontEngine() || t->owner != _local_company) continue;
+		for (const Vehicle *t : Vehicle::Iterate()) {
+			if (t->type != this->type || !t->IsPrimaryVehicle() || t->owner != _local_company) continue;
 			if (this->station != StationID::Invalid() && !this->CallsAtStation(t)) continue;
 			this->trains.push_back(t);
 		}
 		switch (this->sort) {
-			case 0: std::ranges::sort(this->trains, [](const Train *a, const Train *b) { return a->unitnumber < b->unitnumber; }); break;
-			case 1: std::ranges::sort(this->trains, [](const Train *a, const Train *b) { return a->GetDisplayProfitThisYear() > b->GetDisplayProfitThisYear(); }); break;
-			case 2: std::ranges::sort(this->trains, [](const Train *a, const Train *b) { return a->GetDisplayProfitLastYear() > b->GetDisplayProfitLastYear(); }); break;
-			case 3: std::ranges::sort(this->trains, [](const Train *a, const Train *b) { return a->age > b->age; }); break;
-			case 4: std::ranges::sort(this->trains, [](const Train *a, const Train *b) { return a->reliability > b->reliability; }); break;
+			case 0: std::ranges::sort(this->trains, [](const Vehicle *a, const Vehicle *b) { return a->unitnumber < b->unitnumber; }); break;
+			case 1: std::ranges::sort(this->trains, [](const Vehicle *a, const Vehicle *b) { return a->GetDisplayProfitThisYear() > b->GetDisplayProfitThisYear(); }); break;
+			case 2: std::ranges::sort(this->trains, [](const Vehicle *a, const Vehicle *b) { return a->GetDisplayProfitLastYear() > b->GetDisplayProfitLastYear(); }); break;
+			case 3: std::ranges::sort(this->trains, [](const Vehicle *a, const Vehicle *b) { return a->age > b->age; }); break;
+			case 4: std::ranges::sort(this->trains, [](const Vehicle *a, const Vehicle *b) { return a->reliability > b->reliability; }); break;
 		}
 		this->vscroll->SetCount(this->trains.size());
 	}
@@ -1466,7 +2001,7 @@ struct MobileTrainListWindow : Window {
 			case WID_MTL_SORT: return GetString(sort_names[this->sort]);
 			case WID_MTL_TOTAL: {
 				Money total = 0;
-				for (const Train *t : this->trains) total += t->GetDisplayProfitThisYear();
+				for (const Vehicle *t : this->trains) total += t->GetDisplayProfitThisYear();
 				return GetString(STR_MOBILE_TRAIN_LIST_TOTAL, total);
 			}
 			default: return this->Window::GetWidgetString(widget, stringid);
@@ -1491,7 +2026,7 @@ struct MobileTrainListWindow : Window {
 		int line = GetCharacterHeight(FontSize::Normal);
 		auto [first, last] = this->vscroll->GetVisibleRangeIterators(this->trains);
 		for (auto it = first; it != last; ++it) {
-			const Train *t = *it;
+			const Vehicle *t = *it;
 			Rect rr = tr.WithHeight(row);
 			Rect arrow = rr.WithWidth(ScaleGUITrad(32), !rtl);
 			DrawString(arrow.left, arrow.right, CentreBounds(rr.top, rr.bottom, line), STR_JUST_RIGHT_ARROW, TextColour::Black, AlignmentH::Centre);
@@ -1504,7 +2039,7 @@ struct MobileTrainListWindow : Window {
 			content = content.Indent(money_width + WidgetDimensions::scaled.hsep_wide, !rtl);
 
 			Rect strip = content.WithWidth(ScaleGUITrad(70), rtl);
-			DrawTrainStrip(t, strip.WithY(rr.top, rr.bottom), false, nullptr);
+			DrawVehicleStrip(t, strip.WithY(rr.top, rr.bottom), false, nullptr);
 			Rect text = content.Indent(strip.Width() + WidgetDimensions::scaled.hsep_wide, rtl);
 			int y = CentreBounds(rr.top, rr.bottom, 2 * line);
 			DrawString(text.left, text.right, y, GetString(STR_MOBILE_TRAIN_NAME, t->index), TextColour::Black);
@@ -1575,14 +2110,37 @@ static WindowDesc _mobile_train_list_desc(
 	_nested_mobile_train_list_widgets
 );
 
+static WindowDesc _mobile_road_vehicle_list_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::RoadVehicleList, WindowClass::None,
+	{},
+	_nested_mobile_train_list_widgets
+);
+
+static WindowDesc _mobile_ship_list_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::ShipList, WindowClass::None,
+	{},
+	_nested_mobile_train_list_widgets
+);
+
+static WindowDesc _mobile_aircraft_list_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::AircraftList, WindowClass::None,
+	{},
+	_nested_mobile_train_list_widgets
+);
+
 /**
  * Show the list of the company's trains (in the Vehicles hub), or of those calling at a station (in the sheet).
  * @param number Window number, as the desktop vehicle list uses it.
  * @param station Station to filter on, or \c StationID::Invalid().
  */
-void ShowMobileTrainList(WindowNumber number, StationID station)
+void ShowMobileTrainList(WindowNumber number, StationID station, VehicleType type)
 {
-	Window *w = BringWindowToFrontById(WindowClass::TrainList, number);
-	if (w == nullptr) w = new MobileTrainListWindow(_mobile_train_list_desc, number, station);
+	static WindowDesc *descs[] = {&_mobile_train_list_desc, &_mobile_road_vehicle_list_desc, &_mobile_ship_list_desc, &_mobile_aircraft_list_desc};
+	WindowDesc &desc = *descs[to_underlying(type)];
+	Window *w = BringWindowToFrontById(desc.cls, number);
+	if (w == nullptr) w = new MobileTrainListWindow(desc, number, station, type);
 	if (station != StationID::Invalid()) MobileShowInfoWindow(w);
 }

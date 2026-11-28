@@ -10,7 +10,8 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 | 2. Settings with Game Options folded in | done, headless |
 | 3. Signals | done, headless |
 | 4. Road and tram | done, headless (tram untested: no tram types in the test game) |
-| 5. Other vehicles and refit | next |
+| 5. Other vehicles and refit | done, headless with road vehicles (ships, aircraft need docks and airports: batch 9) |
+| 6. Finances | next |
 
 ## Batch 1: fonts, main menu, cells, fixes, leftovers (§2, §3)
 
@@ -100,3 +101,26 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 ### Not done
 - Road waypoints have no mobile tool (not in the handoff's toolbar table).
 - The "Type" dropdown for NewGRF road stop classes (as for rail stations, backlog).
+
+## Batch 5: Other vehicles, refit (§7)
+
+### Steps
+1. **One set of windows for every vehicle type** (`mobile_vehicle_gui.cpp`), rather than three copies:
+   - `MobileDepotWindow` takes the depot's `VehicleType`: lists the primary vehicles in a road depot, ship depot or hangar (trains still with free wagon chains); "+ New road vehicle / ship / aircraft"; Clone with the type's cursor.
+   - `MobileTrainWindow` works on any `Vehicle` (`GetTrain()` now returns `const Vehicle *`): stops are any station the vehicle can use (`CanVehicleUseStation()`), and buoys for ships (go-to-waypoint orders); the details strip is one cell for a non-train (`DrawVehicleStrip()`), summary `GetVehicleSummary()`; "+ Add vehicles" is for trains only.
+   - `MobileTrainListWindow` lists any type, with descs for `TrainList`, `RoadVehicleList`, `ShipList`, `AircraftList`, so the Vehicles hub's Road/Ships/Aircraft tabs get the trains-list layout.
+   - Hooks: `ShowDepotWindow()`, `ShowVehicleViewWindow()` and `ShowVehicleListWindowLocal()` use the mobile windows for every type.
+2. **Buy view for road vehicles, ships and aircraft** (`MobileNewVehicleWindow`): one list (as the desktop filters it: the depot's road type, the hangar's airport), "+ £x" buys a complete vehicle with `CcBuildPrimaryVehicle`, whose vehicle window then opens **adding stops** (`_mobile_open_adding_stops`).
+3. **Refit** (`MobileRefitWindow`, new widgets `WID_MRF_*`): an overlay in the sheet over the window it was opened from (‹ returns); for a train of several vehicles "Whole train" / "Only this vehicle" (preset to only this, since it opens from a vehicle cell); the cargoes the vehicle (or train) can take, with a colour swatch and "30 bags of mail → 40 …" from a `QueryCost` refit; "Cost £x" and Refit (disabled until another cargo is picked); "Stop in a depot to refit" otherwise. `ShowVehicleRefitWindow()` opens it in the mobile layout except for order refits.
+4. **Depots and bays beside a road**: both now also face the one road that *runs past* them, not only road that ends at them (the depot's and stop's callbacks connect it). Before, a depot beside a straight road said "check the entrance".
+5. Texts made generic: "No vehicles here yet", "Clone", "No vehicles yet", "Depot faces the road".
+6. Screenshots `L21`–`L25`: road depot sheet, New road vehicle, a bus adding stops from the suggestions, the bus running, refit while running.
+
+### Findings
+- **Orders for road vehicles, ships and aircraft must have the stop location "far end"**: `CmdInsertOrder()` refuses near end and middle for anything but trains, and `Order`'s default isn't far end. The desktop sets it the same way.
+- `CanVehicleUseStation()` covers bus vs lorry stops, articulated road vehicles on bays, helicopters vs planes; no need to check facilities by hand.
+- Stock temperate vehicles hardly refit (engines and most wagons carry one cargo); the refit list was checked for layout and the "not in a depot" state only.
+
+### Not done
+- Subtypes of a cargo in the refit list (NewGRF), and refitting from the New train strip before the train exists is the same window.
+- Ships and aircraft tested only through the shared code (no docks or airports in the mobile layout yet).

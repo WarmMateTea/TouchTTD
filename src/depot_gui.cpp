@@ -1185,8 +1185,8 @@ static void DepotSellAllConfirmationCallback(Window *win, bool confirmed)
  */
 void ShowDepotWindow(TileIndex tile, VehicleType type)
 {
-	if (IsMobileLayout() && type == VehicleType::Train) {
-		ShowMobileDepotWindow(tile);
+	if (IsMobileLayout()) {
+		ShowMobileDepotWindow(tile, type);
 		return;
 	}
 	if (BringWindowToFrontById(WindowClass::VehicleDepot, tile) != nullptr) return;

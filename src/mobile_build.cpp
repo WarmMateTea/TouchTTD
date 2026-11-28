@@ -563,7 +563,7 @@ static std::string GetSelectionCostText(const PendingSelection &sel, Money cost)
 		if (join != NEW_STATION && Station::IsValidID(join)) return GetString(STR_MOBILE_BUILD_STATUS_STATION_JOIN, tracks, length, join, money);
 		return GetString(STR_MOBILE_BUILD_STATUS_STATION, tracks, length, money);
 	}
-	if (sel.depot) return GetString(sel.depot_faces_track ? STR_MOBILE_BUILD_STATUS_DEPOT_FACES_TRACK : STR_MOBILE_BUILD_STATUS_DEPOT_CHECK, money);
+	if (sel.depot) return GetString(sel.depot_faces_track ? (sel.IsRoad() ? STR_MOBILE_BUILD_STATUS_DEPOT_FACES_ROAD : STR_MOBILE_BUILD_STATUS_DEPOT_FACES_TRACK) : STR_MOBILE_BUILD_STATUS_DEPOT_CHECK, money);
 	if (sel.IsWaypoint()) return GetString(STR_MOBILE_BUILD_STATUS_WAYPOINT, sel.TileCount(), money);
 	switch (GetMobileBuildKind()) {
 		case MobileBuildKind::Remove: return GetString(STR_MOBILE_BUILD_STATUS_REMOVE, sel.TileCount(), money);
@@ -1041,13 +1041,16 @@ static DiagDirection GetAutoDepotDirection(TileIndex tile, bool &faces_track, bo
 	if (road) {
 		/* Road (or tram track) of the kind being built, in the neighbour, that ends at the depot. */
 		RoadTramType rtt = GetRoadTramType(GetCurrentRoadType());
-		for (DiagDirection dir : EnumRange(DiagDirection::End)) {
-			TileIndex neighbour = TileAddByDiagDir(tile, dir);
-			if (!IsValidTile(neighbour) || !IsNormalRoadTile(neighbour) || !HasTileRoadType(neighbour, rtt)) continue;
-			if (GetRoadBits(neighbour, rtt).Any(DiagDirToRoadBits(ReverseDiagDir(dir)))) {
+		/* Road that ends at the depot; failing that, the one road that runs past it (building the depot connects it). */
+		for (bool ends_here : {true, false}) {
+			for (DiagDirection dir : EnumRange(DiagDirection::End)) {
+				TileIndex neighbour = TileAddByDiagDir(tile, dir);
+				if (!IsValidTile(neighbour) || !IsNormalRoadTile(neighbour) || !HasTileRoadType(neighbour, rtt)) continue;
+				if (ends_here && !GetRoadBits(neighbour, rtt).Any(DiagDirToRoadBits(ReverseDiagDir(dir)))) continue;
 				found = dir;
 				count++;
 			}
+			if (count > 0) break;
 		}
 		faces_track = count == 1;
 		return faces_track ? found : GetRoadDepotDirection();

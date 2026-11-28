@@ -253,13 +253,16 @@ static void GetMobileRoadStopDirection(TileIndex tile, bool drive_through, RoadT
 	}
 	DiagDirection found = DiagDirection::Invalid;
 	int count = 0;
-	for (DiagDirection dir : EnumRange(DiagDirection::End)) {
-		TileIndex neighbour = TileAddByDiagDir(tile, dir);
-		if (!IsValidTile(neighbour) || !IsNormalRoadTile(neighbour) || !HasTileRoadType(neighbour, rtt)) continue;
-		if (GetRoadBits(neighbour, rtt).Any(DiagDirToRoadBits(ReverseDiagDir(dir)))) {
+	/* Road that ends at the bay; failing that, the one road that runs past it (the stop's callback connects it). */
+	for (bool ends_here : {true, false}) {
+		for (DiagDirection dir : EnumRange(DiagDirection::End)) {
+			TileIndex neighbour = TileAddByDiagDir(tile, dir);
+			if (!IsValidTile(neighbour) || !IsNormalRoadTile(neighbour) || !HasTileRoadType(neighbour, rtt)) continue;
+			if (ends_here && !GetRoadBits(neighbour, rtt).Any(DiagDirToRoadBits(ReverseDiagDir(dir)))) continue;
 			found = dir;
 			count++;
 		}
+		if (count > 0) break;
 	}
 	if (count == 1) ddir = found;
 }

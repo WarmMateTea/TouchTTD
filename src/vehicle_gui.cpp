@@ -1366,6 +1366,11 @@ static WindowDesc _vehicle_refit_desc(
  */
 void ShowVehicleRefitWindow(const Vehicle *v, VehicleOrderID order, Window *parent, bool auto_refit)
 {
+	/* The mobile layout's refit view; refitting orders keep the desktop window. */
+	if (IsMobileLayout() && order == INVALID_VEH_ORDER_ID && !auto_refit) {
+		ShowMobileRefitWindow(v);
+		return;
+	}
 	CloseWindowById(WindowClass::VehicleRefit, v->index);
 	RefitWindow *w = new RefitWindow(_vehicle_refit_desc, v, order, auto_refit);
 	w->parent = parent;
@@ -2323,8 +2328,8 @@ static void ShowVehicleListWindowLocal(CompanyID company, VehicleListType vlt, V
 	assert(IsCompanyBuildableVehicleType(vehicle_type));
 	VehicleListIdentifier vli(vlt, vehicle_type, company, unique_number);
 	/* The mobile layout has its own list for the company's trains and those calling at a station. */
-	if (IsMobileLayout() && vehicle_type == VehicleType::Train && company == _local_company && (vlt == VehicleListType::Company || vlt == VehicleListType::Station)) {
-		ShowMobileTrainList(vli.ToWindowNumber(), vlt == VehicleListType::Station ? StationID(unique_number) : StationID::Invalid());
+	if (IsMobileLayout() && company == _local_company && (vlt == VehicleListType::Company || vlt == VehicleListType::Station)) {
+		ShowMobileTrainList(vli.ToWindowNumber(), vlt == VehicleListType::Station ? StationID(unique_number) : StationID::Invalid(), vehicle_type);
 		return;
 	}
 	AllocateWindowDescFront<VehicleListWindow>(_vehicle_list_desc[vehicle_type], vli.ToWindowNumber(), vli);
@@ -3506,7 +3511,7 @@ static WindowDesc _train_view_desc(
  */
 void ShowVehicleViewWindow(const Vehicle *v)
 {
-	if (IsMobileLayout() && v->type == VehicleType::Train) {
+	if (IsMobileLayout()) {
 		ShowMobileTrainWindow(v);
 		return;
 	}
