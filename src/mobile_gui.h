@@ -33,6 +33,7 @@ Rect GetMobileVisibleMapRect();
 Rect GetMobileEdgeGaps();
 Point GetMobileMapCentreOffset();
 void MobileShowInSheet(Window *w);
+bool MobileShowFinancesInHub();
 void MobileShowInfoWindow(Window *w);
 bool IsMobileSheetOpen();
 void CloseMobileSheetPublic();

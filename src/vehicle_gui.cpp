@@ -2342,7 +2342,8 @@ void ShowVehicleListWindow(CompanyID company, VehicleType vehicle_type)
 	 * if IsCtrlPressed(), do the opposite action (Advanced list x Normal list)
 	 */
 
-	if (!(IsMobileLayout() && vehicle_type == VehicleType::Train) && (_settings_client.gui.advanced_vehicle_list > (uint)(company != _local_company)) != IsCtrlPressed()) {
+	/* The mobile layout's own list has the groups as a filter, for every vehicle type. */
+	if (!(IsMobileLayout() && company == _local_company) && (_settings_client.gui.advanced_vehicle_list > (uint)(company != _local_company)) != IsCtrlPressed()) {
 		ShowCompanyGroup(company, vehicle_type);
 	} else {
 		ShowVehicleListWindowLocal(company, VehicleListType::Company, vehicle_type, company.base());

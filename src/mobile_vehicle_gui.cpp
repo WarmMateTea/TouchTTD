@@ -46,6 +46,15 @@
 #include "waypoint_base.h"
 #include "road.h"
 #include "articulated_vehicles.h"
+#include "core/string_consumer.hpp"
+#include "timetable.h"
+#include "timetable_cmd.h"
+#include "group.h"
+#include "group_cmd.h"
+#include "autoreplace_func.h"
+#include "autoreplace_cmd.h"
+#include "settings_cmd.h"
+#include "order_func.h"
 #include "cargotype.h"
 #include "train_cmd.h"
 #include "vehicle_cmd.h"
@@ -1256,6 +1265,12 @@ static WindowDesc _mobile_stops_bar_desc(
 /** A train in the sheet slot: state and Start/Stop, its orders or details, and Show on map, Send to depot, Clone. */
 struct MobileTrainWindow : Window {
 	bool details = false; ///< Showing the Details tab.
+	bool timetable = false; ///< Showing the Timetable tab.
+	VehicleOrderID timetable_order = 0; ///< Order whose wait time is being typed.
+	bool querying_wait = false; ///< The text query is a wait time, not a name.
+	VehicleID details_vehicle = VehicleID::Invalid(); ///< Vehicle whose details block the Details tab scrolls to.
+	Scrollbar *timetable_scroll = nullptr;
+	Scrollbar *details_scroll = nullptr;
 	bool adding = false; ///< Adding stops: map taps on stations add orders.
 	std::vector<StationID> chips; ///< Suggested stations while adding stops.
 	size_t shown_chips = 0; ///< Number of suggestion rows the layout has room for.
@@ -1267,6 +1282,8 @@ struct MobileTrainWindow : Window {
 	{
 		this->CreateNestedTree();
 		this->vscroll = this->GetScrollbar(WID_MTR_ORDERS_SCROLL);
+		this->timetable_scroll = this->GetScrollbar(WID_MTR_TIMETABLE_SCROLL);
+		this->details_scroll = this->GetScrollbar(WID_MTR_DETAILS_SCROLL);
 		this->FinishInitNested(v->index);
 		this->owner = v->owner;
 		this->UpdateState();
@@ -1295,8 +1312,8 @@ struct MobileTrainWindow : Window {
 		};
 		bool stopped = v->vehstatus.Test(VehState::Stopped);
 		set_plane(WID_MTR_SEL_START, stopped ? 0 : 1);
-		set_plane(WID_MTR_SEL_CONTENT, this->details ? 1 : 0);
-		set_plane(WID_MTR_SEL_CHIPS, this->adding && !this->details && !this->chips.empty() ? 0 : SZSP_HORIZONTAL);
+		set_plane(WID_MTR_SEL_CONTENT, this->details ? 1 : (this->timetable ? 2 : 0));
+		set_plane(WID_MTR_SEL_CHIPS, this->adding && !this->details && !this->timetable && !this->chips.empty() ? 0 : SZSP_HORIZONTAL);
 		/* The suggestions panel is as tall as its rows. */
 		if (this->shown_chips != this->chips.size()) {
 			this->shown_chips = this->chips.size();
@@ -1309,8 +1326,13 @@ struct MobileTrainWindow : Window {
 		this->SetWidgetDisabledState(WID_MTR_DEPOT, v->IsInDepot());
 		/* Only trains get more vehicles; other vehicles are bought whole. */
 		this->SetWidgetDisabledState(WID_MTR_ADD_VEHICLES, v->type != VehicleType::Train || !v->IsStoppedInDepot());
-		this->SetWidgetLoweredState(WID_MTR_TAB_ORDERS, !this->details);
+		this->SetWidgetLoweredState(WID_MTR_TAB_ORDERS, !this->details && !this->timetable);
 		this->SetWidgetLoweredState(WID_MTR_TAB_DETAILS, this->details);
+		this->SetWidgetLoweredState(WID_MTR_TAB_TIMETABLE, this->timetable);
+		this->SetWidgetLoweredState(WID_MTR_AUTOFILL, v->vehicle_flags.Test(VehicleFlag::AutofillTimetable));
+		this->timetable_scroll->SetCount(v->GetNumOrders());
+		this->details_scroll->SetCount(this->GetDetailsHeight());
+		this->details_scroll->SetStepSize(GetCharacterHeight(FontSize::Normal));
 		this->SetWidgetLoweredState(WID_MTR_ADD_STOPS, this->adding);
 		this->vscroll->SetCount(v->GetNumOrders());
 		if (reinit) {
@@ -1367,6 +1389,7 @@ struct MobileTrainWindow : Window {
 		this->adding = adding;
 		if (adding) {
 			this->details = false;
+			this->timetable = false;
 			this->UpdateChips();
 			SetObjectToPlaceWnd(SPR_CURSOR_MOUSE, PAL_NONE, HT_RECT, this);
 			if (FindWindowById(WindowClass::MobileStopsBar, 0) == nullptr) new MobileStopsBarWindow(_mobile_stops_bar_desc, this->GetTrain()->index);
@@ -1452,12 +1475,88 @@ struct MobileTrainWindow : Window {
 			case WID_MTR_TITLE:
 				size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal));
 				break;
+			case WID_MTR_TIMETABLE:
+				fill.height = resize.height = 1;
+				size.height = 2 * ScaleGUITrad(MOBILE_ORDER_ROW);
+				break;
+			case WID_MTR_DETAILS:
+				fill.height = resize.height = 1;
+				size.height = 3 * GetCharacterHeight(FontSize::Normal);
+				break;
+			case WID_MTR_SERVICE:
+				size.height = std::max<uint>(size.height, ScaleGUITrad(40));
+				break;
 		}
 	}
 
 	void OnResize() override
 	{
 		this->vscroll->SetCapacity(GetRowCapacity(this, WID_MTR_ORDERS, ScaleGUITrad(MOBILE_ORDER_ROW)));
+		this->timetable_scroll->SetCapacity(GetRowCapacity(this, WID_MTR_TIMETABLE, ScaleGUITrad(MOBILE_ORDER_ROW)));
+		this->details_scroll->SetCapacityFromWidget(this, WID_MTR_DETAILS);
+	}
+
+	/**
+	 * The - and + buttons of the service interval row.
+	 * @param r The row, inset.
+	 * @param[out] minus The - button.
+	 * @param[out] plus The + button.
+	 */
+	static void GetServiceButtons(const Rect &r, Rect &minus, Rect &plus)
+	{
+		bool rtl = _current_text_dir == TD_RTL;
+		int bw = ScaleGUITrad(40);
+		plus = r.WithWidth(bw, !rtl).Shrink(0, ScaleGUITrad(4));
+		minus = r.Indent(bw + ScaleGUITrad(4), !rtl).WithWidth(bw, !rtl).Shrink(0, ScaleGUITrad(4));
+	}
+
+	/**
+	 * The lines of the details: a block per vehicle (engines and wagons of a train, without articulated parts).
+	 * @param[out] block_of Index of the first line of each vehicle's block.
+	 * @return The lines.
+	 */
+	std::vector<std::string> GetDetailsLines(std::vector<std::pair<VehicleID, size_t>> *block_of = nullptr) const
+	{
+		std::vector<std::string> lines;
+		const Vehicle *v = this->GetTrain();
+		if (v == nullptr) return lines;
+		lines.push_back(GetVehicleSummary(v));
+		lines.push_back(GetString(STR_MOBILE_TRAIN_DETAILS_PROFIT, v->GetDisplayProfitThisYear(), v->GetDisplayProfitLastYear()));
+		lines.push_back(GetString(STR_MOBILE_TRAIN_DETAILS_RUNNING_COST, v->GetDisplayRunningCost()));
+		for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+			if (u->IsArticulatedPart()) continue;
+			if (block_of != nullptr) block_of->emplace_back(u->index, lines.size());
+			lines.emplace_back();
+			lines.push_back(GetString(STR_ENGINE_NAME, u->engine_type));
+			CargoArray capacity{};
+			for (const Vehicle *part = u; part != nullptr && (part == u || part->IsArticulatedPart()); part = part->Next()) {
+				if (IsValidCargoType(part->cargo_type)) capacity[part->cargo_type] += part->cargo_cap;
+			}
+			for (CargoType c : EnumRange(NUM_CARGO)) {
+				if (capacity[c] > 0) lines.push_back(GetString(STR_MOBILE_DETAILS_CAPACITY, c, capacity[c]));
+			}
+			if (u->GetEngine()->GetPower() > 0 || u == v) lines.push_back(GetString(STR_MOBILE_DETAILS_SPEED, PackVelocity(u->GetEngine()->GetDisplayMaxSpeed(), u->type)));
+			lines.push_back(GetString(STR_MOBILE_DETAILS_RELIABILITY, ToPercent16(u->reliability), u->breakdowns_since_last_service));
+			lines.push_back(GetString(STR_MOBILE_DETAILS_AGE, TimerGameCalendar::DateToYear(u->age), TimerGameCalendar::DateToYear(u->max_age), u->build_year));
+		}
+		return lines;
+	}
+
+	/** @return Height of all the details lines. */
+	int GetDetailsHeight() const
+	{
+		return static_cast<int>(this->GetDetailsLines().size()) * GetCharacterHeight(FontSize::Normal);
+	}
+
+	/** Scroll the details to the block of #details_vehicle. */
+	void ScrollToDetails()
+	{
+		std::vector<std::pair<VehicleID, size_t>> blocks;
+		this->GetDetailsLines(&blocks);
+		for (const auto &[id, line] : blocks) {
+			if (id == this->details_vehicle) this->details_scroll->SetPosition(static_cast<int>(line) * GetCharacterHeight(FontSize::Normal));
+		}
+		this->SetWidgetDirty(WID_MTR_DETAILS);
 	}
 
 
@@ -1482,7 +1581,7 @@ struct MobileTrainWindow : Window {
 		}
 	}
 
-	std::string GetMobileDropDownTitle(WidgetID widget) const override
+	std::string GetMobileDropDownTitleForLists(WidgetID widget) const
 	{
 		if (widget == WID_MTR_ORDERS) {
 			const Vehicle *v = this->GetTrain();
@@ -1615,12 +1714,64 @@ struct MobileTrainWindow : Window {
 				break;
 
 			case WID_MTR_DETAILS: {
+				/* The summary, then a block per vehicle; scrolled by pixel. */
 				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
-				tr.top = DrawStringMultiLine(tr, GetVehicleSummary(v), TextColour::Black);
-				tr.top = DrawStringMultiLine(tr, GetString(STR_MOBILE_TRAIN_DETAILS_AGE, v->age, v->max_age), TextColour::Black);
-				tr.top = DrawStringMultiLine(tr, GetString(STR_MOBILE_TRAIN_DETAILS_RELIABILITY, ToPercent16(v->reliability)), TextColour::Black);
-				tr.top = DrawStringMultiLine(tr, GetString(STR_MOBILE_TRAIN_DETAILS_RUNNING_COST, v->GetDisplayRunningCost()), TextColour::Black);
-				DrawStringMultiLine(tr, GetString(STR_MOBILE_TRAIN_DETAILS_PROFIT, v->GetDisplayProfitThisYear(), v->GetDisplayProfitLastYear()), TextColour::Black);
+				int y = tr.top - this->details_scroll->GetPosition();
+				std::vector<std::pair<VehicleID, size_t>> blocks;
+				std::vector<std::string> lines = this->GetDetailsLines(&blocks);
+				for (size_t i = 0; i < lines.size(); i++) {
+					if (y >= r.top && y + line <= r.bottom) {
+						bool heading = std::ranges::any_of(blocks, [i](const auto &b) { return b.second + 1 == i; });
+						DrawString(tr.left, tr.right, y, lines[i], heading ? TextColour::DarkGreen : TextColour::Black);
+					}
+					y += line;
+				}
+				break;
+			}
+
+			case WID_MTR_SERVICE: {
+				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+				Rect minus, plus;
+				GetServiceButtons(tr, minus, plus);
+				DrawFrameRect(minus, Colours::Grey, {});
+				DrawFrameRect(plus, Colours::Grey, {});
+				DrawString(minus.left, minus.right, CentreBounds(minus.top, minus.bottom, line), STR_MOBILE_MINUS, TextColour::Black, AlignmentH::Centre);
+				DrawString(plus.left, plus.right, CentreBounds(plus.top, plus.bottom, line), STR_MOBILE_PLUS, TextColour::Black, AlignmentH::Centre);
+				StringID str = v->ServiceIntervalIsPercent() ? STR_MOBILE_SERVICE_PERCENT : (TimerGameEconomy::UsingWallclockUnits() ? STR_MOBILE_SERVICE_MINUTES : STR_MOBILE_SERVICE_DAYS);
+				Rect text = tr.Indent(2 * ScaleGUITrad(40) + ScaleGUITrad(8), !rtl);
+				DrawString(text.left, text.right, CentreBounds(r.top, r.bottom, line), GetString(str, v->GetServiceInterval()), TextColour::Black);
+				break;
+			}
+
+			case WID_MTR_TIMETABLE: {
+				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+				if (v->GetNumOrders() == 0) {
+					DrawString(tr, STR_MOBILE_ORDERS_EMPTY, TextColour::Black);
+					break;
+				}
+				int row = ScaleGUITrad(MOBILE_ORDER_ROW);
+				int pos = this->timetable_scroll->GetPosition();
+				int index = 0;
+				for (const Order &o : v->Orders()) {
+					if (index++ < pos) continue;
+					if (tr.top + row - 1 > tr.bottom) break;
+					Rect rr = tr.WithHeight(row);
+					int y = CentreBounds(rr.top, rr.bottom, 2 * line);
+					DrawString(rr.left, rr.right, y, GetOrderName(o), TextColour::Black);
+					std::string times;
+					if (o.IsType(OT_CONDITIONAL) || o.IsType(OT_IMPLICIT)) {
+						times = GetString(STR_MOBILE_TIMETABLE_NONE);
+					} else {
+						auto [travel_str, travel] = GetTimetableParameters(o.GetTimetabledTravel());
+						auto [wait_str, wait] = GetTimetableParameters(o.GetTimetabledWait());
+						std::string travel_text = o.IsTravelTimetabled() ? GetString(STR_MOBILE_TIMETABLE_TRAVEL, travel_str, travel) : GetString(STR_MOBILE_TIMETABLE_TRAVEL_UNSET);
+						std::string wait_text = o.IsWaitTimetabled() ? GetString(STR_MOBILE_TIMETABLE_WAIT, wait_str, wait) : GetString(STR_MOBILE_TIMETABLE_WAIT_UNSET);
+						times = travel_text + GetString(STR_MOBILE_ORDERS_SEPARATOR) + wait_text;
+					}
+					DrawString(rr.left, rr.right, y + line, times, TextColour::Black);
+					GfxFillRect(r.left, rr.bottom, r.right, rr.bottom, GetColourGradient(Colours::Grey, Shade::Dark));
+					tr.top += row;
+				}
 				break;
 			}
 		}
@@ -1674,7 +1825,7 @@ struct MobileTrainWindow : Window {
 	bool OnLongPress(Point pt, WidgetID widget) override
 	{
 		/* Long press an order to pick it up, drag it up or down, lift to drop it (round 4 design, section 4.5). */
-		if (widget != WID_MTR_ORDERS || this->details) return false;
+		if (widget != WID_MTR_ORDERS || this->details || this->timetable) return false;
 		this->drag_order = this->drag_target = this->GetOrderRowAt(pt.y);
 		if (this->drag_order < 0) return false;
 		this->SetWidgetDirty(WID_MTR_ORDERS);
@@ -1703,15 +1854,80 @@ struct MobileTrainWindow : Window {
 		this->SetWidgetDirty(WID_MTR_ORDERS);
 	}
 
+	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
+	{
+		const Vehicle *v = this->GetTrain();
+		if (widget == WID_MTR_AUTOFILL && v != nullptr) return GetString(STR_MOBILE_TIMETABLE_AUTOFILL, v->vehicle_flags.Test(VehicleFlag::AutofillTimetable) ? STR_CONFIG_SETTING_ON : STR_CONFIG_SETTING_OFF);
+		return this->Window::GetWidgetString(widget, stringid);
+	}
+
+	static constexpr int TITLE_MENU_RENAME = 0x10000; ///< Title menu entry: Rename (above any GroupID).
+	static constexpr int TITLE_MENU_GROUP_HEADER = 0x10001; ///< Title menu entry: the "Add to group" heading.
+
+	/** Open the title row's menu: Rename, then the groups to move the vehicle to (one list, no nested dropdown). */
+	void ShowTitleMenu()
+	{
+		const Vehicle *v = this->GetTrain();
+		if (v == nullptr) return;
+		DropDownList list;
+		list.push_back(MakeDropDownListStringItem(STR_MOBILE_VEHICLE_RENAME, TITLE_MENU_RENAME));
+		list.push_back(MakeDropDownListStringItem(STR_MOBILE_VEHICLE_ADD_TO_GROUP, TITLE_MENU_GROUP_HEADER, true));
+		list.push_back(MakeDropDownListStringItem(STR_GROUP_DEFAULT_TRAINS + to_underlying(v->type), DEFAULT_GROUP.base()));
+		for (const Group *g : Group::Iterate()) {
+			if (g->owner != _local_company || g->vehicle_type != v->type) continue;
+			list.push_back(MakeDropDownListStringItem(GetString(STR_GROUP_NAME, g->index), g->index.base()));
+		}
+		list.push_back(MakeDropDownListStringItem(STR_MOBILE_GROUP_NEW, NEW_GROUP.base()));
+		ShowDropDownList(this, std::move(list), v->group_id.base(), WID_MTR_RENAME);
+	}
+
+	/**
+	 * An entry of the title row's menu was chosen.
+	 * @param index The entry.
+	 */
+	void OnTitleMenu(int index)
+	{
+		const Vehicle *v = this->GetTrain();
+		if (v == nullptr || index == TITLE_MENU_GROUP_HEADER) return;
+		if (index == TITLE_MENU_RENAME) {
+			this->querying_wait = false;
+			ShowQueryString(GetString(STR_VEHICLE_NAME, v->index), STR_QUERY_RENAME_TRAIN_CAPTION + to_underlying(v->type), MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+			return;
+		}
+		/* NEW_GROUP makes a new group and puts the vehicle in it. */
+		if (GroupID(index) == v->group_id) return;
+		Command<Commands::AddVehicleToGroup>::Post(STR_ERROR_GROUP_CAN_T_ADD_VEHICLE, GroupID(index), v->index, false, VehicleListIdentifier{});
+	}
+
+	std::string GetMobileDropDownTitle(WidgetID widget) const override
+	{
+		if (widget == WID_MTR_RENAME) {
+			const Vehicle *v = this->GetTrain();
+			return v == nullptr ? std::string{} : GetString(STR_MOBILE_TRAIN_NAME, v->index);
+		}
+		return this->GetMobileDropDownTitleForLists(widget);
+	}
+
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
+		if (widget == WID_MTR_RENAME) {
+			this->OnTitleMenu(index);
+			return;
+		}
 		if (widget == WID_MTR_STRIP) {
 			const Vehicle *cv = Vehicle::GetIfValid(this->cell_vehicle);
 			if (cv == nullptr) return;
 			switch (index) {
 				case VCM_SELL: SellTrainVehicle(this, cv->index); break;
 				case VCM_REFIT: ShowVehicleRefitWindow(cv, INVALID_VEH_ORDER_ID, this, false); break;
-				case VCM_DETAILS: this->details = true; this->UpdateState(); break;
+				case VCM_DETAILS:
+					/* The Details tab, at this vehicle's block. */
+					this->details = true;
+					this->timetable = false;
+					this->details_vehicle = cv->index;
+					this->UpdateState();
+					this->ScrollToDetails();
+					break;
 			}
 			return;
 		}
@@ -1749,7 +1965,7 @@ struct MobileTrainWindow : Window {
 		switch (widget) {
 			case WID_MTR_CLOSE: this->Close(); break;
 			case WID_MTR_RENAME:
-				ShowQueryString(GetString(STR_VEHICLE_NAME, v->index), STR_QUERY_RENAME_TRAIN_CAPTION + to_underlying(v->type), MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+				this->ShowTitleMenu();
 				break;
 			case WID_MTR_START:
 			case WID_MTR_STOP:
@@ -1758,10 +1974,43 @@ struct MobileTrainWindow : Window {
 				break;
 			case WID_MTR_TAB_ORDERS:
 			case WID_MTR_TAB_DETAILS:
+			case WID_MTR_TAB_TIMETABLE:
 				this->details = widget == WID_MTR_TAB_DETAILS;
-				if (this->details) this->SetAdding(false);
+				this->timetable = widget == WID_MTR_TAB_TIMETABLE;
+				if (this->details || this->timetable) this->SetAdding(false);
 				this->UpdateState();
 				break;
+			case WID_MTR_AUTOFILL:
+				Command<Commands::AutofillTimetable>::Post(STR_ERROR_CAN_T_TIMETABLE_VEHICLE, v->index, !v->vehicle_flags.Test(VehicleFlag::AutofillTimetable), false);
+				break;
+			case WID_MTR_MORE_TIMETABLE:
+				ShowTimetableWindow(v);
+				break;
+			case WID_MTR_TIMETABLE: {
+				/* A tap on an order sets how long it waits there. */
+				int row = (pt.y - this->GetWidget<NWidgetBase>(WID_MTR_TIMETABLE)->pos_y - WidgetDimensions::scaled.framerect.top) / ScaleGUITrad(MOBILE_ORDER_ROW);
+				VehicleOrderID index = static_cast<VehicleOrderID>(this->timetable_scroll->GetPosition() + std::max(0, row));
+				const Order *o = v->GetOrder(index);
+				if (o == nullptr || o->IsType(OT_CONDITIONAL) || o->IsType(OT_IMPLICIT)) break;
+				this->timetable_order = index;
+				this->querying_wait = true;
+				uint units = o->GetTimetabledWait() / std::max<TimerGameTick::Ticks>(1, TicksPerTimetableUnit());
+				ShowQueryString(GetString(STR_JUST_INT, units), STR_TIMETABLE_CHANGE_TIME_QUERY, 6, this, CS_NUMERAL, {});
+				break;
+			}
+			case WID_MTR_SERVICE: {
+				/* - and + at the end of the row. */
+				const NWidgetBase *nwid = this->GetWidget<NWidgetBase>(WID_MTR_SERVICE);
+				Rect r = nwid->GetCurrentRect().Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+				Rect minus, plus;
+				GetServiceButtons(r, minus, plus);
+				int step = (!v->ServiceIntervalIsPercent() && TimerGameEconomy::UsingWallclockUnits()) ? 5 : 10;
+				if (minus.Contains(pt)) step = -step;
+				else if (!plus.Contains(pt)) break;
+				uint16_t interval = GetServiceIntervalClamped(v->GetServiceInterval() + step, v->ServiceIntervalIsPercent());
+				if (interval != v->GetServiceInterval()) Command<Commands::ChangeServiceInterval>::Post(STR_ERROR_CAN_T_CHANGE_SERVICING, v->index, interval, true, v->ServiceIntervalIsPercent());
+				break;
+			}
 			case WID_MTR_ADD_STOPS:
 				this->SetAdding(!this->adding);
 				break;
@@ -1804,6 +2053,12 @@ struct MobileTrainWindow : Window {
 	{
 		if (!str.has_value()) return;
 		const Vehicle *v = this->GetTrain();
+		if (v != nullptr && this->querying_wait) {
+			this->querying_wait = false;
+			uint64_t units = ParseInteger<uint64_t>(*str, 10, true).value_or(0);
+			Command<Commands::ChangeTimetable>::Post(STR_ERROR_CAN_T_TIMETABLE_VEHICLE, v->index, this->timetable_order, MTF_WAIT_TIME, ClampTo<uint16_t>(units * TicksPerTimetableUnit()));
+			return;
+		}
 		Command<Commands::RenameVehicle>::Post(v != nullptr ? STR_ERROR_CAN_T_RENAME_TRAIN + to_underlying(v->type) : STR_ERROR_CAN_T_RENAME_TRAIN, static_cast<VehicleID>(this->window_number), *str);
 	}
 
@@ -1819,7 +2074,7 @@ struct MobileTrainWindow : Window {
 static constexpr std::initializer_list<NWidgetPart> _nested_mobile_train_widgets = {
 	NWidget(NWID_HORIZONTAL),
 		NWidget(WWT_PANEL, Colours::Grey, WID_MTR_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
-		NWidget(WWT_PUSHIMGBTN, Colours::Grey, WID_MTR_RENAME), SetMinimalSize(40, 40), SetSpriteTip(SPR_RENAME, STR_VEHICLE_DETAILS_TRAIN_RENAME),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MTR_RENAME), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_ORDERS_MENU, STR_MOBILE_VEHICLE_MENU_TOOLTIP),
 		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MTR_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
 	EndContainer(),
 	NWidget(WWT_PANEL, Colours::Grey),
@@ -1833,6 +2088,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_train_widgets
 	EndContainer(),
 	NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
 		NWidget(WWT_TEXTBTN, Colours::Grey, WID_MTR_TAB_ORDERS), SetMinimalSize(60, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_TRAIN_TAB_ORDERS),
+		NWidget(WWT_TEXTBTN, Colours::Grey, WID_MTR_TAB_TIMETABLE), SetMinimalSize(60, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_TRAIN_TAB_TIMETABLE),
 		NWidget(WWT_TEXTBTN, Colours::Grey, WID_MTR_TAB_DETAILS), SetMinimalSize(60, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_TRAIN_TAB_DETAILS),
 	EndContainer(),
 	NWidget(NWID_SELECTION, Colours::Invalid, WID_MTR_SEL_CONTENT),
@@ -1853,7 +2109,22 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_train_widgets
 				NWidget(WWT_EMPTY, Colours::Invalid, WID_MTR_STRIP), SetFill(1, 0), SetResize(1, 0),
 			EndContainer(),
 			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MTR_ADD_VEHICLES), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_TRAIN_ADD_VEHICLES, STR_MOBILE_TRAIN_ADD_VEHICLES_TOOLTIP),
-			NWidget(WWT_PANEL, Colours::Grey, WID_MTR_DETAILS), SetFill(1, 1), SetResize(1, 1), EndContainer(),
+			NWidget(WWT_PANEL, Colours::Grey, WID_MTR_SERVICE), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_VEHICLE_DETAILS_INCREASE_SERVICING_INTERVAL_TOOLTIP_DAYS), EndContainer(),
+			NWidget(NWID_HORIZONTAL),
+				NWidget(WWT_PANEL, Colours::Grey, WID_MTR_DETAILS), SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_MTR_DETAILS_SCROLL), EndContainer(),
+				NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_MTR_DETAILS_SCROLL),
+			EndContainer(),
+		EndContainer(),
+		/* Timetable. */
+		NWidget(NWID_VERTICAL),
+			NWidget(NWID_HORIZONTAL),
+				NWidget(WWT_PANEL, Colours::Grey, WID_MTR_TIMETABLE), SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_MTR_TIMETABLE_SCROLL), SetToolTip(STR_MOBILE_TIMETABLE_TOOLTIP), EndContainer(),
+				NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_MTR_TIMETABLE_SCROLL),
+			EndContainer(),
+			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_MTR_AUTOFILL), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_TIMETABLE_AUTOFILL, STR_TIMETABLE_AUTOFILL_TOOLTIP),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MTR_MORE_TIMETABLE), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_TIMETABLE_MORE, STR_MOBILE_TIMETABLE_MORE),
+			EndContainer(),
 		EndContainer(),
 	EndContainer(),
 	NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
@@ -1890,6 +2161,7 @@ void ShowMobileTrainWindow(const Vehicle *v, bool add_stops, bool show_details)
 	if (show_details) {
 		MobileTrainWindow *tw = static_cast<MobileTrainWindow *>(w);
 		tw->details = true;
+		tw->timetable = false;
 		tw->UpdateState();
 	}
 }
@@ -1922,6 +2194,344 @@ bool MobileVehicleOnStationSignClick(const BaseStation *st)
 	return true;
 }
 
+/* --- Groups --- */
+
+/** The company's groups of a vehicle type: rename and delete (round 5 design, batch 10). */
+struct MobileGroupsWindow : Window {
+	VehicleType type; ///< The vehicle type.
+	std::vector<GroupID> groups; ///< The groups listed.
+	GroupID renaming = GroupID::Invalid(); ///< The group being renamed.
+	Scrollbar *vscroll = nullptr;
+
+	MobileGroupsWindow(WindowDesc &desc, VehicleType type) : Window(desc), type(type)
+	{
+		this->CreateNestedTree();
+		this->vscroll = this->GetScrollbar(WID_MGR_SCROLL);
+		this->FinishInitNested(to_underlying(type));
+		this->BuildList();
+	}
+
+	void BuildList()
+	{
+		this->groups.clear();
+		for (const Group *g : Group::Iterate()) {
+			if (g->owner == _local_company && g->vehicle_type == this->type) this->groups.push_back(g->index);
+		}
+		this->vscroll->SetCount(this->groups.size());
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, Dimension &fill, Dimension &resize) override
+	{
+		if (widget == WID_MGR_TITLE) size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal));
+		if (widget == WID_MGR_LIST) {
+			fill.height = resize.height = 1;
+			size.height = 3 * ScaleGUITrad(MOBILE_ROW);
+		}
+	}
+
+	void OnResize() override
+	{
+		this->vscroll->SetCapacity(GetRowCapacity(this, WID_MGR_LIST, ScaleGUITrad(MOBILE_ROW)));
+	}
+
+	/**
+	 * The Rename and Delete buttons of a row.
+	 * @param row The row.
+	 * @param remove The Delete button, else Rename.
+	 * @return The button.
+	 */
+	static Rect GetButton(const Rect &row, bool remove)
+	{
+		bool rtl = _current_text_dir == TD_RTL;
+		Rect buttons = row.WithWidth(2 * ScaleGUITrad(72) + ScaleGUITrad(4), !rtl).Shrink(0, ScaleGUITrad(4));
+		return buttons.WithWidth(ScaleGUITrad(72), remove != rtl);
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		int line = GetCharacterHeight(FontSize::Normal);
+		if (widget == WID_MGR_TITLE) {
+			DrawMobileTitle(r, GetString(STR_MOBILE_GROUP_MANAGE_TITLE));
+			return;
+		}
+		if (widget != WID_MGR_LIST) return;
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+		if (this->groups.empty()) {
+			DrawString(tr, STR_MOBILE_GROUP_NONE, TextColour::Black);
+			return;
+		}
+		int row = ScaleGUITrad(MOBILE_ROW);
+		auto [first, last] = this->vscroll->GetVisibleRangeIterators(this->groups);
+		for (auto it = first; it != last; ++it) {
+			const Group *g = Group::GetIfValid(*it);
+			if (g == nullptr) continue;
+			Rect rr = tr.WithHeight(row);
+			for (bool remove : {false, true}) {
+				Rect b = GetButton(rr, remove);
+				DrawFrameRect(b, remove ? Colours::Red : Colours::Grey, {});
+				DrawString(b.left, b.right, CentreBounds(b.top, b.bottom, line), remove ? STR_MOBILE_GROUP_DELETE : STR_MOBILE_VEHICLE_RENAME, remove ? TextColour::White : TextColour::Black, AlignmentH::Centre);
+			}
+			Rect text = rr.Indent(2 * ScaleGUITrad(72) + ScaleGUITrad(4) + WidgetDimensions::scaled.hsep_wide, _current_text_dir != TD_RTL);
+			int y = CentreBounds(rr.top, rr.bottom, 2 * line);
+			DrawString(text.left, text.right, y, GetString(STR_GROUP_NAME, g->index), TextColour::Black);
+			DrawString(text.left, text.right, y + line, GetString(STR_MOBILE_GROUP_VEHICLES, g->statistics.num_vehicle), TextColour::Black);
+			GfxFillRect(r.left, rr.bottom, r.right, rr.bottom, GetColourGradient(Colours::Grey, Shade::Dark));
+			tr.top += row;
+		}
+	}
+
+	void OnClick(Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		switch (widget) {
+			case WID_MGR_CLOSE: this->Close(); break;
+			case WID_MGR_LIST: {
+				auto it = this->vscroll->GetScrolledItemFromWidget(this->groups, pt.y, this, WID_MGR_LIST, WidgetDimensions::scaled.framerect.top, ScaleGUITrad(MOBILE_ROW));
+				if (it == this->groups.end()) break;
+				Rect rr = this->GetWidget<NWidgetBase>(WID_MGR_LIST)->GetCurrentRect().Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+				GroupID g = *it;
+				if (GetButton(rr, false).WithY(0, INT32_MAX / 2).Contains({pt.x, 1})) {
+					this->renaming = g;
+					ShowQueryString(GetString(STR_GROUP_NAME, g), STR_GROUP_RENAME_CAPTION, MAX_LENGTH_GROUP_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+				} else if (GetButton(rr, true).WithY(0, INT32_MAX / 2).Contains({pt.x, 1})) {
+					this->renaming = g;
+					ShowQuery(GetEncodedString(STR_MOBILE_GROUP_DELETE_TITLE, g), GetEncodedString(STR_MOBILE_GROUP_DELETE_TEXT), this, [](Window *w, bool confirmed) {
+						if (!confirmed) return;
+						Command<Commands::DeleteGroup>::Post(STR_ERROR_GROUP_CAN_T_DELETE, static_cast<MobileGroupsWindow *>(w)->renaming);
+					}, false, STR_MOBILE_GROUP_DELETE, true);
+				}
+				break;
+			}
+		}
+	}
+
+	void OnQueryTextFinished(std::optional<std::string> str) override
+	{
+		if (!str.has_value() || this->renaming == GroupID::Invalid()) return;
+		Command<Commands::AlterGroup>::Post(STR_ERROR_GROUP_CAN_T_RENAME, AlterGroupMode::Rename, this->renaming, GroupID::Invalid(), *str);
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		if (!gui_scope) return;
+		this->BuildList();
+		this->SetDirty();
+	}
+
+	const IntervalTimer<TimerWindow> refresh = {std::chrono::milliseconds(1000), [this](auto) {
+		this->BuildList();
+		this->SetDirty();
+	}};
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_groups_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Grey, WID_MGR_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MGR_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Grey, WID_MGR_LIST), SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_MGR_SCROLL), EndContainer(),
+		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_MGR_SCROLL),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_groups_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::MobileGroups, WindowClass::None,
+	{},
+	_nested_mobile_groups_widgets
+);
+
+/**
+ * Show the group manager over the vehicle list.
+ * @param type The vehicle type.
+ */
+void ShowMobileGroups(VehicleType type)
+{
+	CloseWindowByClass(WindowClass::MobileGroups);
+	MobileDockOverlayInSheet(new MobileGroupsWindow(_mobile_groups_desc, type));
+}
+
+/* --- Autoreplace --- */
+
+/** What replaces the models a company uses, and renewing (round 5 design, batch 10). */
+struct MobileAutoreplaceWindow : Window {
+	VehicleType type; ///< The vehicle type.
+	std::vector<EngineID> engines; ///< The models in use.
+	EngineID menu_engine = EngineID::Invalid(); ///< Model whose replacement dropdown is open.
+	Scrollbar *vscroll = nullptr;
+
+	MobileAutoreplaceWindow(WindowDesc &desc, VehicleType type) : Window(desc), type(type)
+	{
+		this->CreateNestedTree();
+		this->vscroll = this->GetScrollbar(WID_MAR_SCROLL);
+		this->GetWidget<NWidgetStacked>(WID_MAR_SEL_KEEP_LENGTH)->SetDisplayedPlane(type == VehicleType::Train ? 0 : SZSP_HORIZONTAL);
+		this->FinishInitNested(to_underlying(type));
+		this->BuildList();
+	}
+
+	void BuildList()
+	{
+		this->engines.clear();
+		for (const Engine *e : Engine::IterateType(this->type)) {
+			if (GetGroupNumEngines(_local_company, ALL_GROUP, e->index) > 0) this->engines.push_back(e->index);
+		}
+		this->vscroll->SetCount(this->engines.size());
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, Dimension &fill, Dimension &resize) override
+	{
+		if (widget == WID_MAR_TITLE) size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal));
+		if (widget == WID_MAR_LIST) {
+			fill.height = resize.height = 1;
+			size.height = 3 * ScaleGUITrad(MOBILE_ROW);
+		}
+	}
+
+	void OnResize() override
+	{
+		this->vscroll->SetCapacity(GetRowCapacity(this, WID_MAR_LIST, ScaleGUITrad(MOBILE_ROW)));
+	}
+
+	void OnPaint() override
+	{
+		const Company *c = Company::GetIfValid(_local_company);
+		if (c != nullptr) {
+			this->SetWidgetLoweredState(WID_MAR_RENEW, c->settings.engine_renew);
+			this->SetWidgetLoweredState(WID_MAR_KEEP_LENGTH, c->settings.renew_keep_length);
+		}
+		this->DrawWidgets();
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		int line = GetCharacterHeight(FontSize::Normal);
+		if (widget == WID_MAR_TITLE) {
+			DrawMobileTitle(r, GetString(STR_MOBILE_REPLACE_TITLE));
+			return;
+		}
+		if (widget != WID_MAR_LIST) return;
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+		if (this->engines.empty()) {
+			DrawString(tr, STR_MOBILE_REPLACE_NONE, TextColour::Black);
+			return;
+		}
+		const Company *c = Company::GetIfValid(_local_company);
+		int row = ScaleGUITrad(MOBILE_ROW);
+		auto [first, last] = this->vscroll->GetVisibleRangeIterators(this->engines);
+		for (auto it = first; it != last; ++it) {
+			Rect rr = tr.WithHeight(row);
+			int y = CentreBounds(rr.top, rr.bottom, 2 * line);
+			DrawString(rr.left, rr.right, y, GetString(STR_MOBILE_REPLACE_MODEL, *it, GetGroupNumEngines(_local_company, ALL_GROUP, *it)), TextColour::Black);
+			EngineID with = c == nullptr ? EngineID::Invalid() : EngineReplacementForCompany(c, *it, ALL_GROUP);
+			std::string text = with == EngineID::Invalid() ? GetString(STR_MOBILE_REPLACE_NOT_REPLACED) : GetString(STR_MOBILE_REPLACE_WITH, with);
+			DrawString(rr.left, rr.right, y + line, text, with == EngineID::Invalid() ? TextColour::Black : TextColour::DarkGreen);
+			DrawString(rr.left, rr.right, CentreBounds(rr.top, rr.bottom, line), STR_JUST_RIGHT_ARROW, TextColour::Black, AlignmentH::End);
+			GfxFillRect(r.left, rr.bottom, r.right, rr.bottom, GetColourGradient(Colours::Grey, Shade::Dark));
+			tr.top += row;
+		}
+	}
+
+	void OnClick(Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		const Company *c = Company::GetIfValid(_local_company);
+		if (c == nullptr) return;
+		switch (widget) {
+			case WID_MAR_CLOSE: this->Close(); break;
+			case WID_MAR_RENEW:
+				Command<Commands::ChangeCompanySetting>::Post("company.engine_renew", c->settings.engine_renew ? 0 : 1);
+				break;
+			case WID_MAR_KEEP_LENGTH:
+				Command<Commands::ChangeCompanySetting>::Post("company.renew_keep_length", c->settings.renew_keep_length ? 0 : 1);
+				break;
+			case WID_MAR_LIST: {
+				auto it = this->vscroll->GetScrolledItemFromWidget(this->engines, pt.y, this, WID_MAR_LIST, WidgetDimensions::scaled.framerect.top, ScaleGUITrad(MOBILE_ROW));
+				if (it == this->engines.end()) break;
+				/* The models that can replace it: same type, and for trains and road vehicles the same rail or road type. */
+				this->menu_engine = *it;
+				EngineID current = EngineReplacementForCompany(c, *it, ALL_GROUP);
+				DropDownList list;
+				list.push_back(MakeDropDownListStringItem(STR_MOBILE_REPLACE_NOT_REPLACED, EngineID::Invalid().base()));
+				for (const Engine *e : Engine::IterateType(this->type)) {
+					if (e->index == *it || !IsEngineBuildable(e->index, this->type, _local_company)) continue;
+					if (!CheckAutoreplaceValidity(*it, e->index, _local_company)) continue;
+					list.push_back(MakeDropDownListStringItem(GetString(STR_ENGINE_NAME, e->index), e->index.base()));
+				}
+				/* Open it at the tapped row, not the whole list. */
+				Rect row = this->GetWidget<NWidgetBase>(WID_MAR_LIST)->GetCurrentRect().Shrink(WidgetDimensions::scaled.framerect);
+				row.top += static_cast<int>(std::distance(this->engines.begin(), it) - this->vscroll->GetPosition()) * ScaleGUITrad(MOBILE_ROW);
+				ShowDropDownListAt(this, std::move(list), current.base(), WID_MAR_LIST, row.WithHeight(ScaleGUITrad(MOBILE_ROW)), Colours::Grey);
+				break;
+			}
+		}
+	}
+
+	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
+	{
+		const Company *c = Company::GetIfValid(_local_company);
+		if (c != nullptr && widget == WID_MAR_RENEW) return GetString(STR_MOBILE_REPLACE_RENEW, c->settings.engine_renew ? STR_CONFIG_SETTING_ON : STR_CONFIG_SETTING_OFF);
+		if (c != nullptr && widget == WID_MAR_KEEP_LENGTH) return GetString(STR_MOBILE_REPLACE_KEEP_LENGTH, c->settings.renew_keep_length ? STR_CONFIG_SETTING_ON : STR_CONFIG_SETTING_OFF);
+		return this->Window::GetWidgetString(widget, stringid);
+	}
+
+	std::string GetMobileDropDownTitle(WidgetID) const override
+	{
+		return this->menu_engine == EngineID::Invalid() ? std::string{} : GetString(STR_ENGINE_NAME, this->menu_engine);
+	}
+
+	void OnDropdownSelect(WidgetID widget, int index, int) override
+	{
+		if (widget != WID_MAR_LIST || this->menu_engine == EngineID::Invalid()) return;
+		Command<Commands::SetAutoreplace>::Post(ALL_GROUP, this->menu_engine, EngineID(index), false);
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		if (!gui_scope) return;
+		this->BuildList();
+		this->SetDirty();
+	}
+
+	const IntervalTimer<TimerWindow> refresh = {std::chrono::milliseconds(1000), [this](auto) {
+		this->SetDirty();
+	}};
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_autoreplace_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Grey, WID_MAR_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MAR_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_TOOLTIP_CLOSE_WINDOW),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Grey, WID_MAR_LIST), SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_MAR_SCROLL), EndContainer(),
+		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_MAR_SCROLL),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Grey),
+		NWidget(NWID_VERTICAL), SetPadding(4), SetPIP(0, 4, 0),
+			NWidget(WWT_TEXTBTN, Colours::Grey, WID_MAR_RENEW), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_REPLACE_RENEW, STR_MOBILE_REPLACE_RENEW_TOOLTIP),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_MAR_SEL_KEEP_LENGTH),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_MAR_KEEP_LENGTH), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_REPLACE_KEEP_LENGTH, STR_REPLACE_REMOVE_WAGON_TOOLTIP),
+			EndContainer(),
+		EndContainer(),
+	EndContainer(),
+};
+
+static WindowDesc _mobile_autoreplace_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::ReplaceVehicle, WindowClass::None,
+	{},
+	_nested_mobile_autoreplace_widgets
+);
+
+/**
+ * Show autoreplace for a vehicle type over the vehicle list.
+ * @param type The vehicle type.
+ */
+void ShowMobileAutoreplace(VehicleType type)
+{
+	CloseWindowByClass(WindowClass::ReplaceVehicle);
+	MobileDockOverlayInSheet(new MobileAutoreplaceWindow(_mobile_autoreplace_desc, type));
+}
+
 /* --- Train list --- */
 
 /** The company's trains, or those calling at a station: name and state, profit, and a row opens the train. */
@@ -1929,6 +2539,7 @@ struct MobileTrainListWindow : Window {
 	StationID station; ///< Only trains calling here, or invalid for all.
 	VehicleType type; ///< The vehicles listed.
 	std::vector<const Vehicle *> trains; ///< The vehicles listed.
+	GroupID group = ALL_GROUP; ///< Only vehicles of this group, ALL_GROUP for all, DEFAULT_GROUP for ungrouped.
 	int sort = 0; ///< Index into #sort_names.
 	Scrollbar *vscroll = nullptr;
 
@@ -1963,6 +2574,7 @@ struct MobileTrainListWindow : Window {
 		this->trains.clear();
 		for (const Vehicle *t : Vehicle::Iterate()) {
 			if (t->type != this->type || !t->IsPrimaryVehicle() || t->owner != _local_company) continue;
+			if (this->group != ALL_GROUP && t->group_id != this->group) continue;
 			if (this->station != StationID::Invalid() && !this->CallsAtStation(t)) continue;
 			this->trains.push_back(t);
 		}
@@ -1999,6 +2611,10 @@ struct MobileTrainListWindow : Window {
 	{
 		switch (widget) {
 			case WID_MTL_SORT: return GetString(sort_names[this->sort]);
+			case WID_MTL_GROUP:
+				if (this->group == ALL_GROUP) return GetString(STR_MOBILE_GROUP_ALL);
+				if (this->group == DEFAULT_GROUP) return GetString(STR_GROUP_DEFAULT_TRAINS + to_underlying(this->type));
+				return GetString(STR_GROUP_NAME, this->group);
 			case WID_MTL_TOTAL: {
 				Money total = 0;
 				for (const Vehicle *t : this->trains) total += t->GetDisplayProfitThisYear();
@@ -2062,6 +2678,21 @@ struct MobileTrainListWindow : Window {
 		switch (widget) {
 			case WID_MTL_CLOSE: this->Close(); break;
 			case WID_MTL_SORT: ShowDropDownMenu(this, sort_names, this->sort, WID_MTL_SORT, 0, 0); break;
+			case WID_MTL_REPLACE: ShowMobileAutoreplace(this->type); break;
+			case WID_MTL_GROUP: {
+				/* All, Ungrouped, the groups; then managing them. */
+				DropDownList list;
+				list.push_back(MakeDropDownListStringItem(STR_MOBILE_GROUP_ALL, ALL_GROUP.base()));
+				list.push_back(MakeDropDownListStringItem(STR_GROUP_DEFAULT_TRAINS + to_underlying(this->type), DEFAULT_GROUP.base()));
+				for (const Group *g : Group::Iterate()) {
+					if (g->owner != _local_company || g->vehicle_type != this->type) continue;
+					list.push_back(MakeDropDownListStringItem(GetString(STR_GROUP_NAME, g->index), g->index.base()));
+				}
+				list.push_back(MakeDropDownListStringItem(STR_MOBILE_GROUP_NEW, NEW_GROUP.base()));
+				list.push_back(MakeDropDownListStringItem(STR_MOBILE_GROUP_MANAGE, GroupID::Invalid().base()));
+				ShowDropDownList(this, std::move(list), this->group.base(), widget);
+				break;
+			}
 			case WID_MTL_LIST: {
 				auto it = this->vscroll->GetScrolledItemFromWidget(this->trains, pt.y, this, WID_MTL_LIST, WidgetDimensions::scaled.framerect.top, ScaleGUITrad(MOBILE_ROW));
 				if (it != this->trains.end()) ShowMobileTrainWindow(*it);
@@ -2072,6 +2703,22 @@ struct MobileTrainListWindow : Window {
 
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
+		if (widget == WID_MTL_GROUP) {
+			GroupID chosen = GroupID(index);
+			if (chosen == GroupID::Invalid()) {
+				ShowMobileGroups(this->type);
+				return;
+			}
+			if (chosen == NEW_GROUP) {
+				Command<Commands::CreateGroup>::Post(STR_ERROR_GROUP_CAN_T_CREATE, this->type, GroupID::Invalid());
+				return;
+			}
+			this->group = chosen;
+			this->vscroll->SetPosition(0);
+			this->BuildList();
+			this->SetDirty();
+			return;
+		}
 		if (widget != WID_MTL_SORT) return;
 		this->sort = index;
 		this->BuildList();
@@ -2092,14 +2739,20 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_train_list_wi
 		EndContainer(),
 	EndContainer(),
 	NWidget(WWT_PANEL, Colours::Grey),
-		NWidget(WWT_DROPDOWN, Colours::Grey, WID_MTL_SORT), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetPadding(4), SetToolTip(STR_TOOLTIP_SORT_CRITERIA),
+		NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize), SetPadding(4), SetPIP(0, 4, 0),
+			NWidget(WWT_DROPDOWN, Colours::Grey, WID_MTL_GROUP), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_GROUP_TOOLTIP),
+			NWidget(WWT_DROPDOWN, Colours::Grey, WID_MTL_SORT), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_TOOLTIP_SORT_CRITERIA),
+		EndContainer(),
 	EndContainer(),
 	NWidget(NWID_HORIZONTAL),
 		NWidget(WWT_PANEL, Colours::Grey, WID_MTL_LIST), SetFill(1, 1), SetResize(1, 1), SetScrollbar(WID_MTL_SCROLL), EndContainer(),
 		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_MTL_SCROLL),
 	EndContainer(),
 	NWidget(WWT_PANEL, Colours::Grey),
-		NWidget(WWT_TEXT, Colours::Invalid, WID_MTL_TOTAL), SetMinimalSize(0, 24), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET),
+		NWidget(NWID_HORIZONTAL), SetPadding(4), SetPIP(0, 4, 0),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_MTL_TOTAL), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_MTL_REPLACE), SetMinimalSize(120, 32), SetStringTip(STR_MOBILE_REPLACE_VEHICLES, STR_MOBILE_REPLACE_VEHICLES_TOOLTIP),
+		EndContainer(),
 	EndContainer(),
 };
 

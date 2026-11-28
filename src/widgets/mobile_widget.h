@@ -142,6 +142,13 @@ enum MobileTrainWidgets : WidgetID {
 	WID_MTR_SHOW_ON_MAP, ///< Show the train on the map.
 	WID_MTR_DEPOT, ///< Send to depot.
 	WID_MTR_CLONE, ///< Clone the train.
+	WID_MTR_TAB_TIMETABLE, ///< Tab: timetable.
+	WID_MTR_TIMETABLE, ///< Timetable: travel and wait times per order.
+	WID_MTR_TIMETABLE_SCROLL, ///< Scrollbar of the timetable.
+	WID_MTR_AUTOFILL, ///< Timetable: autofill on or off.
+	WID_MTR_MORE_TIMETABLE, ///< Timetable: the desktop timetable window.
+	WID_MTR_SERVICE, ///< Details: the service interval with - value +.
+	WID_MTR_DETAILS_SCROLL, ///< Scrollbar of the details.
 };
 
 /** Widgets of the mobile train list (#MobileTrainListWindow). */
@@ -153,6 +160,27 @@ enum MobileTrainListWidgets : WidgetID {
 	WID_MTL_LIST, ///< The trains.
 	WID_MTL_SCROLL, ///< Scrollbar of the list.
 	WID_MTL_TOTAL, ///< Total profit this year.
+	WID_MTL_GROUP, ///< Group filter dropdown.
+	WID_MTL_REPLACE, ///< Replace vehicles (autoreplace).
+};
+
+/** Widgets of the mobile autoreplace sheet (round 5 design, batch 10). */
+enum MobileAutoreplaceWidgets : WidgetID {
+	WID_MAR_TITLE, ///< Title.
+	WID_MAR_CLOSE, ///< Close.
+	WID_MAR_LIST, ///< The models in use and what replaces them.
+	WID_MAR_SCROLL, ///< Scrollbar of the list.
+	WID_MAR_RENEW, ///< Renew old vehicles, on or off.
+	WID_MAR_SEL_KEEP_LENGTH, ///< Selection showing the keep-length toggle for trains.
+	WID_MAR_KEEP_LENGTH, ///< Remove wagons to keep the length, on or off.
+};
+
+/** Widgets of the mobile group manager (round 5 design, batch 10). */
+enum MobileGroupsWidgets : WidgetID {
+	WID_MGR_TITLE, ///< Title.
+	WID_MGR_CLOSE, ///< Close.
+	WID_MGR_LIST, ///< The groups, with rename and delete.
+	WID_MGR_SCROLL, ///< Scrollbar of the list.
 };
 
 /** Widgets of the mobile save and load list (#MobileSaveLoadWindow). */

@@ -15,7 +15,8 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 | 7. Industries | done, headless |
 | 8. Towns, news and land info | done, headless (land info needs a long press: phone; story book still desktop) |
 | 9. Landscape, water and air | done, headless (locks, docks, buoys, aqueducts untested: no coast in the test area) |
-| 10. Details, timetable, autoreplace, groups | next |
+| 10. Details, timetable, autoreplace, groups | done, headless (landscape and portrait) |
+| 11. Company, league, graphs | next |
 
 ## Batch 1: fonts, main menu, cells, fixes, leftovers (§2, §3)
 
@@ -196,3 +197,37 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 - The airport and tree pickers are the desktop windows in the sheet (functional, not restyled).
 - No catchment or Accepts/Supplies for a pending dock or airport; no join choice.
 - Transmitter and lighthouse (scenario editor only) and rivers are not in the mobile toolbars.
+
+## Batch 10: Vehicle details, timetable, autoreplace, groups (§12)
+
+### Steps
+- **Widgets** (`widgets/mobile_widget.h`): appended to `MobileTrainWidgets` (`WID_MTR_TAB_TIMETABLE`, `WID_MTR_TIMETABLE(_SCROLL)`, `WID_MTR_AUTOFILL`, `WID_MTR_MORE_TIMETABLE`, `WID_MTR_SERVICE`, `WID_MTR_DETAILS_SCROLL`) and `MobileTrainListWidgets` (`WID_MTL_GROUP`, `WID_MTL_REPLACE`); new enums `MobileAutoreplaceWidgets` (`WID_MAR_*`) and `MobileGroupsWidgets` (`WID_MGR_*`). New `WindowClass::MobileGroups` at the end of the enum.
+- **Vehicle window** (`MobileTrainWindow`, `mobile_vehicle_gui.cpp`), now three tabs, Orders · Timetable · Details (`SEL_CONTENT` planes 0/1/2; a `timetable` bool beside `details`):
+  - **Timetable**: a row per order, "Travel X · wait Y" (`GetTimetableParameters()`, "not set" when not timetabled); a tap asks for the wait in timetable units and posts `Commands::ChangeTimetable` (`MTF_WAIT_TIME`, units × `TicksPerTimetableUnit()`, now exported from `timetable_gui.cpp` via `timetable.h`). "Autofill: On/Off" posts `Commands::AutofillTimetable`; "More timetable options ›" opens the desktop timetable window.
+  - **Details**: the strip and "+ Add vehicles" as before, then a **service interval row** (− value +, step 10, or 5 in wallclock minutes; `GetServiceIntervalClamped()` then `Commands::ChangeServiceInterval`), then a scrollable text: the train summary, profit, running cost, and a block per vehicle (model in green, capacity, max speed, reliability and breakdowns, age of lifetime and build year). A cell's menu → Details opens this tab scrolled to that vehicle's block (`details_vehicle`, `ScrollToDetails()`).
+  - **⋯ menu** (the old rename button, `WID_MTR_RENAME`): Rename, then a greyed "Add to group:" heading, Ungrouped, the groups and "+ New group" in **one** list (the current group ticked); a group posts `Commands::AddVehicleToGroup` (`NEW_GROUP` creates one and moves the vehicle into it). `OnQueryTextFinished` tells the wait-time query from the rename by `querying_wait`.
+- **Vehicle lists**: a group filter beside the sort (All `ALL_GROUP`, Ungrouped `DEFAULT_GROUP`, each group, "+ New group" → `Commands::CreateGroup`, "Manage groups ›") and "Replace vehicles ›" beside the total.
+- **Group manager** (`MobileGroupsWindow`, overlay in the sheet): a row per group with its vehicle count, Rename (`Commands::AlterGroup`, `AlterGroupMode::Rename`) and Delete (asks first; `Commands::DeleteGroup`, the vehicles become ungrouped).
+- **Autoreplace** (`MobileAutoreplaceWindow`, class `ReplaceVehicle`, overlay in the sheet): a row per model in use (`GetGroupNumEngines(_local_company, ALL_GROUP, e) > 0`) with its replacement (`EngineReplacementForCompany()`); a tap opens, at that row, "Not replaced" plus the buildable models `CheckAutoreplaceValidity()` accepts, and posts `Commands::SetAutoreplace(ALL_GROUP, old, new, false)`. Toggles "Renew old vehicles: On/Off" and, for trains, "Remove wagons to keep the length: On/Off" (`Commands::ChangeCompanySetting` with `company.engine_renew` / `company.renew_keep_length`).
+- **Every vehicle type gets the mobile list** (`ShowVehicleListWindow()` in `vehicle_gui.cpp`): the train-only exception from batch 5 is gone; with the default `advanced_vehicle_list` the Road, Ships and Aircraft tabs still opened the desktop group window.
+- **Year-end finances in the sheet**: `ShowCompanyFinances()` for the local company goes through the Company hub's Finances tab (`MobileShowFinancesInHub()`, `mobile_gui.cpp`) unless the hub itself is opening the tab (`_opening_sheet_content`). Before, the yearly popup (`show_finances`) floated at the top left.
+- Screenshots `L38`–`L44`, `P06`–`P08`.
+
+### Findings
+- `MakeDropDownListStringItem(str, value, masked)`: the third argument **greys the entry out**; it is not "selected". The tick comes from the `selected` argument of `ShowDropDownList()`.
+- **A dropdown opened from `OnDropdownSelect`** (a second, nested menu) at the same place is picked by the same tap: the first version of "Add to group…" created a new group and moved the train at once. One list with a greyed heading avoids it; deferring to `OnMouseLoop` until the button was up didn't help with xdotool's instant clicks.
+- `Commands::SetAutoreplace` (lower-case r) takes the **group first**: `(GroupID, EngineID old, EngineID new, bool when_old)`.
+- There is no `INVALID_GROUP`: use `GroupID::Invalid()`. `NEW_GROUP`, `DEFAULT_GROUP` and `ALL_GROUP` are sentinels in `group_type.h`. The "is the button down" check is `IsLeftButtonDown()` (`gfx_func.h`).
+- `Vehicle::age`/`max_age` are day counts: show years with `TimerGameCalendar::DateToYear()`, as the desktop does.
+- What `DrawWidget()` draws is not clipped to the widget: a pixel-scrolled text must draw only whole lines inside `r`, or it spills over the row above.
+- The console's `setting` command doesn't know company settings (`company.engine_renew` is "unknown").
+- In portrait, dropdowns open as a sheet **above** the hub sheet: a crop of the bottom half misses them (cost me a debugging detour).
+
+### Tips
+- Save a test game from the console (`save NAME` → `/tmp/ttd-headless/save/NAME.sav`) and reload it in the other orientation with `START=menu tools/mobile/run_headless.sh 1222 2714 300 true -g FILE.sav`.
+- A lowered `WWT_TEXTBTN` is hard to see at 40%: the toggles now say On/Off in their labels.
+
+### Not done
+- Autoreplace is for `ALL_GROUP` only (no per-group replacement), and "when old" only through the company renew toggle.
+- No group colours, sub-groups or "add shared vehicles" in the mobile group manager.
+- Travel times can't be typed (only waits); clearing and the start date are in the desktop timetable ("More timetable options ›").

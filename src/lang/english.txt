@@ -1290,6 +1290,45 @@ STR_MOBILE_FINANCES_AMOUNT_OVER_MAXIMUM                         :{CURRENCY_LONG}
 STR_MOBILE_FINANCES_NO_LOAN                                     :No loan to repay
 STR_MOBILE_FINANCES_AMOUNT_MORE_THAN_LOAN                       :{CURRENCY_LONG}: more than the loan
 STR_MOBILE_FINANCES_AMOUNT_NOT_ENOUGH                           :{CURRENCY_LONG}: not enough money
+STR_MOBILE_TRAIN_TAB_TIMETABLE                                  :Timetable
+STR_MOBILE_TIMETABLE_TRAVEL                                     :Travel {STRING1}
+STR_MOBILE_TIMETABLE_TRAVEL_UNSET                               :Travel not set
+STR_MOBILE_TIMETABLE_WAIT                                       :wait {STRING1}
+STR_MOBILE_TIMETABLE_WAIT_UNSET                                 :wait not set
+STR_MOBILE_TIMETABLE_NONE                                       :No timetable for this order
+STR_MOBILE_TIMETABLE_AUTOFILL                                   :Autofill: {STRING}
+STR_MOBILE_TIMETABLE_MORE                                       :More timetable options {RIGHT_ARROW}
+STR_MOBILE_TIMETABLE_TOOLTIP                                    :{BLACK}Tap an order to set how long the vehicle waits there
+STR_MOBILE_SERVICE_DAYS                                         :Service every {COMMA} day{P "" s}
+STR_MOBILE_SERVICE_MINUTES                                      :Service every {COMMA} minute{P "" s}
+STR_MOBILE_SERVICE_PERCENT                                      :Service at {COMMA}% reliability lost
+STR_MOBILE_DETAILS_CAPACITY                                     :Carries {CARGO_LONG}
+STR_MOBILE_DETAILS_SPEED                                        :Max speed {VELOCITY}
+STR_MOBILE_DETAILS_RELIABILITY                                  :Reliability {COMMA}% · {COMMA} breakdown{P "" s} since service
+STR_MOBILE_DETAILS_AGE                                          :Age {COMMA} of {COMMA} year{P "" s} · built {NUM}
+STR_MOBILE_VEHICLE_RENAME                                       :Rename
+STR_MOBILE_VEHICLE_ADD_TO_GROUP                                 :Add to group:
+STR_MOBILE_VEHICLE_MENU_TOOLTIP                                 :{BLACK}Rename, or add to a group
+STR_MOBILE_GROUP_ALL                                            :All
+STR_MOBILE_GROUP_NEW                                            :+ New group
+STR_MOBILE_GROUP_MANAGE                                         :Manage groups {RIGHT_ARROW}
+STR_MOBILE_GROUP_TOOLTIP                                        :{BLACK}Show one group
+STR_MOBILE_GROUP_MANAGE_TITLE                                   :Groups
+STR_MOBILE_GROUP_NONE                                           :No groups yet. Make one with "+ New group" in the group filter
+STR_MOBILE_GROUP_VEHICLES                                       :{COMMA} vehicle{P "" s}
+STR_MOBILE_GROUP_DELETE                                         :Delete
+STR_MOBILE_GROUP_DELETE_TITLE                                   :Delete {GROUP}?
+STR_MOBILE_GROUP_DELETE_TEXT                                    :Its vehicles stay, ungrouped.
+STR_MOBILE_REPLACE_VEHICLES                                     :Replace vehicles {RIGHT_ARROW}
+STR_MOBILE_REPLACE_VEHICLES_TOOLTIP                             :{BLACK}Choose new models to replace old ones when they visit a depot
+STR_MOBILE_REPLACE_TITLE                                        :Replace vehicles
+STR_MOBILE_REPLACE_NONE                                         :No vehicles of this kind yet
+STR_MOBILE_REPLACE_MODEL                                        :{ENGINE} · {COMMA} in use
+STR_MOBILE_REPLACE_NOT_REPLACED                                 :Not replaced
+STR_MOBILE_REPLACE_WITH                                         :{RIGHT_ARROW} {ENGINE}
+STR_MOBILE_REPLACE_RENEW                                        :Renew old vehicles: {STRING}
+STR_MOBILE_REPLACE_RENEW_TOOLTIP                                :{BLACK}Replace vehicles with a new one of the same model when they get old
+STR_MOBILE_REPLACE_KEEP_LENGTH                                  :Remove wagons to keep the length: {STRING}
 STR_MOBILE_REFIT_TITLE                                          :Refit {RAW_STRING}
 STR_MOBILE_REFIT_WHOLE_TRAIN                                    :Whole train
 STR_MOBILE_REFIT_ONLY_THIS                                      :Only this vehicle
@@ -1327,8 +1366,6 @@ STR_MOBILE_TRAIN_SELL_TRAIN_TEXT                                :Selling the eng
 STR_MOBILE_TRAIN_SELL_TRAIN_VERB                                :{WHITE}Sell train
 STR_MOBILE_TRAIN_SUMMARY                                        :{COMMA} vehicle{P "" s} · {COMMA} tile{P "" s} · {RAW_STRING} · {VELOCITY}
 STR_MOBILE_TRAIN_NO_CARGO                                       :no cargo
-STR_MOBILE_TRAIN_DETAILS_AGE                                    :Age: {COMMA} of {COMMA} days
-STR_MOBILE_TRAIN_DETAILS_RELIABILITY                            :Reliability: {COMMA}%
 STR_MOBILE_TRAIN_DETAILS_RUNNING_COST                           :Running cost: {CURRENCY_LONG}/year
 STR_MOBILE_TRAIN_DETAILS_PROFIT                                 :Profit this year: {CURRENCY_LONG} · last year: {CURRENCY_LONG}
 STR_MOBILE_TRAIN_NEW_TITLE                                      :New train · {STRING}

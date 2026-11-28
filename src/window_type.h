@@ -827,6 +827,12 @@ enum class WindowClass : uint16_t {
 	 */
 	MobileSettings,
 
+	/**
+	 * Mobile layout: the group manager; %Window numbers:
+	 *   - #VehicleType = #MobileGroupsWidgets
+	 */
+	MobileGroups,
+
 	Invalid = 0xFFFF, ///< Invalid window.
 };
 

@@ -31,5 +31,6 @@ void ShowTimetableWindow(const Vehicle *v);
 void UpdateVehicleTimetable(Vehicle *v, bool travelling);
 
 std::pair<StringParameter, StringParameter> GetTimetableParameters(TimerGameTick::Ticks ticks);
+TimerGameTick::Ticks TicksPerTimetableUnit();
 
 #endif /* TIMETABLE_H */

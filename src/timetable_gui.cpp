@@ -60,7 +60,7 @@ std::pair<StringParameter, StringParameter> GetTimetableParameters(TimerGameTick
  * Get the number of ticks in the current timetable display unit.
  * @return The number of ticks per day, second, or tick, to match the timetable display.
  */
-static inline TimerGameTick::Ticks TicksPerTimetableUnit()
+TimerGameTick::Ticks TicksPerTimetableUnit()
 {
 	switch (_settings_client.gui.timetable_mode) {
 		case TimetableMode::Days:

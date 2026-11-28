@@ -16,7 +16,7 @@ Last updated: 28 Nov 2026 (night, round 5). Read this first, then `README.md` (t
   - **Round 4 (27–28 Nov):** design fixes, touch dropdown, depot → New train → orders → Start, train list, main menu with Continue, New game with presets, confirmations, save/load, settings with search, top chrome against the cutout. Verified headless and partly on the phone. Log: `07-round4-implementation-log.md`.
   - **Android build:** `os/android/build.sh`, APK published as GitHub pre-releases (`android-<commit count>`); latest: `android-33331` (commit `d5986b7e62`, 28 Nov, round 4). Logs: `02-android-build-plan.md`, `03-android-build-log.md`.
 
-  - **Round 5 (28 Nov, in progress):** `handoffs/10-design-to-impl-round5.md`, built batch by batch in its order; progress table at the top of `08-round5-implementation-log.md`. Done: batch 1 (main menu logo/Continue, cells, settings fixes, dropdown titles), batch 2 (Settings with Game Options), batch 3 (signals), batch 4 (road and tram), batch 5 (other vehicles, refit), batch 6 (finances), batch 7 (industries), batch 8 (towns, subsidies, goals, news, land info), batch 9 (landscape, water, air). Next: batch 10, vehicle details, timetable, autoreplace, groups (handoff §12).
+  - **Round 5 (28 Nov, in progress):** `handoffs/10-design-to-impl-round5.md`, built batch by batch in its order; progress table at the top of `08-round5-implementation-log.md`. Done: batch 1 (main menu logo/Continue, cells, settings fixes, dropdown titles), batch 2 (Settings with Game Options), batch 3 (signals), batch 4 (road and tram), batch 5 (other vehicles, refit), batch 6 (finances), batch 7 (industries), batch 8 (towns, subsidies, goals, news, land info), batch 9 (landscape, water, air), batch 10 (vehicle details, timetable, autoreplace, groups). Next: batch 11, company, league, graphs (handoff §13).
 
 ## Waiting on
 
@@ -47,4 +47,5 @@ Last updated: 28 Nov 2026 (night, round 5). Read this first, then `README.md` (t
 - In a vertical NWidget container, hide with `SZSP_HORIZONTAL`, not `SZSP_NONE`, or the window can't widen.
 - `CommandResultCapture` can't nest (an assert); close its scope before calling code that may capture.
 - Unsigned widget sizes (`current_x`) underflow in position math; cast to `int`.
+- `MakeDropDownListStringItem`'s third argument masks (greys) the entry; the tick is `ShowDropDownList`'s `selected`.
 - A vertical NWidget container with a non-resizable child can't resize horizontally (the LCM of resize steps is 0).

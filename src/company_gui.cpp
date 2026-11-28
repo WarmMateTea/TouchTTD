@@ -579,6 +579,7 @@ void ShowCompanyFinances(CompanyID company)
 {
 	if (!Company::IsValidID(company)) return;
 	if (IsMobileLayout()) {
+		if (company == _local_company && MobileShowFinancesInHub()) return;
 		ShowMobileFinances(company);
 		return;
 	}

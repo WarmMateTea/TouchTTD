@@ -406,10 +406,14 @@ static void CloseMobileSheet()
  * @param cls Class of the window that \a open creates or brings to the front.
  * @param open Function opening the window.
  */
+static bool _opening_sheet_content = false; ///< A hub tab is opening its content (see MobileShowFinancesInHub).
+
 static void OpenSheetContent(WindowClass cls, void (*open)())
 {
 	CloseSheetContent();
+	_opening_sheet_content = true;
 	open();
+	_opening_sheet_content = false;
 
 	/* The window that was just opened, or brought to the front, is the frontmost of its class. */
 	for (Window *w : Window::IterateFromFront()) {
@@ -811,6 +815,18 @@ static void ShowMobileHubTab(MobileHub hub, uint8_t tab)
 		return;
 	}
 	ToggleMobileHub(hub);
+}
+
+/**
+ * Show the local company's finances as the Company hub's Finances tab, so the window opened from anywhere (the
+ * year-end popup, a hotkey) lands in the sheet slot rather than floating.
+ * @return \c false when the hub itself is opening the tab: the caller then makes the window.
+ */
+bool MobileShowFinancesInHub()
+{
+	if (_opening_sheet_content || _local_company == COMPANY_SPECTATOR) return false;
+	ShowMobileHubTab(MobileHub::Company, 0);
+	return true;
 }
 
 void MobileStatusWindow::OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count)

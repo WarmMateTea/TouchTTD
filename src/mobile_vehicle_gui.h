@@ -24,6 +24,8 @@ struct Vehicle;
 
 void ShowMobileDepotWindow(TileIndex tile, VehicleType type);
 void ShowMobileRefitWindow(const Vehicle *v);
+void ShowMobileGroups(VehicleType type);
+void ShowMobileAutoreplace(VehicleType type);
 void ShowMobileNewTrainWindow(TileIndex tile, VehicleID target);
 void ShowMobileTrainWindow(const Vehicle *v, bool add_stops = false, bool show_details = false);
 void MobileStopAddingStops();

@@ -30,4 +30,6 @@ Left over: a "Continue" entry on the main menu (the menus are in design round 4)
 - **Steppers: hold to repeat** (round 5 design §4): Settings' − value + steps once per tap. A held finger is a long press today (tooltip); repeating needs the gesture layer to send repeated clicks while a stepper button is held.
 - **Station picker Type row** for NewGRF station classes/types (design round 3 §3.2) isn't built; base game unaffected.
 - **"Building…" state** for multiplayer (design round 3 §1.2): planned with multiplayer in round 5, batch 13.
+- **Per-group autoreplace and group extras** (round 5 §12): the mobile Replace vehicles sheet sets replacements for `ALL_GROUP` only; `Commands::SetAutoreplace` takes a group, so a group picker at the top of the sheet would do it. The group manager lacks colours, sub-groups and "add shared vehicles" (`Commands::SetGroupLivery`, `AlterGroupMode::SetParent`, `Commands::AddSharedVehiclesToGroup`).
+- **Timetable: travel times and start date** (round 5 §12): the mobile Timetable tab sets wait times only; travel times (`MTF_TRAVEL_TIME`), clearing, and the start date are in the desktop timetable window behind "More timetable options ›".
 - **Depot entrance arrow** is the white one-way road arrow; `PALETTE_TO_YELLOW` doesn't recolour it. A real yellow arrow needs a sprite.
