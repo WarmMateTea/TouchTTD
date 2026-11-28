@@ -1784,6 +1784,13 @@ struct MobileErrorWindow : Window {
 		if (widget == WID_MERR_TEXT || widget == WID_MERR_DISMISS) this->Close();
 	}
 
+	void Close([[maybe_unused]] int data = 0) override
+	{
+		this->Window::Close();
+		/* At the main menu in portrait the panel sat below the banner. */
+		if (_game_mode == GameMode::Menu) RelocateMobileMainMenu();
+	}
+
 	/**
 	 * Show another error.
 	 * @param text The error.
@@ -1834,6 +1841,33 @@ bool ShowMobileError(const std::string &summary, const std::string &detail)
 	new MobileErrorWindow(_mobile_error_desc, std::move(text));
 	RelocateMobileWindows();
 	return true;
+}
+
+/**
+ * A warning at the main menu (e.g. missing sprites in the base graphics): the red banner, centred at the top.
+ * @param text The warning.
+ */
+void ShowMobileMenuBanner(std::string &&text)
+{
+	CloseWindowById(WindowClass::MobileError, 0);
+	Window *w = new MobileErrorWindow(_mobile_error_desc, std::move(text));
+	PlaceMobileMenuBanner(w);
+}
+
+/**
+ * Place the main menu's banner: centred at the top of the safe area, at most 480 wide.
+ * @param w The banner.
+ */
+void PlaceMobileMenuBanner(Window *w)
+{
+	Rect safe = VideoDriver::GetInstance() != nullptr ? VideoDriver::GetInstance()->GetSafeArea() : Rect{0, 0, _screen.width - 1, _screen.height - 1};
+	int left = safe.left;
+	/* Landscape: beside the menu panel, which sits on the left. */
+	if (const Window *menu = FindWindowById(WindowClass::SelectGame, 0); menu != nullptr && _screen.width > _screen.height) left = menu->left + menu->width;
+	int margin = ScaleGUITrad(MOBILE_MARGIN);
+	int width = std::min(ScaleGUITrad(480), safe.right + 1 - left - 2 * margin);
+	FitWindowTo(w, width, w->height);
+	MoveWindowTo(w, CentreBounds(left, safe.right + 1, w->width), safe.top + margin);
 }
 
 /** Tell the player the game waited for them: a yellow banner; tapping it continues the game. */

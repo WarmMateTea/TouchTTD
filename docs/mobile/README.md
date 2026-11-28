@@ -12,6 +12,7 @@ Work notes for the touch-first mobile layout of this OpenTTD fork. **Resuming wo
 | [`05-device-polish-log.md`](05-device-polish-log.md) | Navigation bar, cancelling tools, sliding layout (user requests of 25 Nov) |
 | [`06-round3-implementation-log.md`](06-round3-implementation-log.md) | Background survival and auto-pause on Android (part A); round 3: stations, depots, waypoints, info windows in the sheet, design fixes (part B) |
 | [`07-round4-implementation-log.md`](07-round4-implementation-log.md) | Round 4: design fixes, touch dropdown, depot → train → orders (part A), the menus (part B) |
+| [`08-round5-implementation-log.md`](08-round5-implementation-log.md) | Round 5: the big one, batch by batch |
 | [`backlog.md`](backlog.md) | Things for later steps, with context |
 | [`teaching-resume.md`](teaching-resume.md) | Where the learning stands and how to continue it with the new code |
 | `handoffs/` | Documents passed between sessions (mentor, design, implementation), numbered in order |
@@ -34,7 +35,7 @@ Work notes for the touch-first mobile layout of this OpenTTD fork. **Resuming wo
 8. `07-impl-to-design-round4.md`: round 3 results, open questions, round 4 feasibility answers; asks for trains/orders **and the menus**
 9. `08-design-to-impl-round4.md`: design round 4: buying a train, depot, train window, orders; the menus (main menu, new game, settings, save/load, confirmations)
 10. `09-impl-to-design-round5.md`: round 4 results, user requests (title and Continue fonts), round 5 feasibility answers
-11. (next) `10-design-to-impl-round5.md`: expected from the design session
+11. `10-design-to-impl-round5.md`: design round 5, every remaining group in 13 batches (fonts, settings, signals, road, vehicles, finances, industries, towns/news, landscape/water/air, details/timetable/groups, company/graphs, content/help/text input, tablets/tips/multiplayer)
 
 ## Code map
 

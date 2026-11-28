@@ -58,9 +58,8 @@
 #include "safeguards.h"
 
 static constexpr int MOBILE_ROW = 48; ///< Height of list rows, in GUI pixels at 1x.
-static constexpr int MOBILE_ORDER_ROW = 40; ///< Height of order rows, in GUI pixels at 1x.
+static constexpr int MOBILE_ORDER_ROW = 48; ///< Height of order rows, in GUI pixels at 1x.
 static constexpr int MOBILE_STRIP_HEIGHT = 46; ///< Height of a composition strip (sprites and sell buttons), in GUI pixels at 1x.
-static constexpr int MOBILE_SELL_HEIGHT = 18; ///< Height of a vehicle's sell button under it, in GUI pixels at 1x.
 static constexpr int DEPOT_ROW = 56; ///< Height of a depot row, in GUI pixels at 1x.
 
 /**
@@ -104,56 +103,95 @@ void CcMobileBuildTrainPart(Commands, const CommandCost &result, VehicleID new_v
 /* --- Shared drawing --- */
 
 /**
- * Draw a train's vehicles side by side, optionally with a sell button under each.
+ * Draw a train's vehicles side by side; optionally each (with its articulated parts) as a tappable cell of at least
+ * 40×40 (round 5 design, section 3.2).
  * @param t The train (first vehicle).
  * @param r Where to draw.
- * @param sell Draw the sell buttons, and return where they are.
- * @param[out] buttons With \p sell, the sell button of each vehicle.
+ * @param cells Draw the vehicles as cells, and report where they are.
+ * @param[out] out With \p cells, the cell of each vehicle.
  */
-static void DrawTrainStrip(const Train *t, const Rect &r, bool sell, std::vector<std::pair<Rect, VehicleID>> *buttons)
+static void DrawTrainStrip(const Train *t, const Rect &r, bool cells, std::vector<std::pair<Rect, VehicleID>> *out)
 {
-	if (buttons != nullptr) buttons->clear();
+	if (out != nullptr) out->clear();
 	bool rtl = _current_text_dir == TD_RTL;
-	Rect sprites = sell ? r.WithHeight(r.Height() - ScaleGUITrad(MOBILE_SELL_HEIGHT) - WidgetDimensions::scaled.vsep_normal) : r;
-	int y = CentreBounds(sprites.top, sprites.bottom, 0);
+	int y = CentreBounds(r.top, r.bottom, 0);
 	int x = rtl ? r.right : r.left;
-	for (const Train *u = t; u != nullptr; u = u->Next()) {
-		Point offset;
-		int width = u->GetDisplayImageWidth(&offset);
-		if (rtl ? x - width < r.left : x + width > r.right) {
-			/* Out of room: the rest is "…". */
+	int min_cell = ScaleGUITrad(40);
+	for (const Train *u = t; u != nullptr;) {
+		/* A vehicle and its articulated parts. */
+		int width = 0;
+		for (const Train *part = u; part != nullptr && (part == u || part->IsArticulatedPart()); part = part->Next()) width += part->GetDisplayImageWidth();
+		int cell = cells ? std::max(width, min_cell) : width;
+		if (rtl ? x - cell < r.left : x + cell > r.right) {
+			/* Out of room: the rest is "...". */
 			DrawString(r.left, r.right, y - GetCharacterHeight(FontSize::Normal) / 2, STR_MOBILE_ELLIPSIS, TextColour::Black, AlignmentH::End);
 			break;
 		}
-		VehicleSpriteSeq seq;
-		u->GetImage(rtl ? Direction::E : Direction::W, EngineImageType::InDepot, &seq);
-		seq.Draw(x + (rtl ? -offset.x : offset.x), y + offset.y, GetVehiclePalette(u), false);
-
-		/* A sell button under each vehicle that isn't an articulated part. */
-		if (sell && !u->IsArticulatedPart()) {
-			int bw = std::max(width, ScaleGUITrad(40));
-			Rect b{rtl ? x - bw : x, r.bottom - ScaleGUITrad(MOBILE_SELL_HEIGHT) + 1, rtl ? x - 1 : x + bw - 1, r.bottom};
-			DrawFrameRect(b, Colours::Grey, {});
-			DrawString(b.left, b.right, CentreBounds(b.top, b.bottom, GetCharacterHeight(FontSize::Small)), STR_MOBILE_TRAIN_SELL, TextColour::Black, AlignmentH::Centre, false, FontSize::Small);
-			if (buttons != nullptr) buttons->emplace_back(b, u->index);
-			width = std::max(width, bw + WidgetDimensions::scaled.hsep_normal);
+		Rect box{rtl ? x - cell + 1 : x, r.top, rtl ? x : x + cell - 1, r.bottom};
+		if (cells) {
+			DrawFrameRect(box, Colours::Grey, {});
+			if (out != nullptr) out->emplace_back(box, u->index);
 		}
-		x += rtl ? -width : width;
+		int px = rtl ? CentreBounds(box.left, box.right, 0) + width / 2 : CentreBounds(box.left, box.right, 0) - width / 2;
+		const Train *part = u;
+		for (; part != nullptr && (part == u || part->IsArticulatedPart()); part = part->Next()) {
+			Point offset;
+			int w = part->GetDisplayImageWidth(&offset);
+			VehicleSpriteSeq seq;
+			part->GetImage(rtl ? Direction::E : Direction::W, EngineImageType::InDepot, &seq);
+			seq.Draw(px + (rtl ? -offset.x : offset.x), y + offset.y, GetVehiclePalette(part), false);
+			px += rtl ? -w : w;
+		}
+		u = part;
+		x += rtl ? -(cell + WidgetDimensions::scaled.hsep_normal) : cell + WidgetDimensions::scaled.hsep_normal;
 	}
 }
 
 /**
- * Find the sell button under a point.
- * @param buttons The buttons, as DrawTrainStrip() reported them, in window coordinates.
+ * Find the vehicle cell under a point.
+ * @param cells The cells, as DrawTrainStrip() reported them, in window coordinates.
  * @param pt The point.
- * @return The vehicle to sell, or \c VehicleID::Invalid().
+ * @return The vehicle, or \c VehicleID::Invalid().
  */
-static VehicleID FindSellButton(const std::vector<std::pair<Rect, VehicleID>> &buttons, Point pt)
+static VehicleID FindVehicleCell(const std::vector<std::pair<Rect, VehicleID>> &cells, Point pt)
 {
-	for (const auto &[r, id] : buttons) {
+	for (const auto &[r, id] : cells) {
 		if (r.Contains(pt)) return id;
 	}
 	return VehicleID::Invalid();
+}
+
+/** Entries of a vehicle cell's menu. */
+enum VehicleCellMenu : int { VCM_SELL, VCM_REFIT, VCM_DETAILS };
+
+/**
+ * Title of a vehicle cell's menu: the vehicle's model.
+ * @param id The vehicle; may be invalid.
+ * @return The title; empty for none.
+ */
+static std::string GetVehicleCellMenuTitle(VehicleID id)
+{
+	const Vehicle *v = Vehicle::GetIfValid(id);
+	return v == nullptr ? std::string{} : GetString(STR_ENGINE_NAME, v->engine_type);
+}
+
+/**
+ * Open a vehicle cell's menu: Sell (+£x), Refit, Details.
+ * @param w The window.
+ * @param widget The strip widget.
+ * @param id The vehicle.
+ */
+static void ShowVehicleCellMenu(Window *w, WidgetID widget, VehicleID id)
+{
+	const Vehicle *v = Vehicle::GetIfValid(id);
+	if (v == nullptr) return;
+	Money value = 0;
+	for (const Vehicle *part = v; part != nullptr && (part == v || part->IsArticulatedPart()); part = part->Next()) value += part->value;
+	DropDownList list;
+	list.push_back(MakeDropDownListStringItem(GetString(STR_MOBILE_VEHICLE_MENU_SELL, value), VCM_SELL, !v->IsStoppedInDepot()));
+	list.push_back(MakeDropDownListStringItem(STR_MOBILE_VEHICLE_MENU_REFIT, VCM_REFIT));
+	list.push_back(MakeDropDownListStringItem(STR_MOBILE_VEHICLE_MENU_DETAILS, VCM_DETAILS));
+	ShowDropDownList(w, std::move(list), -1, widget);
 }
 
 /**
@@ -368,7 +406,8 @@ struct MobileNewTrainWindow : Window {
 	std::vector<EngineID> engines; ///< The list shown.
 	Money spent = 0; ///< Money spent since the view opened.
 	Money money_at_open = 0; ///< Company money when the view opened.
-	mutable std::vector<std::pair<Rect, VehicleID>> sell_buttons; ///< Sell buttons of the strip, in window coordinates.
+	mutable std::vector<std::pair<Rect, VehicleID>> cells; ///< Vehicle cells of the strip, in window coordinates.
+	VehicleID cell_vehicle = VehicleID::Invalid(); ///< Vehicle whose cell menu is open.
 	Scrollbar *vscroll = nullptr;
 
 	MobileNewTrainWindow(WindowDesc &desc, TileIndex tile) : Window(desc), railtype(GetRailType(tile))
@@ -482,16 +521,16 @@ struct MobileNewTrainWindow : Window {
 				const Train *t = this->GetTarget();
 				if (t == nullptr) {
 					DrawString(tr.left, tr.right, CentreBounds(tr.top, tr.bottom, GetCharacterHeight(FontSize::Normal)), STR_MOBILE_TRAIN_BUY_ENGINE_FIRST, TextColour::Black);
-					this->sell_buttons.clear();
+					this->cells.clear();
 				} else {
-					DrawTrainStrip(t, tr, true, &this->sell_buttons);
+					DrawTrainStrip(t, tr, true, &this->cells);
 				}
 				break;
 			}
 
 			case WID_MNT_SUMMARY:
 				if (const Train *t = this->GetTarget(); t != nullptr) {
-					DrawString(r.Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0), GetTrainSummary(t), TextColour::Black, AlignmentH::Start, false, FontSize::Small);
+					DrawString(r.Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0), GetTrainSummary(t), TextColour::Black);
 				}
 				break;
 
@@ -521,11 +560,28 @@ struct MobileNewTrainWindow : Window {
 					} else {
 						key = GetString(STR_MOBILE_TRAIN_ENGINE_LINE, PackVelocity(e->GetDisplayMaxSpeed(), VehicleType::Train), e->GetPower());
 					}
-					DrawString(text.left, text.right, y + line, key, TextColour::Black, AlignmentH::Start, false, FontSize::Small);
+					DrawString(text.left, text.right, y + line, key, TextColour::Black);
 					tr.top += row;
 				}
 				break;
 			}
+		}
+	}
+
+	std::string GetMobileDropDownTitle(WidgetID) const override
+	{
+		return GetVehicleCellMenuTitle(this->cell_vehicle);
+	}
+
+	void OnDropdownSelect(WidgetID widget, int index, int) override
+	{
+		if (widget != WID_MNT_STRIP) return;
+		const Vehicle *v = Vehicle::GetIfValid(this->cell_vehicle);
+		if (v == nullptr) return;
+		switch (index) {
+			case VCM_SELL: SellTrainVehicle(this, v->index); break;
+			case VCM_REFIT: ShowVehicleRefitWindow(v, INVALID_VEH_ORDER_ID, this, false); break;
+			case VCM_DETAILS: ShowMobileTrainWindow(v->First(), false, true); break;
 		}
 	}
 
@@ -544,11 +600,10 @@ struct MobileNewTrainWindow : Window {
 				this->SetDirty();
 				break;
 
-			case WID_MNT_STRIP: {
-				VehicleID id = FindSellButton(this->sell_buttons, pt);
-				if (id != VehicleID::Invalid()) SellTrainVehicle(this, id);
+			case WID_MNT_STRIP:
+				this->cell_vehicle = FindVehicleCell(this->cells, pt);
+				if (this->cell_vehicle != VehicleID::Invalid()) ShowVehicleCellMenu(this, widget, this->cell_vehicle);
 				break;
-			}
 
 			case WID_MNT_LIST: {
 				auto it = this->vscroll->GetScrolledItemFromWidget(this->engines, pt.y, this, WID_MNT_LIST, WidgetDimensions::scaled.framerect.top, ScaleGUITrad(MOBILE_ROW));
@@ -694,7 +749,9 @@ struct MobileTrainWindow : Window {
 	bool details = false; ///< Showing the Details tab.
 	bool adding = false; ///< Adding stops: map taps on stations add orders.
 	std::vector<StationID> chips; ///< Suggested stations while adding stops.
-	mutable std::vector<std::pair<Rect, VehicleID>> sell_buttons; ///< Sell buttons of the details strip.
+	size_t shown_chips = 0; ///< Number of suggestion rows the layout has room for.
+	mutable std::vector<std::pair<Rect, VehicleID>> cells; ///< Vehicle cells of the details strip.
+	VehicleID cell_vehicle = VehicleID::Invalid(); ///< Vehicle whose cell menu is open.
 	Scrollbar *vscroll = nullptr;
 
 	MobileTrainWindow(WindowDesc &desc, const Train *v) : Window(desc)
@@ -730,10 +787,10 @@ struct MobileTrainWindow : Window {
 		set_plane(WID_MTR_SEL_START, stopped ? 0 : 1);
 		set_plane(WID_MTR_SEL_CONTENT, this->details ? 1 : 0);
 		set_plane(WID_MTR_SEL_CHIPS, this->adding && !this->details && !this->chips.empty() ? 0 : SZSP_HORIZONTAL);
-		for (int i = 0; i < 3; i++) {
-			NWidgetStacked *chip = nullptr;
-			(void)chip;
-			this->SetWidgetDisabledState(WID_MTR_CHIP_FIRST + i, static_cast<size_t>(i) >= this->chips.size());
+		/* The suggestions panel is as tall as its rows. */
+		if (this->shown_chips != this->chips.size()) {
+			this->shown_chips = this->chips.size();
+			reinit = true;
 		}
 		/* Start needs a route; disabled, it's grey rather than a dimmed green that reads as active. */
 		bool can_start = v->GetNumManualOrders() >= 2 || !stopped;
@@ -859,6 +916,9 @@ struct MobileTrainWindow : Window {
 			case WID_MTR_STATUS:
 				size.height = std::max<uint>(size.height, 2 * GetCharacterHeight(FontSize::Normal));
 				break;
+			case WID_MTR_CHIP_FIRST:
+				size.height = static_cast<uint>(std::max<size_t>(1, this->chips.size())) * ScaleGUITrad(32);
+				break;
 			case WID_MTR_TITLE:
 				size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal));
 				break;
@@ -876,6 +936,32 @@ struct MobileTrainWindow : Window {
 	 * @param o The order.
 	 * @return The text.
 	 */
+	/**
+	 * Where an order goes, as its row names it.
+	 * @param o The order.
+	 * @return The station, waypoint, "Depot", ...
+	 */
+	static std::string GetOrderName(const Order &o)
+	{
+		switch (o.GetType()) {
+			case OT_GOTO_STATION: return GetString(STR_STATION_NAME, o.GetDestination());
+			case OT_GOTO_WAYPOINT: return GetString(STR_WAYPOINT_NAME, o.GetDestination());
+			case OT_GOTO_DEPOT: return GetString(STR_MOBILE_ORDERS_DEPOT);
+			case OT_CONDITIONAL: return GetString(STR_MOBILE_ORDERS_CONDITIONAL);
+			default: return GetString(STR_MOBILE_ORDERS_OTHER);
+		}
+	}
+
+	std::string GetMobileDropDownTitle(WidgetID widget) const override
+	{
+		if (widget == WID_MTR_ORDERS) {
+			const Train *v = this->GetTrain();
+			const Order *o = v == nullptr ? nullptr : v->GetOrder(this->menu_order);
+			return o == nullptr ? std::string{} : GetOrderName(*o);
+		}
+		return GetVehicleCellMenuTitle(this->cell_vehicle);
+	}
+
 	static std::string GetOrderFlagsText(const Order &o)
 	{
 		std::string text = GetString(o.GetNonStopType().Test(OrderNonStopFlag::NonStop) ? STR_MOBILE_ORDERS_NON_STOP : STR_MOBILE_ORDERS_STOPS_EVERYWHERE);
@@ -913,12 +999,16 @@ struct MobileTrainWindow : Window {
 		bool rtl = _current_text_dir == TD_RTL;
 		int line = GetCharacterHeight(FontSize::Normal);
 
-		/* Suggested stations: drawn here, truncated, so long names don't widen the window. */
-		if (widget >= WID_MTR_CHIP_FIRST && widget <= WID_MTR_CHIP_LAST) {
-			size_t i = widget - WID_MTR_CHIP_FIRST;
-			if (i >= this->chips.size()) return;
-			Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
-			DrawString(tr.left, tr.right, CentreBounds(r.top, r.bottom, line), GetString(STR_MOBILE_ORDERS_CHIP, this->chips[i]), TextColour::Black, AlignmentH::Centre);
+		/* Suggested stations: full-width rows of 32, "+ <station>". */
+		if (widget == WID_MTR_CHIP_FIRST) {
+			Rect tr = r.Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+			int row = ScaleGUITrad(32);
+			for (StationID st : this->chips) {
+				Rect rr = tr.WithHeight(row);
+				DrawString(rr.left, rr.right, CentreBounds(rr.top, rr.bottom, line), GetString(STR_MOBILE_ORDERS_CHIP, st), TextColour::Black);
+				GfxFillRect(r.left, rr.bottom, r.right, rr.bottom, GetColourGradient(Colours::Grey, Shade::Dark));
+				tr.top += row;
+			}
 			return;
 		}
 
@@ -970,22 +1060,20 @@ struct MobileTrainWindow : Window {
 					Rect rr = tr.WithHeight(row);
 					bool current = index == v->cur_implicit_order_index || index == v->cur_real_order_index;
 					if (current) DrawFrameRect(rr, Colours::Grey, FrameFlag::Lowered);
+					/* Dragging: the picked-up order is lit, a line marks where it would go. */
+					if (index == this->drag_order) GfxFillRect(rr, GetColourGradient(Colours::Grey, Shade::Lightest));
+					if (this->drag_target >= 0 && index == this->drag_target && this->drag_target != this->drag_order) {
+						int ly = this->drag_target < this->drag_order ? rr.top : rr.bottom - ScaleGUITrad(2);
+						GfxFillRect(rr.left, ly, rr.right, ly + ScaleGUITrad(2), PC_BLACK);
+					}
 					Rect menu = GetOrderMenuButton(rr);
 					DrawString(menu.left, menu.right, CentreBounds(rr.top, rr.bottom, line), STR_MOBILE_ORDERS_MENU, TextColour::Black, AlignmentH::Centre);
 					Rect num = rr.WithWidth(ScaleGUITrad(32), rtl);
 					DrawString(num.left, num.right, CentreBounds(rr.top, rr.bottom, line), current ? GetString(STR_JUST_RIGHT_ARROW) : GetString(STR_JUST_INT, index + 1), TextColour::Black, AlignmentH::Centre);
 					Rect text = rr.Indent(num.Width(), rtl).Indent(menu.Width(), !rtl);
 					int y = CentreBounds(rr.top, rr.bottom, 2 * line);
-					std::string name;
-					switch (o.GetType()) {
-						case OT_GOTO_STATION: name = GetString(STR_STATION_NAME, o.GetDestination()); break;
-						case OT_GOTO_WAYPOINT: name = GetString(STR_WAYPOINT_NAME, o.GetDestination()); break;
-						case OT_GOTO_DEPOT: name = GetString(STR_MOBILE_ORDERS_DEPOT); break;
-						case OT_CONDITIONAL: name = GetString(STR_MOBILE_ORDERS_CONDITIONAL); break;
-						default: name = GetString(STR_MOBILE_ORDERS_OTHER); break;
-					}
-					DrawString(text.left, text.right, y, name, TextColour::Black);
-					if (o.IsType(OT_GOTO_STATION)) DrawString(text.left, text.right, y + line, GetOrderFlagsText(o), TextColour::Black, AlignmentH::Start, false, FontSize::Small);
+					DrawString(text.left, text.right, y, GetOrderName(o), TextColour::Black);
+					if (o.IsType(OT_GOTO_STATION)) DrawString(text.left, text.right, y + line, GetOrderFlagsText(o), TextColour::Black);
 					tr.top += row;
 					index++;
 				}
@@ -993,7 +1081,7 @@ struct MobileTrainWindow : Window {
 			}
 
 			case WID_MTR_STRIP:
-				DrawTrainStrip(v, r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0), v->IsStoppedInDepot(), &this->sell_buttons);
+				DrawTrainStrip(v, r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0), true, &this->cells);
 				break;
 
 			case WID_MTR_DETAILS: {
@@ -1037,9 +1125,66 @@ struct MobileTrainWindow : Window {
 	}
 
 	VehicleOrderID menu_order = 0; ///< Order whose ⋯ menu is open.
+	int drag_order = -1; ///< Order being moved by a long-press drag; -1 for none.
+	int drag_target = -1; ///< Where it would go.
+
+	/**
+	 * The order row at a point of the window.
+	 * @param y Window y.
+	 * @return The order index, clamped to the list; -1 when there are no orders.
+	 */
+	int GetOrderRowAt(int y) const
+	{
+		const Train *v = this->GetTrain();
+		if (v == nullptr || v->GetNumOrders() == 0) return -1;
+		int row = (y - this->GetWidget<NWidgetBase>(WID_MTR_ORDERS)->pos_y - WidgetDimensions::scaled.framerect.top) / ScaleGUITrad(MOBILE_ORDER_ROW);
+		return Clamp(this->vscroll->GetPosition() + row, 0, v->GetNumOrders() - 1);
+	}
+
+	bool OnLongPress(Point pt, WidgetID widget) override
+	{
+		/* Long press an order to pick it up, drag it up or down, lift to drop it (round 4 design, section 4.5). */
+		if (widget != WID_MTR_ORDERS || this->details) return false;
+		this->drag_order = this->drag_target = this->GetOrderRowAt(pt.y);
+		if (this->drag_order < 0) return false;
+		this->SetWidgetDirty(WID_MTR_ORDERS);
+		return true;
+	}
+
+	void OnLongPressMove(Point pt) override
+	{
+		int target = this->GetOrderRowAt(pt.y);
+		if (target != this->drag_target) {
+			this->drag_target = target;
+			this->SetWidgetDirty(WID_MTR_ORDERS);
+		}
+	}
+
+	void OnLongPressEnd(Point pt, bool cancelled) override
+	{
+		const Train *v = this->GetTrain();
+		if (!cancelled && v != nullptr && this->drag_order >= 0) {
+			int target = this->GetOrderRowAt(pt.y);
+			if (target >= 0 && target != this->drag_order) {
+				Command<Commands::MoveOrder>::Post(STR_ERROR_CAN_T_MOVE_THIS_ORDER, v->tile, v->index, this->drag_order, target);
+			}
+		}
+		this->drag_order = this->drag_target = -1;
+		this->SetWidgetDirty(WID_MTR_ORDERS);
+	}
 
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
+		if (widget == WID_MTR_STRIP) {
+			const Vehicle *cv = Vehicle::GetIfValid(this->cell_vehicle);
+			if (cv == nullptr) return;
+			switch (index) {
+				case VCM_SELL: SellTrainVehicle(this, cv->index); break;
+				case VCM_REFIT: ShowVehicleRefitWindow(cv, INVALID_VEH_ORDER_ID, this, false); break;
+				case VCM_DETAILS: this->details = true; this->UpdateState(); break;
+			}
+			return;
+		}
 		if (widget != WID_MTR_ORDERS) return;
 		const Train *v = this->GetTrain();
 		const Order *o = v == nullptr ? nullptr : v->GetOrder(this->menu_order);
@@ -1106,11 +1251,10 @@ struct MobileTrainWindow : Window {
 					ShowErrorMessage(GetEncodedString(STR_ERROR_CAN_T_BUY_TRAIN), GetEncodedString(STR_MOBILE_TRAIN_CLONE_IN_DEPOT), WarningLevel::Info);
 				}
 				break;
-			case WID_MTR_STRIP: {
-				VehicleID id = FindSellButton(this->sell_buttons, pt);
-				if (id != VehicleID::Invalid()) SellTrainVehicle(this, id);
+			case WID_MTR_STRIP:
+				this->cell_vehicle = FindVehicleCell(this->cells, pt);
+				if (this->cell_vehicle != VehicleID::Invalid()) ShowVehicleCellMenu(this, widget, this->cell_vehicle);
 				break;
-			}
 			case WID_MTR_ORDERS: {
 				int row = (pt.y - this->GetWidget<NWidgetBase>(WID_MTR_ORDERS)->pos_y - WidgetDimensions::scaled.framerect.top) / ScaleGUITrad(MOBILE_ORDER_ROW);
 				VehicleOrderID index = static_cast<VehicleOrderID>(this->vscroll->GetPosition() + std::max(0, row));
@@ -1118,8 +1262,8 @@ struct MobileTrainWindow : Window {
 				break;
 			}
 			default:
-				if (widget >= WID_MTR_CHIP_FIRST && widget <= WID_MTR_CHIP_LAST) {
-					size_t i = widget - WID_MTR_CHIP_FIRST;
+				if (widget == WID_MTR_CHIP_FIRST) {
+					size_t i = (pt.y - this->GetWidget<NWidgetBase>(WID_MTR_CHIP_FIRST)->pos_y) / ScaleGUITrad(32);
 					if (i < this->chips.size()) this->AddStop(Station::GetIfValid(this->chips[i]));
 				}
 				break;
@@ -1168,13 +1312,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_train_widgets
 				NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_MTR_ORDERS_SCROLL),
 			EndContainer(),
 			NWidget(NWID_SELECTION, Colours::Invalid, WID_MTR_SEL_CHIPS),
-				NWidget(WWT_PANEL, Colours::Grey),
-					NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize), SetPadding(4), SetPIP(0, 4, 0),
-						NWidget(WWT_PUSHBTN, Colours::Grey, WID_MTR_CHIP_FIRST + 0), SetMinimalSize(40, 32), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_ORDERS_CHIP_TOOLTIP),
-						NWidget(WWT_PUSHBTN, Colours::Grey, WID_MTR_CHIP_FIRST + 1), SetMinimalSize(40, 32), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_ORDERS_CHIP_TOOLTIP),
-						NWidget(WWT_PUSHBTN, Colours::Grey, WID_MTR_CHIP_FIRST + 2), SetMinimalSize(40, 32), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_ORDERS_CHIP_TOOLTIP),
-					EndContainer(),
-				EndContainer(),
+				NWidget(WWT_PANEL, Colours::Grey, WID_MTR_CHIP_FIRST), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_ORDERS_CHIP_TOOLTIP), EndContainer(),
 			EndContainer(),
 			NWidget(WWT_TEXTBTN, Colours::Grey, WID_MTR_ADD_STOPS), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_ORDERS_ADD_STOPS, STR_MOBILE_ORDERS_ADD_STOPS_TOOLTIP),
 		EndContainer(),
@@ -1205,8 +1343,9 @@ static WindowDesc _mobile_train_desc(
  * Show a train's window in the sheet slot.
  * @param v The train.
  * @param add_stops Start adding stops right away (from "Next: orders").
+ * @param show_details Show the Details tab.
  */
-void ShowMobileTrainWindow(const Vehicle *v, bool add_stops)
+void ShowMobileTrainWindow(const Vehicle *v, bool add_stops, bool show_details)
 {
 	if (v == nullptr || v->type != VehicleType::Train) return;
 	v = v->First();
@@ -1214,6 +1353,11 @@ void ShowMobileTrainWindow(const Vehicle *v, bool add_stops)
 	if (w == nullptr) w = new MobileTrainWindow(_mobile_train_desc, Train::From(v));
 	MobileShowInfoWindow(w);
 	if (add_stops) static_cast<MobileTrainWindow *>(w)->SetAdding(true);
+	if (show_details) {
+		MobileTrainWindow *tw = static_cast<MobileTrainWindow *>(w);
+		tw->details = true;
+		tw->UpdateState();
+	}
 }
 
 /** Stop adding stops (Done in the stops bar). */
@@ -1373,7 +1517,7 @@ struct MobileTrainListWindow : Window {
 			} else {
 				state = GetString(STR_MOBILE_TRAIN_RUNNING);
 			}
-			DrawString(text.left, text.right, y + line, state, stopped ? TextColour::Red : TextColour::Black, AlignmentH::Start, false, FontSize::Small);
+			DrawString(text.left, text.right, y + line, state, stopped ? TextColour::Red : TextColour::Black);
 			tr.top += row;
 		}
 	}

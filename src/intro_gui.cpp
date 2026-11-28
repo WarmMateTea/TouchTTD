@@ -38,6 +38,7 @@
 #include "mobile_app.h"
 #include "mobile_newgame_gui.h"
 #include "mobile_settings_gui.h"
+#include "mobile_saveload_gui.h"
 #include "video/video_driver.hpp"
 #include "widgets/intro_widget.h"
 
@@ -92,6 +93,9 @@ struct IntroGameViewportCommand {
 struct SelectGameWindow : public Window {
 	bool mobile = false; ///< Uses the mobile layout: a panel on the left (landscape) or across the top (portrait), with Continue.
 	std::string continue_save; ///< Save that Continue loads; empty for none.
+	std::string continue_company; ///< Company name in that save.
+	std::string continue_details; ///< Date and money in that save.
+	bool warned = false; ///< The startup warnings were shown.
 
 	/** Vector of viewport commands parsed. */
 	std::vector<IntroGameViewportCommand> intro_viewport_commands{};
@@ -257,10 +261,15 @@ struct SelectGameWindow : public Window {
 		if (VideoDriver::GetInstance() != nullptr) safe = VideoDriver::GetInstance()->GetSafeArea();
 		bool landscape = _screen.width > _screen.height;
 		int width = landscape ? ScaleGUITrad(380) : safe.Width() - 2 * margin;
-		int height = landscape ? safe.Height() - 2 * margin : this->nested_root->smallest_y;
+		int height = this->nested_root->smallest_y;
 		ResizeWindow(this, width - this->width, std::max<int>(0, height - this->height), false);
 		this->left = safe.left + margin;
 		this->top = safe.top + margin;
+		/* The startup warning: beside the panel in landscape, above it in portrait. */
+		if (Window *banner = FindWindowById(WindowClass::MobileError, 0); banner != nullptr) {
+			PlaceMobileMenuBanner(banner);
+			if (!landscape) this->top = banner->top + banner->height + margin / 2;
+		}
 		this->SetDirty();
 	}
 
@@ -268,16 +277,24 @@ struct SelectGameWindow : public Window {
 	{
 		if (this->mobile) {
 			this->continue_save = GetMobileContinueSave();
+			if (!this->continue_save.empty()) GetMobileSaveHeader(this->continue_save, this->continue_company, this->continue_details);
 			if (NWidgetStacked *sel = this->GetWidget<NWidgetStacked>(WID_SGI_SEL_CONTINUE); sel != nullptr) sel->SetDisplayedPlane(this->continue_save.empty() ? SZSP_HORIZONTAL : 0);
 		}
 
 		/* The mobile layout resizes: hidden rows must stay horizontally resizable (SZSP_HORIZONTAL). */
 		int hidden = this->mobile ? SZSP_HORIZONTAL : SZSP_NONE;
 		bool missing_sprites = _missing_extra_graphics > 0 && !IsReleasedVersion();
-		this->GetWidget<NWidgetStacked>(WID_SGI_BASESET_SELECTION)->SetDisplayedPlane(missing_sprites ? 0 : hidden);
-
 		bool missing_lang = _current_language->missing >= _settings_client.gui.missing_strings_threshold && !IsReleasedVersion();
-		this->GetWidget<NWidgetStacked>(WID_SGI_TRANSLATION_SELECTION)->SetDisplayedPlane(missing_lang ? 0 : hidden);
+		if (this->mobile) {
+			/* Startup warnings go to the banner at the top, not into the menu. */
+			this->GetWidget<NWidgetStacked>(WID_SGI_BASESET_SELECTION)->SetDisplayedPlane(hidden);
+			this->GetWidget<NWidgetStacked>(WID_SGI_TRANSLATION_SELECTION)->SetDisplayedPlane(hidden);
+			if (missing_sprites && !this->warned) ShowMobileMenuBanner(GetString(STR_INTRO_BASESET, _missing_extra_graphics));
+			this->warned = true;
+		} else {
+			this->GetWidget<NWidgetStacked>(WID_SGI_BASESET_SELECTION)->SetDisplayedPlane(missing_sprites ? 0 : hidden);
+			this->GetWidget<NWidgetStacked>(WID_SGI_TRANSLATION_SELECTION)->SetDisplayedPlane(missing_lang ? 0 : hidden);
+		}
 	}
 
 	/**
@@ -286,30 +303,62 @@ struct SelectGameWindow : public Window {
 	 */
 	void DrawContinue(const Rect &r) const
 	{
+		/* One font, colour for the hierarchy: "Continue · <company>" over "<date> · <money> · <time ago>". */
 		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(8), 0);
-		int large = GetCharacterHeight(FontSize::Large);
+		bool rtl = _current_text_dir == TD_RTL;
+		Dimension play = GetSpriteSize(SPR_IMG_PLAY_MUSIC);
+		DrawSprite(SPR_IMG_PLAY_MUSIC, PAL_NONE, rtl ? tr.right - play.width + 1 : tr.left, CentreBounds(r.top, r.bottom, play.height));
+		tr = tr.Indent(play.width + ScaleGUITrad(8), rtl);
 		int line = GetCharacterHeight(FontSize::Normal);
-		int y = CentreBounds(r.top, r.bottom, large + 2 * line);
-		DrawString(tr.left, tr.right, y, STR_MOBILE_MENU_CONTINUE, TextColour::White, AlignmentH::Start, false, FontSize::Large);
-		std::filesystem::path path = OTTD2FS(this->continue_save);
-		std::string name = FS2OTTD(path.stem().native());
-		/* The save made when the player left the app. */
-		if (this->continue_save == GetMobileBackgroundSavePath()) name = GetString(STR_MOBILE_SAVE_BACKGROUND_NAME);
-		DrawString(tr.left, tr.right, y + large, name, TextColour::White);
+		int y = CentreBounds(r.top, r.bottom, 2 * line + ScaleGUITrad(3));
+		std::string title = this->continue_company.empty() ? GetString(STR_MOBILE_MENU_CONTINUE) : GetString(STR_MOBILE_MENU_CONTINUE_COMPANY, this->continue_company);
+		DrawString(tr.left, tr.right, y, title, TextColour::White);
 
-		std::error_code ec;
-		auto written = std::filesystem::last_write_time(path, ec);
-		if (ec) return;
-		auto minutes = std::chrono::duration_cast<std::chrono::minutes>(std::filesystem::file_time_type::clock::now() - written).count();
 		std::string ago;
-		if (minutes < 60) {
-			ago = GetString(STR_MOBILE_SAVED_MINUTES_AGO, std::max<int64_t>(minutes, 0));
-		} else if (minutes < 48 * 60) {
-			ago = GetString(STR_MOBILE_SAVED_HOURS_AGO, minutes / 60);
-		} else {
-			ago = GetString(STR_MOBILE_SAVED_DAYS_AGO, minutes / (24 * 60));
+		std::error_code ec;
+		auto written = std::filesystem::last_write_time(OTTD2FS(this->continue_save), ec);
+		if (!ec) {
+			auto minutes = std::max<int64_t>(0, std::chrono::duration_cast<std::chrono::minutes>(std::filesystem::file_time_type::clock::now() - written).count());
+			StringID str = minutes < 60 ? STR_MOBILE_AGO_MINUTES : (minutes < 48 * 60 ? STR_MOBILE_AGO_HOURS : STR_MOBILE_AGO_DAYS);
+			ago = GetString(str, minutes < 60 ? minutes : (minutes < 48 * 60 ? minutes / 60 : minutes / (24 * 60)));
 		}
-		DrawString(tr.left, tr.right, y + large + line, ago, TextColour::White, AlignmentH::Start, false, FontSize::Small);
+		std::string details = this->continue_details.empty() ? ago : (ago.empty() ? this->continue_details : this->continue_details + GetString(STR_MOBILE_ORDERS_SEPARATOR) + ago);
+		DrawString(tr.left, tr.right, y + line + ScaleGUITrad(3), details, TextColour::Cream);
+	}
+
+	/**
+	 * The OpenTTD logo, as drawn behind the menu, in the menu's header.
+	 * @param r The header.
+	 */
+	static void DrawLogo(const Rect &r)
+	{
+		static const std::initializer_list<SpriteID> letters = {SPR_OTTD_O, SPR_OTTD_P, SPR_OTTD_E, SPR_OTTD_N, SPR_OTTD_T, SPR_OTTD_T, SPR_OTTD_D};
+		int spacing = ScaleGUITrad(10);
+		int x = _current_text_dir == TD_RTL ? r.right : r.left;
+		for (SpriteID sprite : letters) {
+			Dimension d = GetSpriteSize(sprite);
+			if (_current_text_dir == TD_RTL) x -= d.width;
+			DrawSprite(sprite, PAL_NONE, x, r.top);
+			x += _current_text_dir == TD_RTL ? -spacing : static_cast<int>(d.width) + spacing;
+		}
+	}
+
+	/** @return Size of the logo. */
+	static Dimension GetLogoSize()
+	{
+		static const std::initializer_list<SpriteID> letters = {SPR_OTTD_O, SPR_OTTD_P, SPR_OTTD_E, SPR_OTTD_N, SPR_OTTD_T, SPR_OTTD_T, SPR_OTTD_D};
+		Dimension d{0, 0};
+		for (SpriteID sprite : letters) {
+			Dimension s = GetSpriteSize(sprite);
+			d.width += s.width + ScaleGUITrad(10);
+			d.height = std::max(d.height, s.height);
+		}
+		return d;
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
+	{
+		if (this->mobile && widget == WID_SGI_VERSION) size.height = std::max(size.height, GetLogoSize().height);
 	}
 
 	void DrawWidget(const Rect &r, WidgetID widget) const override
@@ -320,7 +369,7 @@ struct SelectGameWindow : public Window {
 				break;
 
 			case WID_SGI_VERSION:
-				DrawString(r, GetString(STR_INTRO_VERSION), TextColour::White, AlignmentH::End, false, FontSize::Small);
+				DrawLogo(r);
 				break;
 
 			case WID_SGI_BASESET:
@@ -463,13 +512,11 @@ static constexpr std::initializer_list<NWidgetPart> _nested_select_game_widgets 
 	NWidget(WWT_PUSHIMGTEXTBTN, colour, widget), SetMinimalSize(0, 40), SetSpriteStringTip(sprite, string, tooltip), SetAlignment({AlignmentH::Start, AlignmentV::Middle}), SetFill(1, 0), SetResize(1, 0)
 
 /** The parts of the mobile main menu above and below the buttons; see the round 4 design, section 5. */
+/** The parts of the mobile main menu above the buttons; see the round 5 design, section 2. */
 #define MOBILE_MENU_HEAD \
-	NWidget(NWID_HORIZONTAL), \
-		NWidget(WWT_LABEL, Colours::Invalid), SetStringTip(STR_INTRO_CAPTION), SetTextStyle(TextColour::White, FontSize::Large), \
-		NWidget(WWT_EMPTY, Colours::Invalid, WID_SGI_VERSION), SetMinimalSize(0, 12), SetFill(1, 1), SetResize(1, 0), \
-	EndContainer(), \
+	NWidget(WWT_EMPTY, Colours::Invalid, WID_SGI_VERSION), SetFill(1, 0), SetResize(1, 0), \
 	NWidget(NWID_SELECTION, Colours::Invalid, WID_SGI_SEL_CONTINUE), \
-		NWidget(WWT_PUSHBTN, Colours::Green, WID_SGI_CONTINUE), SetMinimalSize(0, 64), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_MENU_CONTINUE_TOOLTIP), \
+		NWidget(WWT_PUSHBTN, Colours::Green, WID_SGI_CONTINUE), SetMinimalSize(0, 48), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_MENU_CONTINUE_TOOLTIP), \
 	EndContainer(), \
 	NWidget(NWID_SELECTION, Colours::Invalid, WID_SGI_BASESET_SELECTION), \
 		NWidget(WWT_EMPTY, Colours::Invalid, WID_SGI_BASESET), SetFill(1, 0), SetResize(1, 0), \
@@ -493,10 +540,9 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_select_game_l
 					MOBILE_MENU_BUTTON(WID_SGI_LOAD_GAME, Colours::Orange, SPR_IMG_SAVE, STR_INTRO_LOAD_GAME, STR_INTRO_TOOLTIP_LOAD_GAME),
 					MOBILE_MENU_BUTTON(WID_SGI_CONTENT_DOWNLOAD, Colours::Orange, SPR_IMG_SHOW_VEHICLES, STR_INTRO_ONLINE_CONTENT, STR_INTRO_TOOLTIP_ONLINE_CONTENT),
 					MOBILE_MENU_BUTTON(WID_SGI_EDIT_SCENARIO, Colours::Orange, SPR_IMG_SMALLMAP, STR_INTRO_SCENARIO_EDITOR, STR_INTRO_TOOLTIP_SCENARIO_EDITOR),
-					MOBILE_MENU_BUTTON(WID_SGI_EXIT, Colours::Red, SPR_IMG_QUERY, STR_MOBILE_MAIN_QUIT, STR_INTRO_TOOLTIP_QUIT),
+					NWidget(WWT_PUSHTXTBTN, Colours::Red, WID_SGI_EXIT), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_MAIN_QUIT, STR_INTRO_TOOLTIP_QUIT),
 				EndContainer(),
 			EndContainer(),
-			NWidget(NWID_SPACER), SetFill(1, 1), SetResize(1, 1),
 		EndContainer(),
 	EndContainer(),
 };
@@ -512,7 +558,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_mobile_select_game_p
 			MOBILE_MENU_BUTTON(WID_SGI_PLAY_NETWORK, Colours::Orange, SPR_IMG_COMPANY_GENERAL, STR_INTRO_MULTIPLAYER, STR_INTRO_TOOLTIP_MULTIPLAYER),
 			MOBILE_MENU_BUTTON(WID_SGI_EDIT_SCENARIO, Colours::Orange, SPR_IMG_SMALLMAP, STR_INTRO_SCENARIO_EDITOR, STR_INTRO_TOOLTIP_SCENARIO_EDITOR),
 			MOBILE_MENU_BUTTON(WID_SGI_HELP, Colours::Orange, SPR_IMG_QUERY, STR_INTRO_HELP, STR_INTRO_TOOLTIP_HELP),
-			MOBILE_MENU_BUTTON(WID_SGI_EXIT, Colours::Red, SPR_IMG_QUERY, STR_MOBILE_MAIN_QUIT, STR_INTRO_TOOLTIP_QUIT),
+			NWidget(WWT_PUSHTXTBTN, Colours::Red, WID_SGI_EXIT), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_MAIN_QUIT, STR_INTRO_TOOLTIP_QUIT),
 		EndContainer(),
 	EndContainer(),
 };

@@ -388,6 +388,243 @@ static void ResetAllSettingsConfirmationCallback(Window *w, bool confirmed)
 	}
 }
 
+/*
+ * The Game Options controls as functions, shared by the Game Options window and the mobile layout's Settings
+ * (round 5 design, batch 2), so both change things the same way.
+ */
+
+/**
+ * Build the currency dropdown.
+ * @param opt The settings being changed.
+ * @param[out] selected_index The current currency.
+ * @return The list.
+ */
+DropDownList BuildCurrencyDropDownList(const GameSettings &opt, int *selected_index)
+{
+	DropDownList list;
+	*selected_index = to_underlying(opt.locale.currency);
+	Currencies disabled = _game_mode == GameMode::Menu ? Currencies{} : GetMaskOfAllowedCurrencies().Flip();
+
+	/* Add non-custom currencies; sorted naturally */
+	for (Currency i : EnumRange(Currency::End)) {
+		if (i == Currency::Custom) continue;
+		CurrencySpec &currency = _currency_specs[i];
+		if (currency.code.empty()) {
+			list.push_back(MakeDropDownListStringItem(currency.name, i, disabled.Test(i)));
+		} else {
+			list.push_back(MakeDropDownListStringItem(GetString(STR_GAME_OPTIONS_CURRENCY_CODE, currency.name, currency.code), i, disabled.Test(i)));
+		}
+	}
+	std::sort(list.begin(), list.end(), DropDownListStringItem::NatSortFunc);
+
+	/* Append custom currency at the end */
+	list.push_back(MakeDropDownListDividerItem()); // separator line
+	list.push_back(MakeDropDownListStringItem(STR_GAME_OPTIONS_CURRENCY_CUSTOM, Currency::Custom, disabled.Test(Currency::Custom)));
+	return list;
+}
+
+/**
+ * The name of the current currency.
+ * @param opt The settings shown.
+ * @return The name, with its code.
+ */
+std::string GetCurrencyLabel(const GameSettings &opt)
+{
+	const CurrencySpec &currency = _currency_specs[opt.locale.currency];
+	if (currency.code.empty()) return GetString(currency.name);
+	return GetString(STR_GAME_OPTIONS_CURRENCY_CODE, currency.name, currency.code);
+}
+
+/**
+ * Change the currency.
+ * @param opt The settings being changed.
+ * @param index The currency, from the dropdown.
+ */
+void ChangeCurrency(GameSettings &opt, int index)
+{
+	Currency currency = static_cast<Currency>(index);
+	if (currency == Currency::Custom) ShowCustCurrency();
+	opt.locale.currency = currency;
+	ReInitAllWindows(false);
+}
+
+/**
+ * Index of the current autosave interval in the autosave dropdown.
+ * @return The index.
+ */
+static int GetAutosaveIndex()
+{
+	int index = 0;
+	for (auto &minutes : _autosave_dropdown_to_minutes) {
+		index++;
+		if (_settings_client.gui.autosave_interval <= minutes) break;
+	}
+	return index - 1;
+}
+
+/**
+ * Build the autosave interval dropdown.
+ * @param[out] selected_index The current interval.
+ * @return The list.
+ */
+DropDownList BuildAutosaveDropDownList(int *selected_index)
+{
+	DropDownList list;
+	*selected_index = GetAutosaveIndex();
+	const StringID *items = _autosave_dropdown;
+	for (uint i = 0; *items != INVALID_STRING_ID; items++, i++) {
+		list.push_back(MakeDropDownListStringItem(*items, i));
+	}
+	return list;
+}
+
+/**
+ * The current autosave interval.
+ * @return Its name.
+ */
+std::string GetAutosaveLabel()
+{
+	return GetString(_autosave_dropdown[GetAutosaveIndex()]);
+}
+
+/**
+ * Change the autosave interval.
+ * @param index The interval, from the dropdown.
+ */
+void ChangeAutosaveInterval(int index)
+{
+	_settings_client.gui.autosave_interval = _autosave_dropdown_to_minutes[index];
+	ChangeAutosaveFrequency(false);
+}
+
+/**
+ * Build the interface language dropdown.
+ * @param[out] selected_index The current language.
+ * @return The list.
+ */
+DropDownList BuildLanguageDropDownList(int *selected_index)
+{
+	DropDownList list;
+	for (uint i = 0; i < _languages.size(); i++) {
+		bool hide_language = IsReleasedVersion() && !_languages[i].IsReasonablyFinished();
+		if (hide_language) continue;
+		bool hide_percentage = IsReleasedVersion() || _languages[i].missing < _settings_client.gui.missing_strings_threshold;
+		std::string name;
+		if (&_languages[i] == _current_language) {
+			*selected_index = i;
+			name = _languages[i].own_name;
+		} else {
+			/* Especially with sprite-fonts, not all localized
+			 * names can be rendered. So instead, we use the
+			 * international names for anything but the current
+			 * selected language. This avoids showing a few ????
+			 * entries in the dropdown list. */
+			name = _languages[i].name;
+		}
+		if (hide_percentage) {
+			list.push_back(MakeDropDownListStringItem(std::move(name), i));
+		} else {
+			int percentage = (LANGUAGE_TOTAL_STRINGS - _languages[i].missing) * 100 / LANGUAGE_TOTAL_STRINGS;
+			list.push_back(MakeDropDownListStringItem(GetString(STR_GAME_OPTIONS_LANGUAGE_PERCENTAGE, std::move(name), percentage), i));
+		}
+	}
+	std::sort(list.begin(), list.end(), DropDownListStringItem::NatSortFunc);
+	return list;
+}
+
+/**
+ * Change the interface language.
+ * @param index The language, from the dropdown.
+ */
+void ChangeLanguage(int index)
+{
+	ReadLanguagePack(&_languages[index]);
+	CloseWindowByClass(WindowClass::QueryString);
+	CheckForMissingGlyphs();
+	ClearAllCachedNames();
+	UpdateAllVirtCoords();
+	CheckBlitter();
+	ReInitAllWindows(true);
+}
+
+/**
+ * Build the dropdown of a base set.
+ * @param type Which base set.
+ * @param[out] selected_index The set in use.
+ * @return The list.
+ */
+DropDownList BuildBaseSetDropDownList(BaseSetType type, int *selected_index)
+{
+	switch (type) {
+		case BaseSetType::Graphics: return BuildSetDropDownList<BaseGraphics>(selected_index);
+		case BaseSetType::Sounds: return BuildSetDropDownList<BaseSounds>(selected_index);
+		case BaseSetType::Music: return BuildSetDropDownList<BaseMusic>(selected_index);
+		default: NOT_REACHED();
+	}
+}
+
+/**
+ * The base set in use, with the number of its invalid files if any.
+ * @param type Which base set.
+ * @return Its label.
+ */
+std::string GetBaseSetLabel(BaseSetType type)
+{
+	switch (type) {
+		case BaseSetType::Graphics: return GetListLabel(BaseGraphics::GetUsedSet());
+		case BaseSetType::Sounds: return GetListLabel(BaseSounds::GetUsedSet());
+		case BaseSetType::Music: return GetListLabel(BaseMusic::GetUsedSet());
+		default: NOT_REACHED();
+	}
+}
+
+/**
+ * Change a base set. The base graphics can only change at the main menu, which then reloads.
+ * @param type Which base set.
+ * @param index The set, from the dropdown.
+ * @return \c true when the main menu has to reload (base graphics).
+ */
+bool ChangeBaseSet(BaseSetType type, int index)
+{
+	switch (type) {
+		case BaseSetType::Graphics:
+			if (_game_mode != GameMode::Menu) return false;
+			CloseWindowByClass(WindowClass::NewGRFParameters);
+			BaseGraphics::SetSet(BaseGraphics::GetSet(index));
+			return true;
+		case BaseSetType::Sounds: ChangeSoundSet(index); return false;
+		case BaseSetType::Music: ChangeMusicSet(index); return false;
+		default: NOT_REACHED();
+	}
+}
+
+/**
+ * Change the music or sound effects volume.
+ * @param music The music volume, else the sound effects volume.
+ * @param vol The new volume, 0 to 127.
+ */
+void ChangeVolume(bool music, uint8_t vol)
+{
+	if (music) {
+		_settings_client.music.music_vol = vol;
+		MusicDriver::GetInstance()->SetVolume(vol);
+	} else {
+		_settings_client.music.effect_vol = vol;
+		SetEffectVolume(vol);
+	}
+	SetWindowClassesDirty(WindowClass::Music);
+}
+
+/**
+ * Change the interface size, as the Game Options' slider does when released.
+ * @param scale The size in percent; capped to what the screen allows.
+ */
+void ChangeGUIScale(int scale)
+{
+	_gui_scale_cfg = std::min(scale, GetMaximumScale());
+	if (AdjustGUIZoom(false)) ReInitAllWindows(true);
+}
+
 struct GameOptionsWindow : Window {
 	static inline GameSettings *settings_ptr; ///< Pointer to the game settings being displayed and modified.
 
@@ -469,70 +706,17 @@ struct GameOptionsWindow : Window {
 	{
 		DropDownList list;
 		switch (widget) {
-			case WID_GO_CURRENCY_DROPDOWN: { // Setup currencies dropdown
-				*selected_index = to_underlying(this->opt->locale.currency);
-				Currencies disabled = _game_mode == GameMode::Menu ? Currencies{} : GetMaskOfAllowedCurrencies().Flip();
-
-				/* Add non-custom currencies; sorted naturally */
-				for (Currency i : EnumRange(Currency::End)) {
-					if (i == Currency::Custom) continue;
-					CurrencySpec &currency = _currency_specs[i];
-					if (currency.code.empty()) {
-						list.push_back(MakeDropDownListStringItem(currency.name, i, disabled.Test(i)));
-					} else {
-						list.push_back(MakeDropDownListStringItem(GetString(STR_GAME_OPTIONS_CURRENCY_CODE, currency.name, currency.code), i, disabled.Test(i)));
-					}
-				}
-				std::sort(list.begin(), list.end(), DropDownListStringItem::NatSortFunc);
-
-				/* Append custom currency at the end */
-				list.push_back(MakeDropDownListDividerItem()); // separator line
-				list.push_back(MakeDropDownListStringItem(STR_GAME_OPTIONS_CURRENCY_CUSTOM, Currency::Custom, disabled.Test(Currency::Custom)));
+			case WID_GO_CURRENCY_DROPDOWN: // Setup currencies dropdown
+				list = BuildCurrencyDropDownList(*this->opt, selected_index);
 				break;
-			}
 
-			case WID_GO_AUTOSAVE_DROPDOWN: { // Setup autosave dropdown
-				int index = 0;
-				for (auto &minutes : _autosave_dropdown_to_minutes) {
-					index++;
-					if (_settings_client.gui.autosave_interval <= minutes) break;
-				}
-				*selected_index = index - 1;
-
-				const StringID *items = _autosave_dropdown;
-				for (uint i = 0; *items != INVALID_STRING_ID; items++, i++) {
-					list.push_back(MakeDropDownListStringItem(*items, i));
-				}
+			case WID_GO_AUTOSAVE_DROPDOWN: // Setup autosave dropdown
+				list = BuildAutosaveDropDownList(selected_index);
 				break;
-			}
 
-			case WID_GO_LANG_DROPDOWN: { // Setup interface language dropdown
-				for (uint i = 0; i < _languages.size(); i++) {
-					bool hide_language = IsReleasedVersion() && !_languages[i].IsReasonablyFinished();
-					if (hide_language) continue;
-					bool hide_percentage = IsReleasedVersion() || _languages[i].missing < _settings_client.gui.missing_strings_threshold;
-					std::string name;
-					if (&_languages[i] == _current_language) {
-						*selected_index = i;
-						name = _languages[i].own_name;
-					} else {
-						/* Especially with sprite-fonts, not all localized
-						 * names can be rendered. So instead, we use the
-						 * international names for anything but the current
-						 * selected language. This avoids showing a few ????
-						 * entries in the dropdown list. */
-						name = _languages[i].name;
-					}
-					if (hide_percentage) {
-						list.push_back(MakeDropDownListStringItem(std::move(name), i));
-					} else {
-						int percentage = (LANGUAGE_TOTAL_STRINGS - _languages[i].missing) * 100 / LANGUAGE_TOTAL_STRINGS;
-						list.push_back(MakeDropDownListStringItem(GetString(STR_GAME_OPTIONS_LANGUAGE_PERCENTAGE, std::move(name), percentage), i));
-					}
-				}
-				std::sort(list.begin(), list.end(), DropDownListStringItem::NatSortFunc);
+			case WID_GO_LANG_DROPDOWN: // Setup interface language dropdown
+				list = BuildLanguageDropDownList(selected_index);
 				break;
-			}
 
 			case WID_GO_RESOLUTION_DROPDOWN: // Setup resolution dropdown
 				if (_resolutions.empty()) break;
@@ -592,20 +776,8 @@ struct GameOptionsWindow : Window {
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
 		switch (widget) {
-			case WID_GO_CURRENCY_DROPDOWN: {
-				const CurrencySpec &currency = _currency_specs[this->opt->locale.currency];
-				if (currency.code.empty()) return GetString(currency.name);
-				return GetString(STR_GAME_OPTIONS_CURRENCY_CODE, currency.name, currency.code);
-			}
-
-			case WID_GO_AUTOSAVE_DROPDOWN: {
-				int index = 0;
-				for (auto &minutes : _autosave_dropdown_to_minutes) {
-					index++;
-					if (_settings_client.gui.autosave_interval <= minutes) break;
-				}
-				return GetString(_autosave_dropdown[index - 1]);
-			}
+			case WID_GO_CURRENCY_DROPDOWN: return GetCurrencyLabel(*this->opt);
+			case WID_GO_AUTOSAVE_DROPDOWN: return GetAutosaveLabel();
 
 			case WID_GO_LANG_DROPDOWN:         return _current_language->own_name;
 			case WID_GO_BASE_GRF_DROPDOWN:     return GetListLabel(BaseGraphics::GetUsedSet());
@@ -1103,15 +1275,10 @@ struct GameOptionsWindow : Window {
 
 			case WID_GO_BASE_SFX_VOLUME:
 			case WID_GO_BASE_MUSIC_VOLUME: {
-				uint8_t &vol = (widget == WID_GO_BASE_MUSIC_VOLUME) ? _settings_client.music.music_vol : _settings_client.music.effect_vol;
+				uint8_t vol = (widget == WID_GO_BASE_MUSIC_VOLUME) ? _settings_client.music.music_vol : _settings_client.music.effect_vol;
 				if (ClickSliderWidget(this->GetWidget<NWidgetBase>(widget)->GetCurrentRect(), pt, 0, INT8_MAX, 0, vol)) {
-					if (widget == WID_GO_BASE_MUSIC_VOLUME) {
-						MusicDriver::GetInstance()->SetVolume(vol);
-					} else {
-						SetEffectVolume(vol);
-					}
+					ChangeVolume(widget == WID_GO_BASE_MUSIC_VOLUME, vol);
 					this->SetWidgetDirty(widget);
-					SetWindowClassesDirty(WindowClass::Music);
 				}
 
 				if (click_count > 0) this->mouse_capture_widget = widget;
@@ -1419,28 +1586,17 @@ struct GameOptionsWindow : Window {
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
 		switch (widget) {
-			case WID_GO_CURRENCY_DROPDOWN: { // Currency
-				Currency currency = static_cast<Currency>(index);
-				if (currency == Currency::Custom) ShowCustCurrency();
-				this->opt->locale.currency = currency;
-				ReInitAllWindows(false);
+			case WID_GO_CURRENCY_DROPDOWN: // Currency
+				ChangeCurrency(*this->opt, index);
 				break;
-			}
 
 			case WID_GO_AUTOSAVE_DROPDOWN: // Autosave options
-				_settings_client.gui.autosave_interval = _autosave_dropdown_to_minutes[index];
-				ChangeAutosaveFrequency(false);
+				ChangeAutosaveInterval(index);
 				this->SetDirty();
 				break;
 
 			case WID_GO_LANG_DROPDOWN: // Change interface language
-				ReadLanguagePack(&_languages[index]);
-				CloseWindowByClass(WindowClass::QueryString);
-				CheckForMissingGlyphs();
-				ClearAllCachedNames();
-				UpdateAllVirtCoords();
-				CheckBlitter();
-				ReInitAllWindows(true);
+				ChangeLanguage(index);
 				break;
 
 			case WID_GO_RESOLUTION_DROPDOWN: // Change resolution
@@ -1460,21 +1616,18 @@ struct GameOptionsWindow : Window {
 			}
 
 			case WID_GO_BASE_GRF_DROPDOWN:
-				if (_game_mode == GameMode::Menu) {
-					CloseWindowByClass(WindowClass::NewGRFParameters);
-					auto set = BaseGraphics::GetSet(index);
-					BaseGraphics::SetSet(set);
+				if (ChangeBaseSet(BaseSetType::Graphics, index)) {
 					this->reload = true;
 					this->InvalidateData();
 				}
 				break;
 
 			case WID_GO_BASE_SFX_DROPDOWN:
-				ChangeSoundSet(index);
+				ChangeBaseSet(BaseSetType::Sounds, index);
 				break;
 
 			case WID_GO_BASE_MUSIC_DROPDOWN:
-				ChangeMusicSet(index);
+				ChangeBaseSet(BaseSetType::Music, index);
 				break;
 
 			case WID_GO_RESTRICT_DROPDOWN:

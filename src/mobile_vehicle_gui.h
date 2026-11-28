@@ -24,7 +24,7 @@ struct Vehicle;
 
 void ShowMobileDepotWindow(TileIndex tile);
 void ShowMobileNewTrainWindow(TileIndex tile, VehicleID target);
-void ShowMobileTrainWindow(const Vehicle *v, bool add_stops = false);
+void ShowMobileTrainWindow(const Vehicle *v, bool add_stops = false, bool show_details = false);
 void MobileStopAddingStops();
 void ShowMobileTrainList(WindowNumber number, StationID station);
 bool MobileVehicleOnStationSignClick(const BaseStation *st);

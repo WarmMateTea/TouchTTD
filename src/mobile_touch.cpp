@@ -51,6 +51,7 @@ enum class TouchMode : uint8_t {
 	ListScroll, ///< One finger dragging over a scrollable list.
 	MapPan, ///< One finger dragging over the minimap, which pans it.
 	LongPress, ///< One finger held still; a tooltip or land information is shown.
+	ItemDrag, ///< One finger held still on something a window picked up; moving drags it.
 	Multi, ///< Two or more fingers: pan and zoom.
 	Ignore, ///< The gesture was finished or cancelled; wait until all fingers lift.
 };
@@ -79,11 +80,17 @@ static struct {
 	bool on_minimap = false; ///< The one- or two-finger gesture started on the minimap.
 	Point last{}; ///< Finger position at the last minimap pan step.
 
+	/* A window following a long press (#TouchMode::ItemDrag). */
+	WindowClass drag_cls = WindowClass::Invalid; ///< The window.
+	WindowNumber drag_num{}; ///< Its number.
+
 	/* Two fingers. */
 	Point mid{}; ///< Midpoint of the fingers.
 	float baseline = 0; ///< Finger distance at the last zoom step.
 	bool moved = false; ///< Whether the two-finger gesture panned or zoomed.
 } _touch;
+
+static Window *GetItemDragWindow();
 
 /**
  * Did the last input come from the touch screen?
@@ -246,6 +253,10 @@ void TouchDown(int64_t finger, int x, int y)
 		switch (_touch.mode) {
 			case TouchMode::Dragging: ReleaseLeft(_cursor.pos); break;
 			case TouchMode::LongPress: _input_pressed.Reset(ControlInput::Right); HandleMouseEvents(); break;
+			case TouchMode::ItemDrag:
+				if (Window *w = GetItemDragWindow(); w != nullptr) w->OnLongPressEnd({}, true);
+				_touch.drag_cls = WindowClass::Invalid;
+				break;
 			default: break;
 		}
 		_touch.mode = TouchMode::Multi;
@@ -281,6 +292,10 @@ void TouchMove(int64_t finger, int x, int y)
 		case TouchMode::MapPan:
 			PanMinimap(_touch.last, {x, y});
 			_touch.last = {x, y};
+			break;
+
+		case TouchMode::ItemDrag:
+			if (Window *w = GetItemDragWindow(); w != nullptr) w->OnLongPressMove({x - w->left, y - w->top});
 			break;
 
 		case TouchMode::ListScroll: {
@@ -358,6 +373,11 @@ void TouchUp(int64_t finger, int x, int y)
 			ReleaseLeft({x, y});
 			break;
 
+		case TouchMode::ItemDrag:
+			if (Window *w = GetItemDragWindow(); w != nullptr) w->OnLongPressEnd({x - w->left, y - w->top}, false);
+			_touch.drag_cls = WindowClass::Invalid;
+			break;
+
 		case TouchMode::LongPress:
 			/* The tooltip shows while the right button is down; releasing it closes the tooltip, without a click. */
 			_input_pressed.Reset(ControlInput::Right);
@@ -424,6 +444,12 @@ static bool ShowLongPress(Point pt)
 	NWidgetCore *nw = w->nested_root->GetWidgetFromPos(pt.x - w->left, pt.y - w->top);
 	if (nw == nullptr) return false;
 	Point wpt = {pt.x - w->left, pt.y - w->top};
+	/* The window may pick something up to drag (e.g. an order to move it). */
+	if (nw->GetIndex() >= 0 && w->OnLongPress(wpt, nw->GetIndex())) {
+		_touch.drag_cls = w->window_class;
+		_touch.drag_num = w->window_number;
+		return true;
+	}
 	_input_pressed.Set(ControlInput::Right);
 	if (nw->GetIndex() >= 0 && w->OnTooltip(wpt, nw->GetIndex(), TooltipCloseCondition::RightClick)) return true;
 	if (nw->GetToolTip() == STR_NULL) {
@@ -442,5 +468,15 @@ void TouchTick()
 
 	/* With nothing to show, it stays a press: lifting still taps and moving still drags. */
 	_touch.long_press_checked = true;
-	if (ShowLongPress(_touch.start)) _touch.mode = TouchMode::LongPress;
+	_touch.drag_cls = WindowClass::Invalid;
+	if (ShowLongPress(_touch.start)) _touch.mode = _touch.drag_cls != WindowClass::Invalid ? TouchMode::ItemDrag : TouchMode::LongPress;
+}
+
+/**
+ * The window following a long press, if it's still there.
+ * @return The window, or \c nullptr.
+ */
+static Window *GetItemDragWindow()
+{
+	return _touch.drag_cls == WindowClass::Invalid ? nullptr : FindWindowById(_touch.drag_cls, _touch.drag_num);
 }

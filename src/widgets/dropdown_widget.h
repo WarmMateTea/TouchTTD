@@ -18,6 +18,8 @@ enum DropdownMenuWidgets : WidgetID {
 	WID_DM_ITEMS, ///< Panel showing the dropdown items.
 	WID_DM_SHOW_SCROLL, ///< Hide scrollbar if too few items.
 	WID_DM_SCROLL, ///< Scrollbar.
+	WID_DM_TITLE_SEL, ///< Mobile layout: shows the title in portrait.
+	WID_DM_TITLE, ///< Mobile layout: title of the portrait sheet.
 };
 
 #endif /* WIDGETS_DROPDOWN_WIDGET_H */

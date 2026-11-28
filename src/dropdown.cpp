@@ -99,6 +99,10 @@ std::unique_ptr<DropDownListItem> MakeDropDownListCheckedItem(bool checked, Stri
 
 static constexpr std::initializer_list<NWidgetPart> _nested_dropdown_menu_widgets = {
 	NWidget(NWID_VERTICAL),
+		NWidget(NWID_SELECTION, Colours::Invalid, WID_DM_TITLE_SEL),
+			NWidget(WWT_PANEL, Colours::End, WID_DM_TITLE), SetFill(1, 0), SetResize(1, 0),
+			EndContainer(),
+		EndContainer(),
 		NWidget(NWID_SELECTION, Colours::Invalid, WID_DM_FILTER_SEL),
 			NWidget(WWT_PANEL, Colours::End, WID_DM_FILTER_PANEL),
 				NWidget(WWT_EDITBOX, Colours::End, WID_DM_FILTER), SetResize(1, 0), SetFill(1, 0), SetPadding(2), SetStringTip(STR_LIST_FILTER_OSKTITLE, STR_LIST_FILTER_TOOLTIP),
@@ -157,6 +161,7 @@ struct DropdownWindow : Window {
 
 	mutable StringFilter string_filter{}; ///< String filter for filter text.
 	QueryString editbox; ///< Editbox for filter text.
+	std::string title{}; ///< Mobile layout, portrait: the title of the sheet; empty for none.
 
 	/**
 	 * Create a dropdown menu.
@@ -186,6 +191,9 @@ struct DropdownWindow : Window {
 		this->CreateNestedTree();
 
 		this->GetWidget<NWidgetStacked>(WID_DM_FILTER_SEL)->SetDisplayedPlane(this->options.Test(DropDownOption::Filterable) ? 0 : SZSP_HORIZONTAL);
+		this->GetWidget<NWidgetCore>(WID_DM_TITLE)->colour = wi_colour;
+		if (IsMobileMenus() && _screen.width <= _screen.height) this->title = GetButtonTitle(parent, button);
+		this->GetWidget<NWidgetStacked>(WID_DM_TITLE_SEL)->SetDisplayedPlane(this->title.empty() ? SZSP_HORIZONTAL : 0);
 		this->GetWidget<NWidgetCore>(WID_DM_FILTER_PANEL)->colour = wi_colour;
 		this->GetWidget<NWidgetCore>(WID_DM_FILTER)->colour = wi_colour;
 		this->GetWidget<NWidgetCore>(WID_DM_ITEMS)->colour = wi_colour;
@@ -246,6 +254,39 @@ struct DropdownWindow : Window {
 	 * Get height of filter edit panel.
 	 * @return Height of filter edit panel, or zero if not filtering.
 	 */
+	/**
+	 * The title of a portrait dropdown sheet: the label of the button that opened it (round 5 design, 3.6),
+	 * or what the window names it (\c Window::GetMobileDropDownTitle()).
+	 * A dropdown button shows the current value, so its tooltip is used; other buttons use their text, else their tooltip.
+	 * @param parent The window with the button.
+	 * @param button The button.
+	 * @return The title; empty for none.
+	 */
+	static std::string GetButtonTitle(const Window *parent, WidgetID button)
+	{
+		if (std::string title = parent->GetMobileDropDownTitle(button); !title.empty()) return title;
+		const NWidgetCore *nwc = parent->GetWidget<NWidgetCore>(button);
+		if (nwc == nullptr) return {};
+		StringID str = nwc->type == WWT_DROPDOWN ? INVALID_STRING_ID : nwc->GetString();
+		if (str != INVALID_STRING_ID && str != STR_NULL && str != STR_EMPTY) {
+			std::string text = parent->GetWidgetString(button, str);
+			if (!text.empty()) return text;
+		}
+		StringID tip = nwc->GetToolTip();
+		if (tip == INVALID_STRING_ID || tip == STR_NULL || tip == STR_EMPTY) return {};
+		return GetString(tip);
+	}
+
+	/**
+	 * Height of the portrait sheet's title row.
+	 * @return The height in pixels; 0 without a title.
+	 */
+	uint GetTitleHeight() const
+	{
+		if (this->title.empty()) return 0;
+		return ScaleGUITrad(MOBILE_DROPDOWN_ROW_HEIGHT);
+	}
+
 	uint GetFilterBoxHeight() const
 	{
 		if (!this->options.Test(DropDownOption::Filterable)) return 0;
@@ -365,14 +406,14 @@ struct DropdownWindow : Window {
 		/* Portrait: a sheet along the bottom of the visible map, full width. */
 		int margin = ScaleGUITrad(8);
 		widget_dim.width = std::max(map.Width() - 2 * margin, 0);
-		uint max_height = std::min<uint>(_screen.height * 6 / 10, map.Height());
+		uint max_height = std::min<uint>(_screen.height * 6 / 10, map.Height()) - this->GetTitleHeight();
 		if (widget_dim.height > max_height) {
 			uint rows = std::max<uint>((max_height - WidgetDimensions::scaled.dropdownlist.Vertical()) / ScaleGUITrad(MOBILE_DROPDOWN_ROW_HEIGHT), 1);
 			widget_dim.height = rows * ScaleGUITrad(MOBILE_DROPDOWN_ROW_HEIGHT) + WidgetDimensions::scaled.dropdownlist.Vertical();
 		}
 		this->above = false;
 		this->position.x = map.left + margin;
-		this->position.y = map.bottom + 1 - static_cast<int>(widget_dim.height) - static_cast<int>(this->GetFilterBoxHeight());
+		this->position.y = map.bottom + 1 - static_cast<int>(widget_dim.height) - static_cast<int>(this->GetFilterBoxHeight()) - static_cast<int>(this->GetTitleHeight());
 		this->GetWidget<NWidgetCore>(WID_DM_FILTER_PANEL)->GetParentWidget<NWidgetVertical>()->bottom_up = false;
 
 		this->initial_dim = widget_dim;
@@ -387,6 +428,7 @@ struct DropdownWindow : Window {
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
 	{
 		if (widget == WID_DM_ITEMS) size = this->items_dim;
+		if (widget == WID_DM_TITLE) size.height = std::max<uint>(size.height, this->GetTitleHeight());
 	}
 
 	Point OnInitialPosition([[maybe_unused]] int16_t sm_width, [[maybe_unused]] int16_t sm_height, [[maybe_unused]] int window_number) override
@@ -446,6 +488,11 @@ struct DropdownWindow : Window {
 
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
+		if (widget == WID_DM_TITLE) {
+			Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+			DrawString(tr.left, tr.right, CentreBounds(r.top, r.bottom, GetCharacterHeight(FontSize::Normal)), this->title, TextColour::White);
+			return;
+		}
 		if (widget != WID_DM_ITEMS) return;
 
 		Colours colour = this->GetWidget<NWidgetCore>(widget)->colour;
@@ -646,6 +693,8 @@ Dimension GetDropDownListDimension(const DropDownList &list)
 void ShowDropDownListAt(Window *w, DropDownList &&list, int selected, WidgetID button, Rect wi_rect, Colours wi_colour, DropDownOptions options, std::string * const persistent_filter_text)
 {
 	CloseWindowByClass(WindowClass::DropdownMenu);
+	/* A dropdown opened from a widget without a colour of its own (a list drawn by the window) is grey. */
+	if (wi_colour >= Colours::End) wi_colour = Colours::Grey;
 	new DropdownWindow(w, std::move(list), selected, button, wi_rect, wi_colour, options, persistent_filter_text);
 }
 

@@ -975,6 +975,10 @@ STR_MOBILE_STATUS_PAUSED                                        :Paused
 STR_MOBILE_RESUME_BANNER                                        :Paused while you were away · tap {RIGHT_ARROW} to continue
 STR_MOBILE_BUILD_STATUS_PAUSED                                  :Paused · tap {RIGHT_ARROW} to build
 STR_MOBILE_MENU_CONTINUE                                        :Continue
+STR_MOBILE_MENU_CONTINUE_COMPANY                                :Continue · {RAW_STRING}
+STR_MOBILE_AGO_MINUTES                                          :{NUM} min ago
+STR_MOBILE_AGO_HOURS                                            :{NUM} h ago
+STR_MOBILE_AGO_DAYS                                             :{NUM} day{P "" s} ago
 STR_MOBILE_MENU_CONTINUE_TOOLTIP                                :{BLACK}Continue where you left off
 STR_MOBILE_MAIN_SETTINGS                                        :{BLACK}Settings
 STR_MOBILE_MAIN_QUIT                                            :{WHITE}Quit
@@ -1021,7 +1025,7 @@ STR_MOBILE_NEW_GAME_RELAXED                                     :Relaxed
 STR_MOBILE_NEW_GAME_RELAXED_LINE                                :No breakdowns, disasters or inflation
 STR_MOBILE_NEW_GAME_SANDBOX                                     :Sandbox
 STR_MOBILE_NEW_GAME_SANDBOX_LINE                                :Big loan, no competitors, calm towns
-STR_MOBILE_NEW_GAME_PRESET_NOTE                                 :A preset only sets normal game settings; all of them can be changed later in Settings.
+STR_MOBILE_NEW_GAME_PRESET_NOTE                                 :Presets only set settings; change them any time.
 STR_MOBILE_NEW_GAME_CLIMATE                                     :Climate
 STR_MOBILE_NEW_GAME_TEMPERATE                                   :{BLACK}Temperate
 STR_MOBILE_NEW_GAME_ARCTIC                                      :{BLACK}Arctic
@@ -1045,12 +1049,28 @@ STR_MOBILE_NEW_GAME_ADVANCED                                    :{BLACK}Advanced
 STR_MOBILE_MINUS                                                :{BLACK}-
 STR_MOBILE_PLUS                                                 :{BLACK}+
 STR_MOBILE_SETTINGS_TITLE                                       :Settings
+STR_MOBILE_PERCENT                                              :{NUM}%
 STR_MOBILE_SETTINGS_SEARCH                                      :Search all settings
 STR_MOBILE_SETTINGS_PHONE                                       :Phone
-STR_MOBILE_SETTINGS_DISPLAY                                     :Display, sound, language and saving
+STR_MOBILE_SETTINGS_DISPLAY                                     :Display and sound
+STR_MOBILE_SETTINGS_LANGUAGE                                    :Language and units
+STR_MOBILE_SETTINGS_SAVING                                      :Saving
+STR_MOBILE_SETTINGS_ADDONS                                      :Add-ons
+STR_MOBILE_SETTINGS_GUI_SCALE_HELP                              :Size of buttons and text. The largest sizes fit fewer things on the screen
+STR_MOBILE_SETTINGS_CHECK_UPDATES                               :Check for updates
+STR_MOBILE_SETTINGS_CHECK_UPDATES_HELP                          :Look for newer base graphics sets in the online content
+STR_MOBILE_SETTINGS_MUSIC_VOLUME                                :Music volume
+STR_MOBILE_SETTINGS_EFFECT_VOLUME                               :Sound effects volume
+STR_MOBILE_SETTINGS_VOLUME_HELP                                 :In steps of 10%
+STR_MOBILE_SETTINGS_AUTOSAVES_KEPT                              :Autosaves to keep
+STR_MOBILE_SETTINGS_AUTOSAVES_KEPT_HELP                         :How many autosaves are kept before the oldest is overwritten
+STR_MOBILE_SETTINGS_NEWGRF_HELP                                 :Add-on graphics and vehicles for new games
+STR_MOBILE_SETTINGS_SCRIPTS_HELP                                :Computer competitors and game scripts
+STR_MOBILE_SETTINGS_CONTENT                                     :Online content
+STR_MOBILE_SETTINGS_CONTENT_HELP                                :Download add-ons, base sets, scenarios and scripts
 STR_MOBILE_SETTINGS_BUILDING                                    :Building and vehicles
 STR_MOBILE_SETTINGS_ECONOMY                                     :Economy, towns, competitors
-STR_MOBILE_SETTINGS_NEWGRF                                      :Graphics and add-ons (NewGRF)
+STR_MOBILE_SETTINGS_NEWGRF                                      :Graphics add-ons (NewGRF)
 STR_MOBILE_SETTINGS_SCRIPTS                                     :AI and game scripts
 STR_MOBILE_SETTINGS_ALL                                         :All settings
 STR_MOBILE_SETTINGS_NONE                                        :No settings found
@@ -1106,7 +1126,9 @@ STR_MOBILE_TRAIN_CLONE                                          :Clone
 STR_MOBILE_TRAIN_CLONE_IN_DEPOT                                 :Stop the train in a depot to clone it
 STR_MOBILE_TRAIN_ADD_VEHICLES                                   :+ Add vehicles
 STR_MOBILE_TRAIN_ADD_VEHICLES_TOOLTIP                           :{BLACK}Buy vehicles for this train; it must be stopped in a depot
-STR_MOBILE_TRAIN_SELL                                           :X Sell
+STR_MOBILE_VEHICLE_MENU_SELL                                    :Sell (+{CURRENCY_LONG})
+STR_MOBILE_VEHICLE_MENU_REFIT                                   :Refit...
+STR_MOBILE_VEHICLE_MENU_DETAILS                                 :Details
 STR_MOBILE_TRAIN_SELL_TRAIN_TITLE                               :Sell the whole train?
 STR_MOBILE_TRAIN_SELL_TRAIN_TEXT                                :Selling the engine sells the train with all its wagons. You get their value back.
 STR_MOBILE_TRAIN_SELL_TRAIN_VERB                                :{WHITE}Sell train

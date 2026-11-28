@@ -47,6 +47,43 @@
 static constexpr int SAVE_ROW = 56; ///< Height of a save row, in GUI pixels at 1x.
 static constexpr int SAVE_BUTTONS = 44; ///< Height of the Load and Delete row of an expanded save, in GUI pixels at 1x.
 
+/**
+ * Read a save's header: the player's company, the date and its money, without loading the game.
+ * @param path Full path of the save.
+ * @param[out] company Name of the first human company; empty if none.
+ * @param[out] details "<date> · <money>".
+ * @return \c false when the header couldn't be read.
+ */
+bool GetMobileSaveHeader(const std::string &path, std::string &company, std::string &details)
+{
+	company.clear();
+	details.clear();
+	_load_check_data.Clear();
+	SaveOrLoad(path, SaveLoadOperation::Check, DetailedFileType::GameFile, Subdirectory::None, false);
+	if (!_load_check_data.checkable || _load_check_data.HasErrors()) {
+		_load_check_data.Clear();
+		return false;
+	}
+	Money money = 0;
+	bool has_money = false;
+	for (auto &[id, c] : _load_check_data.companies) {
+		if (c->is_ai) continue;
+		if (c->name.empty()) {
+			AutoRestoreBackup landscape_backup(_settings_game.game_creation.landscape, _load_check_data.landscape);
+			company = GetString(c->name_1, c->name_2);
+		} else {
+			company = c->name;
+		}
+		money = c->money;
+		has_money = true;
+		break;
+	}
+	details = GetString(STR_JUST_DATE_LONG, _load_check_data.current_date);
+	if (has_money) details += GetString(STR_MOBILE_ORDERS_SEPARATOR) + GetString(STR_JUST_CURRENCY_LONG, money);
+	_load_check_data.Clear();
+	return true;
+}
+
 /** A save file, with what its header says. */
 struct MobileSaveFile {
 	std::string path; ///< Full path.
@@ -149,31 +186,9 @@ struct MobileSaveLoadWindow : Window {
 	{
 		if (f.checked) return;
 		f.checked = true;
-		_load_check_data.Clear();
-		SaveOrLoad(f.path, SaveLoadOperation::Check, DetailedFileType::GameFile, Subdirectory::None, false);
-		if (!_load_check_data.checkable || _load_check_data.HasErrors()) {
-			_load_check_data.Clear();
-			return;
-		}
-		std::string company;
-		Money money = 0;
-		bool has_money = false;
-		for (auto &[id, c] : _load_check_data.companies) {
-			if (c->is_ai) continue;
-			if (c->name.empty()) {
-				AutoRestoreBackup landscape_backup(_settings_game.game_creation.landscape, _load_check_data.landscape);
-				company = GetString(c->name_1, c->name_2);
-			} else {
-				company = c->name;
-			}
-			money = c->money;
-			has_money = true;
-			break;
-		}
-		std::string date = GetString(STR_JUST_DATE_LONG, _load_check_data.current_date);
-		f.details = company.empty() ? date : GetString(STR_MOBILE_SAVE_DETAILS, company, date);
-		if (has_money) f.details += GetString(STR_MOBILE_ORDERS_SEPARATOR) + GetString(STR_JUST_CURRENCY_LONG, money);
-		_load_check_data.Clear();
+		std::string company, details;
+		if (!GetMobileSaveHeader(f.path, company, details)) return;
+		f.details = company.empty() ? details : GetString(STR_MOBILE_SAVE_DETAILS, company, details);
 	}
 
 	/**
@@ -260,7 +275,6 @@ struct MobileSaveLoadWindow : Window {
 
 		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
 		int line = GetCharacterHeight(FontSize::Normal);
-		int small = GetCharacterHeight(FontSize::Small);
 		int rows = static_cast<int>(this->files.size()) + (this->HasAutosavesRow() ? 1 : 0);
 		if (rows == 0) {
 			DrawString(tr, STR_MOBILE_SAVE_EMPTY, TextColour::Black);
@@ -276,11 +290,11 @@ struct MobileSaveLoadWindow : Window {
 			}
 			MobileSaveFile &f = const_cast<MobileSaveFile &>(this->files[i]);
 			CheckFile(f);
-			int y = CentreBounds(rr.top, rr.bottom, line + 2 * small);
+			int y = CentreBounds(rr.top, rr.bottom, 3 * line);
 			int name_width = DrawString(rr.left, rr.right, y, f.background ? GetString(STR_MOBILE_SAVE_BACKGROUND_NAME) : f.name, TextColour::Black);
 			if (f.background) DrawString(name_width + WidgetDimensions::scaled.hsep_wide, rr.right, y, STR_MOBILE_SAVE_LEFT_THE_APP, TextColour::DarkGreen);
-			if (!f.details.empty()) DrawString(rr.left, rr.right, y + line, f.details, TextColour::Black, AlignmentH::Start, false, FontSize::Small);
-			DrawString(rr.left, rr.right, y + line + small, GetAgeText(f), TextColour::Black, AlignmentH::Start, false, FontSize::Small);
+			if (!f.details.empty()) DrawString(rr.left, rr.right, y + line, f.details, TextColour::Black);
+			DrawString(rr.left, rr.right, y + 2 * line, GetAgeText(f), TextColour::DarkGreen);
 
 			if (i == this->expanded) {
 				Rect buttons = tr.WithY(rr.bottom + 1, rr.bottom + ScaleGUITrad(SAVE_BUTTONS)).Shrink(0, ScaleGUITrad(2));

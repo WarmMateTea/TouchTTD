@@ -13,5 +13,6 @@
 #include "fileio_type.h"
 
 void ShowMobileSaveLoad(SaveLoadOperation fop);
+bool GetMobileSaveHeader(const std::string &path, std::string &company, std::string &details);
 
 #endif /* MOBILE_SAVELOAD_GUI_H */

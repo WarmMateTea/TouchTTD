@@ -1,6 +1,6 @@
 # Session state (for resuming after a context reset)
 
-Last updated: 26 Nov 2026 (evening). Read this first, then `README.md` (the index) and `CLAUDE.md` (the project rules).
+Last updated: 28 Nov 2026 (night, round 5). Read this first, then `README.md` (the index) and `CLAUDE.md` (the project rules).
 
 ## Where the project is
 
@@ -16,9 +16,11 @@ Last updated: 26 Nov 2026 (evening). Read this first, then `README.md` (the inde
   - **Round 4 (27–28 Nov):** design fixes, touch dropdown, depot → New train → orders → Start, train list, main menu with Continue, New game with presets, confirmations, save/load, settings with search, top chrome against the cutout. Verified headless and partly on the phone. Log: `07-round4-implementation-log.md`.
   - **Android build:** `os/android/build.sh`, APK published as GitHub pre-releases (`android-<commit count>`); latest: `android-33331` (commit `d5986b7e62`, 28 Nov, round 4). Logs: `02-android-build-plan.md`, `03-android-build-log.md`.
 
+  - **Round 5 (28 Nov, in progress):** `handoffs/10-design-to-impl-round5.md`, built batch by batch in its order; progress table at the top of `08-round5-implementation-log.md`. Done: batch 1 (main menu logo/Continue, cells, settings fixes, dropdown titles), batch 2 (Settings with Game Options). Next: batch 3, signals (a patch draft may be in the session scratchpad, `r5/sig.py`; if it's gone, write it from the handoff §5).
+
 ## Waiting on
 
-- **Design session, round 5.** Our handoff: `handoffs/09-impl-to-design-round5.md` (+ `screenshots/round4/`), including the user's font requests. Its reply goes in `handoffs/10-…`.
+- **Phone tests for round 5**: order long-press drag (touch only), everything of round 4 not yet tried on the phone.
 - **The user asked to switch the phone back to the Claude app** after device testing (`adb shell monkey -p com.anthropic.claude -c android.intent.category.LAUNCHER 1`).
 - **User's request for later:** the top chrome (status pill, minimap button) should slide with the safe area like the dock and maybe sit closer to the top edge (`backlog.md`).
 

@@ -62,7 +62,7 @@ For a phone-like window, start with `./openttd -r 1357x611` and set **Game optio
 |---|---|
 | `run_headless.sh W H [SCALE] [MOBILE] [args]` | Starts `Xvfb :99` at W×H and a new random game (fixed seed `12345`, so the same map every time) with a **private config**; your `openttd.cfg` is never touched. |
 | `shot.sh OUT.png [percent]` | Screenshots the virtual display, plus an optional scaled copy. |
-| `stop_headless.sh` | Stops both. |
+| `stop_headless.sh` | Stops every headless OpenTTD using the private config (any display), forcing it after 2.5 s, and the Xvfb of `DISPLAY_NUM`. Check with `ps -C openttd,Xvfb`: forgotten games slow builds badly. |
 
 ```bash
 tools/mobile/run_headless.sh 2714 1222          # reference phone, landscape, 300%, mobile layout

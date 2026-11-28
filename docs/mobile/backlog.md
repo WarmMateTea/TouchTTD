@@ -20,8 +20,7 @@ Left over: a "Continue" entry on the main menu (the menus are in design round 4)
 
 ## Mobile UI
 - **Corner handles of a station footprint** don't show inside the white rectangle (neighbouring outlines cover them). Needs a marker sprite; asked the designer (handoff 07).
-- **Touch dropdown**: done in round 4, except the portrait sheet's title (the dropdown window doesn't know its button's label).
-- **Orders: long-press drag to reorder** (round 4 design §4.5) not built yet.
+- **Steppers: hold to repeat** (round 5 design §4): Settings' − value + steps once per tap. A held finger is a long press today (tooltip); repeating needs the gesture layer to send repeated clicks while a stepper button is held.
 - **Station picker Type row** for NewGRF station classes/types (design round 3 §3.2) isn't built; base game unaffected.
-- **"Building…" state** for multiplayer (design round 3 §1.2).
+- **"Building…" state** for multiplayer (design round 3 §1.2): planned with multiplayer in round 5, batch 13.
 - **Depot entrance arrow** is the white one-way road arrow; `PALETTE_TO_YELLOW` doesn't recolour it. A real yellow arrow needs a sprite.

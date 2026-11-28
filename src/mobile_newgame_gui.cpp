@@ -123,9 +123,9 @@ struct MobileNewGameWindow : Window {
 			int i = widget - WID_MNG_PRESET_FIRST;
 			Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(4), 0);
 			int line = GetCharacterHeight(FontSize::Normal);
-			int y = CentreBounds(r.top, r.bottom, line + GetCharacterHeight(FontSize::Small));
+			int y = CentreBounds(r.top, r.bottom, 2 * line);
 			DrawString(tr.left, tr.right, y, titles[i], TextColour::Black);
-			DrawString(tr.left, tr.right, y + line, lines[i], TextColour::Black, AlignmentH::Start, false, FontSize::Small);
+			DrawString(tr.left, tr.right, y + line, lines[i], TextColour::DarkGreen);
 		}
 	}
 
@@ -281,7 +281,7 @@ struct MobileNewGameWindow : Window {
 		NWidget(WWT_TEXTBTN, Colours::Brown, WID_MNG_PRESET_FIRST + 0), SetMinimalSize(220, 44), SetFill(1, 0), SetResize(1, 0), \
 		NWidget(WWT_TEXTBTN, Colours::Brown, WID_MNG_PRESET_FIRST + 1), SetMinimalSize(220, 44), SetFill(1, 0), SetResize(1, 0), \
 		NWidget(WWT_TEXTBTN, Colours::Brown, WID_MNG_PRESET_FIRST + 2), SetMinimalSize(220, 44), SetFill(1, 0), SetResize(1, 0), \
-		NWidget(WWT_TEXT, Colours::Invalid), SetMinimalSize(220, 0), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_NEW_GAME_PRESET_NOTE), SetTextStyle(TextColour::Black, FontSize::Small), \
+		NWidget(WWT_TEXT, Colours::Invalid), SetMinimalSize(220, 0), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_NEW_GAME_PRESET_NOTE), SetTextStyle(TextColour::Black), \
 	EndContainer()
 
 #define NEW_GAME_HEADER \

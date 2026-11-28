@@ -20,6 +20,7 @@
 #include "depot_func.h"
 #include "window_func.h"
 #include "mobile_gui.h"
+#include "mobile_settings_gui.h"
 #include "tilehighlight_func.h"
 #include "network/network.h"
 #include "querystring_gui.h"
@@ -1390,6 +1391,10 @@ static uint GetWindowZPriority(WindowClass wc)
 			++z_priority;
 			[[fallthrough]];
 
+		case WindowClass::MobileSettings: // Full screen over the mobile shell; its dropdowns and confirmations above it.
+			++z_priority;
+			[[fallthrough]];
+
 		case WindowClass::MainToolbar:
 		case WindowClass::Statusbar:
 		case WindowClass::MobileStatus:
@@ -1408,7 +1413,6 @@ static uint GetWindowZPriority(WindowClass wc)
 			[[fallthrough]];
 
 		case WindowClass::OnScreenKeyboard:
-		case WindowClass::MobileSettings: // Full screen over the mobile shell.
 			++z_priority;
 			[[fallthrough]];
 
@@ -3710,6 +3714,7 @@ void RelocateAllWindows(int neww, int newh)
 
 	RelocateMobileWindows();
 	RelocateMobileMainMenu();
+	RelocateMobileSettings();
 }
 
 /**

@@ -716,6 +716,27 @@ public:
 	virtual bool OnTooltip([[maybe_unused]] Point pt, [[maybe_unused]] WidgetID widget, [[maybe_unused]] TooltipCloseCondition close_cond) { return false; }
 
 	/**
+	 * Touch screens: a finger was held still on a widget. The window may pick something up and follow the finger.
+	 * @param pt The point inside the window.
+	 * @param widget The widget under it.
+	 * @return True when the window took the long press; it then gets #OnLongPressMove and #OnLongPressEnd.
+	 */
+	virtual bool OnLongPress([[maybe_unused]] Point pt, [[maybe_unused]] WidgetID widget) { return false; }
+
+	/**
+	 * Touch screens: the finger of a long press taken by #OnLongPress moved.
+	 * @param pt The point inside the window.
+	 */
+	virtual void OnLongPressMove([[maybe_unused]] Point pt) {}
+
+	/**
+	 * Touch screens: the finger of a long press taken by #OnLongPress lifted, or the gesture was cancelled.
+	 * @param pt The point inside the window.
+	 * @param cancelled Whether the gesture was cancelled (e.g. a second finger).
+	 */
+	virtual void OnLongPressEnd([[maybe_unused]] Point pt, [[maybe_unused]] bool cancelled) {}
+
+	/**
 	 * An 'object' is being dragged at the provided position, highlight the target if possible.
 	 * @param pt     The point inside the window that the mouse hovers over.
 	 * @param widget The widget the mouse hovers over.
@@ -793,6 +814,13 @@ public:
 	 * @param click_result dropdown element specific result data.
 	 */
 	virtual void OnDropdownSelect([[maybe_unused]] WidgetID widget, [[maybe_unused]] int index, [[maybe_unused]] int click_result) {}
+
+	/**
+	 * Mobile layout: the title of a dropdown shown as a portrait sheet, for widgets without a label of their own.
+	 * @param widget Widget the dropdown was opened from.
+	 * @return The title; empty to use the widget's label.
+	 */
+	virtual std::string GetMobileDropDownTitle([[maybe_unused]] WidgetID widget) const { return {}; }
 
 	virtual void OnDropdownClose(Point pt, WidgetID widget, int index, int click_result, bool instant_close);
 

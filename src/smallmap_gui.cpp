@@ -2217,7 +2217,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_smallmap_mobile_widg
 	EndContainer(),
 	NWidget(WWT_PANEL, Colours::Brown),
 		NWidget(WWT_TEXT, Colours::Invalid, WID_SM_MOBILE_HINT), SetMinimalSize(0, 24), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET),
-				SetStringTip(STR_MOBILE_MAP_HINT), SetTextStyle(TextColour::White, FontSize::Small),
+				SetStringTip(STR_MOBILE_MAP_HINT), SetTextStyle(TextColour::White),
 	EndContainer(),
 	/* The desktop buttons the window's code uses; never shown (SZSP_HORIZONTAL keeps the window resizable). */
 	NWidget(NWID_SELECTION, Colours::Invalid, WID_SM_MOBILE_SEL_HIDDEN),

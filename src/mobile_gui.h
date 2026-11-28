@@ -38,6 +38,8 @@ bool IsMobileSheetOpen();
 void CloseMobileSheetPublic();
 void ShowMobileResumeBanner();
 void RelocateMobileMainMenu();
+void ShowMobileMenuBanner(std::string &&text);
+void PlaceMobileMenuBanner(Window *w);
 void ShowMobileBuildFlyoutForToolbar(Window *toolbar, WidgetID widget);
 bool ShowMobileError(const std::string &summary, const std::string &detail);
 void DrawMobileIconButton(const Rect &r, SpriteID sprite, StringID label, bool lowered, bool disabled, FontSize font_size = FontSize::Small);

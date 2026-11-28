@@ -26,6 +26,23 @@ void DrawBoolButton(int x, int y, Colours button_colour, Colours background, boo
 template <class T>
 DropDownList BuildSetDropDownList(int *selected_index);
 
+/** Base sets that the Game Options can change. */
+enum class BaseSetType : uint8_t { Graphics, Sounds, Music };
+
+DropDownList BuildCurrencyDropDownList(const struct GameSettings &opt, int *selected_index);
+std::string GetCurrencyLabel(const struct GameSettings &opt);
+void ChangeCurrency(struct GameSettings &opt, int index);
+DropDownList BuildAutosaveDropDownList(int *selected_index);
+std::string GetAutosaveLabel();
+void ChangeAutosaveInterval(int index);
+DropDownList BuildLanguageDropDownList(int *selected_index);
+void ChangeLanguage(int index);
+DropDownList BuildBaseSetDropDownList(BaseSetType type, int *selected_index);
+std::string GetBaseSetLabel(BaseSetType type);
+bool ChangeBaseSet(BaseSetType type, int index);
+void ChangeVolume(bool music, uint8_t vol);
+void ChangeGUIScale(int scale);
+
 /* Actually implemented in music_gui.cpp */
 void ChangeMusicSet(int index);
 

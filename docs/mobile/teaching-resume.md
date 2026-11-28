@@ -48,6 +48,12 @@ The original path still holds. The new code adds examples that are **closer to y
 - Breakpoint in `MobileDockWindow::OnClick` and tap World. Step through `ToggleMobileHub()` → `OpenSheetContent()` → `ShowTownDirectory()` → back into `RelocateMobileWindows()`. That one walk covers most of the shell.
 - Breakpoint in `RelocateMobileWindows()`, then resize the game window: see who calls it (`GameSizeChanged()` → `RelocateAllWindows()`).
 
+## New examples from round 5
+
+- **A table of rows with function pointers:** `_mobile_options[]` in `mobile_settings_gui.cpp`. Each row is data (name, kind) plus small lambdas for "current value", "build the list", "apply the choice". Compare with a class per row: the table keeps 15 rows in one screen of code.
+- **Extracting a shared function from a window:** `ChangeLanguage()`, `ChangeCurrency()`... in `settings_gui.cpp` were bodies of `GameOptionsWindow::OnDropdownSelect()`. Moving them out lets the desktop window and the mobile Settings call the same code; a good small refactoring exercise to read as a diff (`git show` the batch 2 commit, `settings_gui.cpp`).
+- **A virtual with a default, overridden where needed:** `Window::GetMobileDropDownTitle()` (returns empty) and its overrides in the settings and train windows; the dropdown asks the parent window and falls back to the button's label.
+
 ## Tools you can use while learning
 
 - `tools/mobile/run_headless.sh` and `shot.sh` (see [`00-toolchain.md`](00-toolchain.md)) if you're working on the server without a screen.

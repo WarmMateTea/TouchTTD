@@ -11,5 +11,6 @@
 #define MOBILE_SETTINGS_GUI_H
 
 void ShowMobileSettings();
+void RelocateMobileSettings();
 
 #endif /* MOBILE_SETTINGS_GUI_H */
