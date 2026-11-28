@@ -236,6 +236,15 @@ static void PlaceRail_Station(TileIndex tile)
 }
 
 /**
+ * Mobile layout: does the signal tool convert existing signals ("Change existing signals")?
+ * @return \c true when the picker is open with Change on.
+ */
+bool IsMobileSignalConvertOn()
+{
+	return _convert_signal_button && FindWindowById(WindowClass::BuildSignal, 0) != nullptr;
+}
+
+/**
  * Build a new signal or edit/remove a present signal, use CmdBuildSingleSignal() or CmdRemoveSingleSignal() in rail_cmd.cpp
  *
  * @param tile The tile where the signal will build or edit
@@ -535,8 +544,10 @@ static void HandleAutoSignalPlacement()
 		bool sig_gui = FindWindowById(WindowClass::BuildSignal, 0) != nullptr;
 		SignalType sigtype = sig_gui ? _cur_signal_type : _settings_client.gui.default_signal_type;
 		SignalVariant sigvar = sig_gui ? _cur_signal_variant : (TimerGameCalendar::year < _settings_client.gui.semaphore_build_before ? SignalVariant::Semaphore : SignalVariant::Electric);
-		Command<Commands::BuildSignalLong>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, CcPlaySound_CONSTRUCTION_RAIL,
-				TileVirtXY(_thd.selstart.x, _thd.selstart.y), TileVirtXY(_thd.selend.x, _thd.selend.y), track, sigtype, sigvar, false, IsCtrlPressed(), !_settings_client.gui.drag_signals_fixed_distance, _settings_client.gui.drag_signals_density);
+		/* The mobile picker's "Change existing signals" converts every signal on the dragged stretch. */
+		bool convert = IsMobileLayout() && sig_gui && _convert_signal_button;
+		Command<Commands::BuildSignalLong>::Post(convert ? STR_ERROR_SIGNAL_CAN_T_CONVERT_SIGNALS_HERE : STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, CcPlaySound_CONSTRUCTION_RAIL,
+				TileVirtXY(_thd.selstart.x, _thd.selstart.y), TileVirtXY(_thd.selend.x, _thd.selend.y), track, sigtype, sigvar, convert, IsCtrlPressed(), !_settings_client.gui.drag_signals_fixed_distance, _settings_client.gui.drag_signals_density);
 	}
 }
 
@@ -638,7 +649,7 @@ struct BuildRailToolbarWindow : Window {
 				case WID_RAT_BUILD_DEPOT: hint = STR_MOBILE_BUILD_HINT_DEPOT; break;
 				case WID_RAT_BUILD_WAYPOINT: hint = STR_MOBILE_BUILD_HINT_WAYPOINT; break;
 				case WID_RAT_BUILD_STATION: hint = STR_MOBILE_BUILD_HINT_STATION; break;
-				case WID_RAT_BUILD_SIGNALS: hint = STR_MOBILE_BUILD_HINT_PLACE; break;
+				case WID_RAT_BUILD_SIGNALS: hint = _remove_button_clicked ? STR_MOBILE_BUILD_HINT_REMOVE_SIGNALS : STR_MOBILE_BUILD_HINT_SIGNALS; break;
 				default: break;
 			}
 		}
@@ -665,11 +676,12 @@ struct BuildRailToolbarWindow : Window {
 	{
 		MobileBuildState state = GetMobileBuildState();
 		/* While a picker fills the sheet slot, the toolbar shows only its status line, Cancel and Build. */
-		bool picking = state == MobileBuildState::BridgePicking || FindWindowById(WindowClass::BuildStation, TransportType::Rail) != nullptr;
+		bool picker_open = FindWindowById(WindowClass::BuildStation, TransportType::Rail) != nullptr || FindWindowById(WindowClass::BuildSignal, TransportType::Rail) != nullptr;
+		bool picking = state == MobileBuildState::BridgePicking || picker_open;
 		/* In landscape the tools don't fit beside an open sheet either (an info window, say). */
 		if (this->landscape && IsMobileSheetOpen()) picking = true;
 		/* ...and with no tool or selection either, offer to bring the tools back rather than a dead Cancel and Build. */
-		this->tools_hidden = picking && state == MobileBuildState::Idle && _thd.GetCallbackWnd() != this && FindWindowById(WindowClass::BuildStation, TransportType::Rail) == nullptr;
+		this->tools_hidden = picking && state == MobileBuildState::Idle && _thd.GetCallbackWnd() != this && !picker_open;
 		DiagDirection depot_dir;
 		bool depot_pending = state == MobileBuildState::Pending && GetMobileBuildDepotArrow(GetMobileBuildPendingTile(), depot_dir);
 
@@ -689,8 +701,8 @@ struct BuildRailToolbarWindow : Window {
 		MobileBuildKind kind = this->GetToolKind();
 		NWidgetCore *confirm = this->GetWidget<NWidgetCore>(WID_RAT_CONFIRM);
 		/* Disabled, it's grey like the disabled Cancel: dark green read as nearly active. */
-		confirm->colour = !MobileBuildCanConfirm() ? Colours::Grey : (kind == MobileBuildKind::Build ? Colours::Green : Colours::Red);
-		static const StringID labels[] = {STR_MOBILE_BUILD_CONFIRM_BUILD, STR_MOBILE_BUILD_CONFIRM_REMOVE, STR_MOBILE_BUILD_CONFIRM_DEMOLISH, STR_MOBILE_BUILD_CONFIRM_CONVERT};
+		confirm->colour = !MobileBuildCanConfirm() ? Colours::Grey : ((kind == MobileBuildKind::Build || kind == MobileBuildKind::Change) ? Colours::Green : Colours::Red);
+		static const StringID labels[] = {STR_MOBILE_BUILD_CONFIRM_BUILD, STR_MOBILE_BUILD_CONFIRM_REMOVE, STR_MOBILE_BUILD_CONFIRM_DEMOLISH, STR_MOBILE_BUILD_CONFIRM_CONVERT, STR_MOBILE_BUILD_CONFIRM_CHANGE};
 		confirm->SetString(labels[to_underlying(kind)]);
 		this->SetWidgetDisabledState(WID_RAT_CONFIRM, !MobileBuildCanConfirm());
 		/* Cancel drops the selection in review, or else the selected tool. */
@@ -1063,8 +1075,8 @@ struct BuildRailToolbarWindow : Window {
 
 	void OnPlaceDrag(ViewportPlaceMethod select_method, [[maybe_unused]] ViewportDragDropSelectionProcess select_proc, [[maybe_unused]] Point pt) override
 	{
-		/* no dragging if you have pressed the convert button */
-		if (FindWindowById(WindowClass::BuildSignal, 0) != nullptr && _convert_signal_button && this->IsWidgetLowered(WID_RAT_BUILD_SIGNALS)) return;
+		/* no dragging if you have pressed the convert button (the mobile layout converts the dragged stretch) */
+		if (!this->mobile && FindWindowById(WindowClass::BuildSignal, 0) != nullptr && _convert_signal_button && this->IsWidgetLowered(WID_RAT_BUILD_SIGNALS)) return;
 
 		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
 	}
@@ -2416,11 +2428,98 @@ private:
 		bool show_non_path_signals = (_settings_client.gui.signal_gui_mode == SIGNAL_GUI_ALL);
 
 		this->GetWidget<NWidgetStacked>(WID_BS_BLOCK_SEL)->SetDisplayedPlane(show_non_path_signals ? 0 : SZSP_NONE);
-		this->GetWidget<NWidgetStacked>(WID_BS_BLOCK_SPACER_SEL)->SetDisplayedPlane(show_non_path_signals ? 0 : SZSP_NONE);
+		/* In the mobile layout this is the row of entry, exit and combo signals, in a vertical container. */
+		this->GetWidget<NWidgetStacked>(WID_BS_BLOCK_SPACER_SEL)->SetDisplayedPlane(show_non_path_signals ? 0 : (this->mobile ? SZSP_HORIZONTAL : SZSP_NONE));
+	}
+
+	/**
+	 * Mobile layout: the short name of a signal type, as on its button.
+	 * @param type The type.
+	 * @return The name.
+	 */
+	static StringID GetMobileSignalName(SignalType type)
+	{
+		switch (type) {
+			case SignalType::Block: return STR_MOBILE_SIGNAL_BLOCK;
+			case SignalType::Entry: return STR_MOBILE_SIGNAL_ENTRY;
+			case SignalType::Exit: return STR_MOBILE_SIGNAL_EXIT;
+			case SignalType::Combo: return STR_MOBILE_SIGNAL_COMBO;
+			case SignalType::Path: return STR_MOBILE_SIGNAL_PATH;
+			default: return STR_MOBILE_SIGNAL_PATH_ONEWAY;
+		}
+	}
+
+	/** Mobile layout: toggle the rail toolbar's remove mode; a pending selection of the other mode is dropped. */
+	void ToggleRemove()
+	{
+		BuildRailToolbarWindow *toolbar = dynamic_cast<BuildRailToolbarWindow *>(FindWindowById(WindowClass::BuildToolbar, TransportType::Rail));
+		if (toolbar == nullptr) return;
+		MobileBuildCancel();
+		ToggleRailButton_Remove(toolbar);
+		toolbar->UpdateMobileHint();
+		toolbar->InvalidateData();
+	}
+
+	/**
+	 * Mobile layout: a click on the picker.
+	 * @param widget The widget.
+	 */
+	void OnMobileClick(WidgetID widget)
+	{
+		switch (widget) {
+			case WID_BS_CLOSE:
+				/* Drops the signal tool, which closes this picker. */
+				ResetObjectToPlace();
+				return;
+
+			case WID_BS_MOBILE_ELECTRIC:
+			case WID_BS_MOBILE_SEMAPHORE:
+				_cur_signal_variant = widget == WID_BS_MOBILE_ELECTRIC ? SignalVariant::Electric : SignalVariant::Semaphore;
+				break;
+
+			case WID_BS_ELECTRIC_NORM:
+			case WID_BS_ELECTRIC_ENTRY:
+			case WID_BS_ELECTRIC_EXIT:
+			case WID_BS_ELECTRIC_COMBO:
+			case WID_BS_ELECTRIC_PBS:
+			case WID_BS_ELECTRIC_PBS_OWAY:
+				/* The type buttons; the variant is chosen apart. */
+				_cur_signal_type = static_cast<SignalType>(widget - WID_BS_ELECTRIC_NORM);
+				_settings_client.gui.default_signal_type = _cur_signal_type;
+				if (_remove_button_clicked) this->ToggleRemove();
+				break;
+
+			case WID_BS_CONVERT:
+				_convert_signal_button = !_convert_signal_button;
+				if (_convert_signal_button && _remove_button_clicked) this->ToggleRemove();
+				break;
+
+			case WID_BS_REMOVE:
+				/* The toolbar's Remove, which is hidden while the picker fills the sheet. */
+				this->ToggleRemove();
+				if (_remove_button_clicked) _convert_signal_button = false;
+				break;
+
+			case WID_BS_DRAG_SIGNALS_DENSITY_DECREASE:
+				if (_settings_client.gui.drag_signals_density > 1) _settings_client.gui.drag_signals_density--;
+				break;
+
+			case WID_BS_DRAG_SIGNALS_DENSITY_INCREASE:
+				if (_settings_client.gui.drag_signals_density < 20) _settings_client.gui.drag_signals_density++;
+				break;
+
+			default: return;
+		}
+		SndClickBeep();
+		this->InvalidateData();
+		/* The pending signals follow the picker: type, spacing, Change. */
+		MobileBuildReestimate();
 	}
 
 public:
-	BuildSignalWindow(WindowDesc &desc, Window *parent) : PickerWindowBase(desc, parent)
+	const bool mobile; ///< Uses the mobile layout, in the sheet slot.
+
+	BuildSignalWindow(WindowDesc &desc, Window *parent, bool mobile = false) : PickerWindowBase(desc, parent), mobile(mobile)
 	{
 		this->CreateNestedTree();
 		this->SetSignalUIMode();
@@ -2456,6 +2555,10 @@ public:
 
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
 	{
+		if (this->mobile) {
+			if (widget == WID_BS_TITLE) size.height = std::max<uint>(size.height, GetCharacterHeight(FontSize::Normal));
+			return;
+		}
 		if (widget == WID_BS_DRAG_SIGNALS_DENSITY_LABEL) {
 			/* Two digits for signals density. */
 			size.width = std::max(size.width, 2 * GetDigitWidth() + padding.width + WidgetDimensions::scaled.framerect.Horizontal());
@@ -2469,6 +2572,7 @@ public:
 	{
 		switch (widget) {
 			case WID_BS_DRAG_SIGNALS_DENSITY_LABEL:
+				if (this->mobile) return GetString(STR_MOBILE_SIGNAL_EVERY, _settings_client.gui.drag_signals_density);
 				return GetString(STR_JUST_INT, _settings_client.gui.drag_signals_density);
 
 			default:
@@ -2478,6 +2582,28 @@ public:
 
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
+		if (this->mobile) {
+			int line = GetCharacterHeight(FontSize::Normal);
+			Rect tr = r.Shrink(WidgetDimensions::scaled.framerect).Shrink(ScaleGUITrad(MOBILE_TEXT_INSET), 0);
+			if (widget == WID_BS_TITLE) {
+				DrawMobileTitle(r, GetString(STR_MOBILE_SIGNAL_TITLE));
+			} else if (widget == WID_BS_CONVERT || widget == WID_BS_REMOVE) {
+				bool on = widget == WID_BS_CONVERT ? _convert_signal_button : _remove_button_clicked;
+				DrawString(tr.left, tr.right, CentreBounds(r.top, r.bottom, line), widget == WID_BS_CONVERT ? STR_MOBILE_SIGNAL_CHANGE : STR_MOBILE_SIGNAL_REMOVE, TextColour::Black);
+				DrawString(tr.left, tr.right, CentreBounds(r.top, r.bottom, line), on ? STR_MOBILE_ON : STR_MOBILE_OFF, on ? (widget == WID_BS_REMOVE ? TextColour::Red : TextColour::DarkGreen) : TextColour::Black, AlignmentH::End);
+			} else if (IsInsideMM(widget, WID_BS_ELECTRIC_NORM, WID_BS_ELECTRIC_PBS_OWAY + 1)) {
+				/* The signal in the chosen variant, and its short name beside it. */
+				SignalType type = static_cast<SignalType>(widget - WID_BS_ELECTRIC_NORM);
+				bool lowered = this->IsWidgetLowered(widget);
+				SpriteID sprite = GetRailTypeInfo(_cur_railtype)->gui_sprites.signals[type][_cur_signal_variant][lowered ? SignalState::Green : SignalState::Red];
+				bool rtl = _current_text_dir == TD_RTL;
+				Rect icon = tr.WithWidth(this->sig_sprite_size.width + WidgetDimensions::scaled.imgbtn.Horizontal(), rtl);
+				this->DrawSignalSprite(icon.WithY(r.top, r.bottom), sprite);
+				Rect text = tr.Indent(icon.Width() + WidgetDimensions::scaled.hsep_normal, rtl);
+				DrawString(text.left, text.right, CentreBounds(r.top, r.bottom, line), GetMobileSignalName(type), TextColour::Black);
+			}
+			return;
+		}
 		if (IsInsideMM(widget, WID_BS_SEMAPHORE_NORM, WID_BS_ELECTRIC_PBS_OWAY + 1)) {
 			/* Extract signal from widget number. */
 			SignalType type = static_cast<SignalType>((widget - WID_BS_SEMAPHORE_NORM) % to_underlying(SignalType::End));
@@ -2490,6 +2616,10 @@ public:
 
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
+		if (this->mobile) {
+			this->OnMobileClick(widget);
+			return;
+		}
 		switch (widget) {
 			case WID_BS_SEMAPHORE_NORM:
 			case WID_BS_SEMAPHORE_ENTRY:
@@ -2551,7 +2681,15 @@ public:
 	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
 	{
 		if (!gui_scope) return;
-		this->LowerWidget((_cur_signal_variant == SignalVariant::Electric ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + to_underlying(_cur_signal_type));
+		if (this->mobile) {
+			for (SignalType type : EnumRange(SignalType::End)) this->SetWidgetLoweredState(WID_BS_ELECTRIC_NORM + to_underlying(type), type == _cur_signal_type);
+			this->SetWidgetLoweredState(WID_BS_MOBILE_ELECTRIC, _cur_signal_variant == SignalVariant::Electric);
+			this->SetWidgetLoweredState(WID_BS_MOBILE_SEMAPHORE, _cur_signal_variant == SignalVariant::Semaphore);
+			this->SetWidgetLoweredState(WID_BS_CONVERT, _convert_signal_button);
+			this->SetWidgetLoweredState(WID_BS_REMOVE, _remove_button_clicked);
+		} else {
+			this->LowerWidget((_cur_signal_variant == SignalVariant::Electric ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + to_underlying(_cur_signal_type));
+		}
 
 		this->SetWidgetLoweredState(WID_BS_CONVERT, _convert_signal_button);
 
@@ -2633,12 +2771,69 @@ static WindowDesc _signal_builder_desc(
 	_nested_signal_builder_widgets
 );
 
+/** A signal type button of the mobile picker: the signal sprite and its short name. */
+#define MOBILE_SIGNAL_BUTTON(widget, tooltip) \
+	NWidget(WWT_PANEL, Colours::Grey, widget), SetMinimalSize(80, 40), SetFill(1, 0), SetResize(1, 0), SetToolTip(tooltip), EndContainer()
+
+/** The signal picker of the mobile layout, in the sheet slot (round 5 design, batch 3). */
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_signal_builder_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::DarkGreen, WID_BS_TITLE), SetMinimalSize(0, 40), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+		NWidget(WWT_PUSHTXTBTN, Colours::DarkGreen, WID_BS_CLOSE), SetMinimalSize(40, 40), SetStringTip(STR_MOBILE_CROSS, STR_MOBILE_SIGNAL_CLOSE_TOOLTIP),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::DarkGreen), SetResize(1, 1),
+		NWidget(NWID_VERTICAL), SetPIP(0, 4, 0), SetPadding(0, 4, 4, 4),
+			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize), SetPIP(0, 4, 0),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BS_MOBILE_ELECTRIC), SetMinimalSize(80, 32), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_SIGNAL_ELECTRIC, STR_MOBILE_SIGNAL_ELECTRIC),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_BS_MOBILE_SEMAPHORE), SetMinimalSize(80, 32), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_MOBILE_SIGNAL_SEMAPHORE, STR_MOBILE_SIGNAL_SEMAPHORE),
+			EndContainer(),
+			NWidget(WWT_TEXT, Colours::Invalid), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET), SetStringTip(STR_MOBILE_SIGNAL_TYPE), SetTextStyle(TextColour::Black, FontSize::Normal),
+			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize), SetPIP(0, 4, 0),
+				MOBILE_SIGNAL_BUTTON(WID_BS_ELECTRIC_PBS, STR_BUILD_SIGNAL_ELECTRIC_PBS_TOOLTIP),
+				MOBILE_SIGNAL_BUTTON(WID_BS_ELECTRIC_PBS_OWAY, STR_BUILD_SIGNAL_ELECTRIC_PBS_OWAY_TOOLTIP),
+				NWidget(NWID_SELECTION, Colours::Invalid, WID_BS_BLOCK_SEL),
+					MOBILE_SIGNAL_BUTTON(WID_BS_ELECTRIC_NORM, STR_BUILD_SIGNAL_ELECTRIC_NORM_TOOLTIP),
+				EndContainer(),
+			EndContainer(),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_BS_BLOCK_SPACER_SEL),
+				NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize), SetPIP(0, 4, 0),
+					MOBILE_SIGNAL_BUTTON(WID_BS_ELECTRIC_ENTRY, STR_BUILD_SIGNAL_ELECTRIC_ENTRY_TOOLTIP),
+					MOBILE_SIGNAL_BUTTON(WID_BS_ELECTRIC_EXIT, STR_BUILD_SIGNAL_ELECTRIC_EXIT_TOOLTIP),
+					MOBILE_SIGNAL_BUTTON(WID_BS_ELECTRIC_COMBO, STR_BUILD_SIGNAL_ELECTRIC_COMBO_TOOLTIP),
+				EndContainer(),
+			EndContainer(),
+			NWidget(WWT_TEXT, Colours::Invalid), SetFill(1, 0), SetResize(1, 0), SetPadding(0, MOBILE_TEXT_INSET, 0, MOBILE_TEXT_INSET), SetStringTip(STR_MOBILE_SIGNAL_SPACING), SetTextStyle(TextColour::Black, FontSize::Normal),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, 4, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BS_DRAG_SIGNALS_DENSITY_DECREASE), SetMinimalSize(48, 36), SetStringTip(STR_MOBILE_MINUS, STR_BUILD_SIGNAL_DRAG_SIGNALS_DENSITY_DECREASE_TOOLTIP),
+				NWidget(WWT_TEXT, Colours::Invalid, WID_BS_DRAG_SIGNALS_DENSITY_LABEL), SetMinimalSize(0, 36), SetFill(1, 0), SetResize(1, 0), SetAlignment({AlignmentH::Centre, AlignmentV::Middle}), SetTextStyle(TextColour::Black, FontSize::Normal), SetToolTip(STR_BUILD_SIGNAL_DRAG_SIGNALS_DENSITY_TOOLTIP),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_BS_DRAG_SIGNALS_DENSITY_INCREASE), SetMinimalSize(48, 36), SetStringTip(STR_MOBILE_PLUS, STR_BUILD_SIGNAL_DRAG_SIGNALS_DENSITY_INCREASE_TOOLTIP),
+			EndContainer(),
+			NWidget(WWT_PANEL, Colours::Grey, WID_BS_CONVERT), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_SIGNAL_CHANGE_TOOLTIP), EndContainer(),
+			NWidget(WWT_PANEL, Colours::Grey, WID_BS_REMOVE), SetMinimalSize(0, 32), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_MOBILE_SIGNAL_REMOVE_TOOLTIP), EndContainer(),
+			NWidget(NWID_SPACER), SetFill(1, 1), SetResize(1, 1),
+		EndContainer(),
+	EndContainer(),
+};
+
+#undef MOBILE_SIGNAL_BUTTON
+
+static WindowDesc _mobile_signal_builder_desc(
+	WindowPosition::Manual, {}, 300, 300,
+	WindowClass::BuildSignal, WindowClass::BuildToolbar,
+	WindowDefaultFlag::Construction,
+	_nested_mobile_signal_builder_widgets
+);
+
 /**
  * Open the signal selection window
  * @param parent The parent window.
  */
 static void ShowSignalBuilder(Window *parent)
 {
+	if (IsMobileLayout()) {
+		MobileShowInSheet(new BuildSignalWindow(_mobile_signal_builder_desc, parent, true));
+		return;
+	}
 	new BuildSignalWindow(_signal_builder_desc, parent);
 }
 

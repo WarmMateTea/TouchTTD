@@ -45,6 +45,7 @@
 #include "station_cmd.h"
 #include "station_base.h"
 #include "map_func.h"
+#include "economy_func.h"
 #include "timer/timer.h"
 #include "timer/timer_window.h"
 
@@ -72,6 +73,14 @@ struct PendingSelection {
 	bool depot = false; ///< A rail depot on a single tile.
 	DiagDirection depot_dir = DiagDirection::NE; ///< Direction the depot's entrance faces.
 	bool depot_faces_track = false; ///< The direction was found from track next to the depot.
+	Point fract{}; ///< Where in its tile a single tile was tapped (#_tile_fract_coords): which track and side a signal goes on.
+	uint8_t cycles = 1; ///< Turning a signal: how many times to turn it (each tap on the pending signal adds one).
+
+	/** @return Whether the selection places, turns, converts or removes signals. */
+	bool IsSignals() const { return this->proc == DDSP_BUILD_SIGNALS; }
+
+	/** @return Whether it is a single tile (a tap) rather than a dragged stretch. */
+	bool IsSingleTile() const { return this->selstart.x == this->selend.x && this->selstart.y == this->selend.y; }
 
 	TileIndex StartTile() const { return this->tunnel ? this->tunnel_start : TileVirtXY(this->selstart.x, this->selstart.y); }
 	TileIndex EndTile() const { return this->tunnel ? this->tunnel_end : TileVirtXY(this->selend.x, this->selend.y); }
@@ -194,7 +203,10 @@ static void ReplaySelection(const PendingSelection &sel)
 		PostRailTunnel(sel.tunnel_start);
 	} else {
 		RestoreSelection(sel);
-		w->OnPlaceMouseUp(sel.method, sel.proc, sel.selend, sel.StartTile(), sel.EndTile());
+		/* A tapped signal goes on the track and side under the finger; turning repeats for each tap. */
+		_tile_fract_coords = sel.fract;
+		int times = sel.IsSignals() && sel.IsSingleTile() ? sel.cycles : 1;
+		for (int i = 0; i < times; i++) w->OnPlaceMouseUp(sel.method, sel.proc, sel.selend, sel.StartTile(), sel.EndTile());
 	}
 	SetRailRemoveMode(old_remove);
 }
@@ -242,6 +254,7 @@ static PendingSelection SnapshotSelection(const Window *w)
 	sel.selend = _thd.selend;
 	sel.drawstyle = _thd.drawstyle;
 	sel.remove = IsRailRemoveModeActive();
+	sel.fract = _tile_fract_coords;
 	return sel;
 }
 
@@ -432,10 +445,42 @@ static WindowDesc _mobile_build_label_desc(
  * @param cost Its cost.
  * @return The text.
  */
+/**
+ * How many signals a dragged stretch builds, converts or removes. Each costs the same, so the cost tells;
+ * without a cost, the count follows from the spacing.
+ * @param sel The selection.
+ * @param cost Its cost.
+ * @param each The cost of one signal.
+ * @return The number of signals.
+ */
+static uint GetSignalCount(const PendingSelection &sel, Money cost, Money each)
+{
+	if (cost > 0 && each > 0) return static_cast<uint>((cost + each / 2) / each);
+	uint density = std::max<uint>(1, _settings_client.gui.drag_signals_density);
+	return (sel.TileCount() - 1) / density + 1;
+}
+
 static std::string GetSelectionCostText(const PendingSelection &sel, Money cost)
 {
 	/* Removing track refunds part of its cost: show that as a gain, not as a negative cost. */
 	std::string money = cost < 0 ? GetString(STR_MOBILE_BUILD_REFUND, -cost) : GetString(STR_JUST_CURRENCY_LONG, cost);
+	if (sel.IsSignals()) {
+		uint density = std::max<uint>(1, _settings_client.gui.drag_signals_density);
+		switch (GetMobileBuildKind()) {
+			case MobileBuildKind::Remove:
+				if (sel.IsSingleTile()) return GetString(STR_MOBILE_BUILD_STATUS_SIGNAL_REMOVE_ONE, money);
+				return GetString(STR_MOBILE_BUILD_STATUS_SIGNAL_REMOVE, GetSignalCount(sel, cost, _price[Price::ClearSignals]), money);
+			case MobileBuildKind::Convert:
+				if (sel.IsSingleTile()) return GetString(STR_MOBILE_BUILD_STATUS_SIGNAL_CONVERT_ONE, money);
+				return GetString(STR_MOBILE_BUILD_STATUS_SIGNAL_CONVERT, GetSignalCount(sel, cost, _price[Price::BuildSignals] + _price[Price::ClearSignals]), money);
+			case MobileBuildKind::Change:
+				if (sel.cycles > 1) return GetString(STR_MOBILE_BUILD_STATUS_SIGNAL_TURN_TIMES, sel.cycles, money);
+				return GetString(STR_MOBILE_BUILD_STATUS_SIGNAL_TURN, money);
+			default:
+				if (sel.IsSingleTile()) return GetString(STR_MOBILE_BUILD_STATUS_SIGNAL_ONE, money);
+				return GetString(STR_MOBILE_BUILD_STATUS_SIGNALS, GetSignalCount(sel, cost, _price[Price::BuildSignals]), density, money);
+		}
+	}
 	if (sel.station) {
 		TileArea ta = sel.Area();
 		uint tracks, length;
@@ -530,6 +575,7 @@ bool MobileBuildReviewWanted(const Window *w)
 		case DDSP_DEMOLISH_AREA:
 		case DDSP_CONVERT_RAIL:
 		case DDSP_BUILD_BRIDGE:
+		case DDSP_BUILD_SIGNALS: // Signals are always reviewed (round 5 design, batch 3).
 			return true;
 		default:
 			return false;
@@ -686,7 +732,7 @@ void MobileBuildOnSizingUpdate(Window *w)
 	}
 
 	TileIndex end = sel.EndTile();
-	bool estimate = sel.proc == DDSP_PLACE_RAIL || sel.proc == DDSP_DEMOLISH_AREA || sel.proc == DDSP_CONVERT_RAIL || sel.station || sel.depot;
+	bool estimate = sel.proc == DDSP_PLACE_RAIL || sel.proc == DDSP_DEMOLISH_AREA || sel.proc == DDSP_CONVERT_RAIL || sel.proc == DDSP_BUILD_SIGNALS || sel.station || sel.depot;
 	if (end != _mb.estimated_end || sel.StartTile() != _mb.estimated_start) {
 		_mb.estimated_end = end;
 		_mb.estimated_start = sel.StartTile();
@@ -794,6 +840,15 @@ MobileViewportClick MobileBuildOnViewportClick(const Viewport &vp, int x, int y)
 
 		case MobileBuildState::Pending: {
 			if (_mb.sel.tunnel) return MobileViewportClick::Pan;
+			if (_mb.sel.IsSignals() && GetMobileBuildKind() == MobileBuildKind::Change) {
+				Point pt = GetTileBelowCursor();
+				if (pt.x != -1 && TileVirtXY(pt.x, pt.y) == _mb.sel.StartTile()) {
+					_mb.sel.cycles++;
+					_mb.estimate = TrySelection(_mb.sel, true);
+					SetState(MobileBuildState::Pending);
+					return MobileViewportClick::Consumed;
+				}
+			}
 			TileIndex handle = FindHandle(vp, x, y);
 			if (handle != INVALID_TILE) {
 				/* Adjust: drag the touched end or corner, the opposite one stays where it is. */
@@ -1282,6 +1337,12 @@ MobileBuildKind GetMobileBuildKind()
 	switch (_mb.sel.proc) {
 		case DDSP_DEMOLISH_AREA: return MobileBuildKind::Demolish;
 		case DDSP_CONVERT_RAIL: return MobileBuildKind::Convert;
+		case DDSP_BUILD_SIGNALS:
+			if (_mb.sel.remove) return MobileBuildKind::Remove;
+			if (IsMobileSignalConvertOn()) return MobileBuildKind::Convert;
+			/* A tap on a signal that's there turns it. */
+			if (_mb.sel.IsSingleTile() && IsPlainRailTile(_mb.sel.StartTile()) && HasSignals(_mb.sel.StartTile())) return MobileBuildKind::Change;
+			return MobileBuildKind::Build;
 		default: return _mb.sel.remove ? MobileBuildKind::Remove : MobileBuildKind::Build;
 	}
 }
@@ -1310,6 +1371,7 @@ std::string GetMobileBuildStatus(TextColour &colour)
 			if (_mb.sel.station) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_STATION, money);
 			if (_mb.sel.depot) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_DEPOT, money);
 			if (_mb.sel.IsWaypoint()) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_WAYPOINT, money);
+			if (_mb.sel.IsSignals()) return GetString(STR_MOBILE_BUILD_STATUS_DONE, money);
 			return GetString(STR_MOBILE_BUILD_STATUS_BUILT, _mb.done_tiles, money);
 		}
 

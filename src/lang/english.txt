@@ -920,6 +920,8 @@ STR_MOBILE_BUILD_HINT_BRIDGE                                    :Drag from one b
 STR_MOBILE_BUILD_HINT_TUNNEL                                    :Tap a slope to start a tunnel
 STR_MOBILE_BUILD_HINT_CONVERT                                   :Drag over an area to convert the rail
 STR_MOBILE_BUILD_HINT_PLACE                                     :Tap the map to place it
+STR_MOBILE_BUILD_HINT_SIGNALS                                   :Tap a track for one signal, or drag along it
+STR_MOBILE_BUILD_HINT_REMOVE_SIGNALS                            :Tap or drag over signals to remove them
 STR_MOBILE_BUILD_STATUS_LIFT                                    :Lift to review
 STR_MOBILE_BUILD_STATUS_COST                                    :{COMMA} tile{P "" s} · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_REMOVE                                  :Remove {COMMA} tile{P "" s} · {RAW_STRING}
@@ -934,6 +936,33 @@ STR_MOBILE_BUILD_CONFIRM_BUILD                                  :{WHITE}Build
 STR_MOBILE_BUILD_CONFIRM_REMOVE                                 :{WHITE}Remove
 STR_MOBILE_BUILD_CONFIRM_DEMOLISH                               :{WHITE}Demolish
 STR_MOBILE_BUILD_CONFIRM_CONVERT                                :{WHITE}Convert
+STR_MOBILE_BUILD_CONFIRM_CHANGE                                 :{WHITE}Change
+STR_MOBILE_BUILD_STATUS_SIGNAL_ONE                              :1 signal · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_SIGNALS                                 :{COMMA} signal{P "" s}, every {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_SIGNAL_TURN                             :Turn signal · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_SIGNAL_TURN_TIMES                       :Turn signal {COMMA} times · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_SIGNAL_CONVERT_ONE                      :Convert 1 signal · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_SIGNAL_CONVERT                          :Convert {COMMA} signal{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_SIGNAL_REMOVE_ONE                       :Remove 1 signal · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_SIGNAL_REMOVE                           :Remove {COMMA} signal{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_DONE                                    :Done · {RAW_STRING}
+STR_MOBILE_SIGNAL_TITLE                                         :Signals
+STR_MOBILE_SIGNAL_CLOSE_TOOLTIP                                 :{BLACK}Close, and stop placing signals
+STR_MOBILE_SIGNAL_ELECTRIC                                      :Electric
+STR_MOBILE_SIGNAL_SEMAPHORE                                     :Semaphore
+STR_MOBILE_SIGNAL_TYPE                                          :Type
+STR_MOBILE_SIGNAL_PATH                                          :Path
+STR_MOBILE_SIGNAL_PATH_ONEWAY                                   :One-way path
+STR_MOBILE_SIGNAL_BLOCK                                         :Block
+STR_MOBILE_SIGNAL_ENTRY                                         :Entry
+STR_MOBILE_SIGNAL_EXIT                                          :Exit
+STR_MOBILE_SIGNAL_COMBO                                         :Combo
+STR_MOBILE_SIGNAL_SPACING                                       :Spacing when dragging
+STR_MOBILE_SIGNAL_EVERY                                         :every {COMMA} tile{P "" s}
+STR_MOBILE_SIGNAL_CHANGE                                        :Change existing signals
+STR_MOBILE_SIGNAL_REMOVE                                        :Remove signals
+STR_MOBILE_SIGNAL_REMOVE_TOOLTIP                                :{BLACK}When on, tapping or dragging over signals removes them
+STR_MOBILE_SIGNAL_CHANGE_TOOLTIP                                :{BLACK}When on, tapping or dragging over signals converts them to the selected type
 STR_MOBILE_BUILD_CONFIRM_TOOLTIP                                :{BLACK}Do what is selected on the map
 STR_MOBILE_BUILD_CANCEL_TOOLTIP                                 :{BLACK}Cancel the selection, or stop using the tool
 STR_MOBILE_BUILD_UNDO                                           :Undo · {CURRENCY_SHORT}

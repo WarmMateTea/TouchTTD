@@ -112,6 +112,11 @@ enum BuildSignalWidgets : WidgetID {
 	WID_BS_DRAG_SIGNALS_DENSITY_INCREASE, ///< Increase the signal density.
 	WID_BS_BLOCK_SEL,           ///< Container for the block signal group, which can be hidden.
 	WID_BS_BLOCK_SPACER_SEL,    ///< Container for the spacer between block and path signal groups, which can be hidden.
+	WID_BS_TITLE,               ///< Mobile layout: title of the picker.
+	WID_BS_CLOSE,               ///< Mobile layout: close, which drops the signal tool.
+	WID_BS_MOBILE_ELECTRIC,     ///< Mobile layout: electric signals.
+	WID_BS_MOBILE_SEMAPHORE,    ///< Mobile layout: semaphores.
+	WID_BS_REMOVE,              ///< Mobile layout: remove signals rather than build them.
 };
 
 /** Widgets of the #BuildRailDepotWindow class. */

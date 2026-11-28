@@ -34,7 +34,8 @@ enum class MobileBuildKind : uint8_t {
 	Build, ///< Build something.
 	Remove, ///< Remove track (or another piece of infrastructure).
 	Demolish, ///< Clear an area.
-	Convert, ///< Convert rail to another type.
+	Convert, ///< Convert rail (or signals) to another type.
+	Change, ///< Turn an existing signal.
 };
 
 /** What to do with a click on the main viewport. */
@@ -45,6 +46,7 @@ enum class MobileViewportClick : uint8_t {
 };
 
 bool MobileBuildReviewWanted(const Window *w);
+bool IsMobileSignalConvertOn();
 void MobileBuildOnRelease(Window *w);
 void MobileBuildOnSizingUpdate(Window *w);
 MobileViewportClick MobileBuildOnViewportClick(const Viewport &vp, int x, int y);

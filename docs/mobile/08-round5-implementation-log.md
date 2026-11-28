@@ -8,7 +8,8 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 |---|---|
 | 1. Fonts, main menu, cells, fixes, leftovers | done, headless (order drag needs the phone: touch only) |
 | 2. Settings with Game Options folded in | done, headless |
-| 3. Signals | next |
+| 3. Signals | done, headless |
+| 4. Road and tram | next |
 
 ## Batch 1: fonts, main menu, cells, fixes, leftovers (§2, §3)
 
@@ -57,3 +58,21 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 - **The gesture layer only reads finger events** (`SDL_EVENT_FINGER_*`), so long presses and item drags can't be driven with `xdotool` on Xvfb; taps can, as mouse clicks.
 - **Headless games left running eat the CPU**: eight forgotten instances made a full build take an hour (load average 25 on 4 cores). `tools/mobile/stop_headless.sh` now stops every headless OpenTTD using the private config, whatever its display, and checks that they're gone. Check with `ps -C openttd,Xvfb`.
 - Changing `english.txt` or a widely included header rebuilds nearly everything (~20 min on this server when it's idle): group string changes.
+
+## Batch 3: Signals (§5)
+
+### Steps
+- **Picker** (`rail_gui.cpp`, `_nested_mobile_signal_builder_widgets`, `BuildSignalWindow` with `mobile`): in the sheet slot (`MobileShowInSheet()`), title and ✕ (drops the tool), Electric / Semaphore, the type buttons in three columns (sprite and short name; path signals only unless the "show signal types" setting says all), spacing − "every N tiles" +, "Change existing signals" On/Off, and **"Remove signals" On/Off** (see below). The type buttons reuse the `WID_BS_ELECTRIC_*` widgets; the variant comes from the radio. New widgets `WID_BS_TITLE`, `WID_BS_CLOSE`, `WID_BS_MOBILE_ELECTRIC`, `WID_BS_MOBILE_SEMAPHORE`, `WID_BS_REMOVE`, appended to the enum.
+- **The toolbar shows its picker plane** (status · ✕ · Build) while the signal picker is open, as with stations.
+- **Review flow** (`mobile_build.cpp`): `DDSP_BUILD_SIGNALS` is always reviewed. A tap stores where in the tile it landed (`PendingSelection::fract`, from `_tile_fract_coords`), so the replay puts the signal on the same track and side. Status texts: "1 signal · £x", "5 signals, every 2 tiles · £x", "Turn signal · £x" (a tap on an existing signal; new `MobileBuildKind::Change`, green **Change**), "Turn signal 2 times" (each further tap on the pending signal adds a turn, `PendingSelection::cycles`, replayed that many times), "Convert 2 signals" (Change on, red **Convert**), "Remove 3 signals" (red **Remove**), and "Done · £x" after building.
+- **Counts come from the cost**: every signal costs the same (`_price[Price::BuildSignals]`, plus `ClearSignals` when converting; `ClearSignals` alone when removing), so the estimate's cost divided by it is the count, end signal included. Counting from the spacing missed the end signal.
+- **Spacing and type changes update the pending row live** (`MobileBuildReestimate()` after every picker click).
+- **Dragging with Change on converts the stretch** in the mobile layout: `HandleAutoSignalPlacement()` passes `convert` to `BuildSignalLong` (the desktop ignores drags with its convert button on).
+- Hints: "Tap a track for one signal, or drag along it" / "Tap or drag over signals to remove them".
+- **Ghost signals**: the fallback from the handoff (the selection highlights the tiles; the count is in the status line). Real ghost sprites need a drawing pass of their own (backlog).
+- Screenshots `L09`–`L14`, `P04`.
+
+### Findings
+- **The toolbar's Remove is hidden while a picker fills the sheet** (the tools row goes to the picker plane), so the handoff's "Remove mode" row had no way in. The picker got a "Remove signals" toggle that drives the toolbar's remove mode (`ToggleRailButton_Remove()`); Change and Remove switch each other off.
+- `_tile_fract_coords` (`viewport_func.h`) is where in its tile the cursor is, 0–15 each way; `GenericPlaceSignals()` picks the track and side from it.
+- Changing only the text of existing strings rebuilds in seconds; adding string IDs regenerates `table/strings.h` and rebuilds most files.
