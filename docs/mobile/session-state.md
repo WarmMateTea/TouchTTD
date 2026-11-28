@@ -14,7 +14,7 @@ Last updated: 26 Nov 2026 (evening). Read this first, then `README.md` (the inde
   - **Background survival (26 Nov):** foreground service + notification while a game runs, pause and save when leaving the app, resume after a kill. Verified on the phone. Log: `06-round3-implementation-log.md` part A.
   - **Round 3 (26 Nov):** stations (tap/drag footprint, picker in the sheet, join, move, Undo), depots (auto-facing, Turn), waypoints, mobile town/station windows and minimap, edge-to-edge chrome, design fixes. Verified headless and on the phone (pinch on the minimap untested). Log: `06-round3-implementation-log.md` part B.
   - **Round 4 (27–28 Nov):** design fixes, touch dropdown, depot → New train → orders → Start, train list, main menu with Continue, New game with presets, confirmations, save/load, settings with search, top chrome against the cutout. Verified headless and partly on the phone. Log: `07-round4-implementation-log.md`.
-  - **Android build:** `os/android/build.sh`, APK published as GitHub pre-releases (`android-<commit count>`); latest: `android-33329` (commit `2ade79d992`, 26 Nov, round 3 + background survival). Logs: `02-android-build-plan.md`, `03-android-build-log.md`.
+  - **Android build:** `os/android/build.sh`, APK published as GitHub pre-releases (`android-<commit count>`); latest: `android-33331` (commit `d5986b7e62`, 28 Nov, round 4). Logs: `02-android-build-plan.md`, `03-android-build-log.md`.
 
 ## Waiting on
 
