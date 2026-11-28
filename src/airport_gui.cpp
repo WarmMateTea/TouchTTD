@@ -36,6 +36,8 @@
 #include "timer/timer_game_calendar.h"
 
 #include "widgets/airport_widget.h"
+#include "mobile_toolbar.h"
+#include "mobile_gui.h"
 
 #include "table/strings.h"
 
@@ -55,7 +57,8 @@ void CcBuildAirport(Commands, const CommandCost &result, TileIndex tile)
 	if (result.Failed()) return;
 
 	if (_settings_client.sound.confirm) SndPlayTileFx(SND_1F_CONSTRUCTION_OTHER, tile);
-	if (!_settings_client.gui.persistent_buildingtools) ResetObjectToPlace();
+	/* The mobile layout keeps the tool, for the next one is one tap away. */
+	if (!_settings_client.gui.persistent_buildingtools && !IsMobileLayout()) ResetObjectToPlace();
 }
 
 /**
@@ -230,9 +233,171 @@ static WindowDesc _air_toolbar_desc(
  *
  * @return newly opened airport toolbar, or nullptr if the toolbar could not be opened.
  */
+/**
+ * Mobile layout: the tiles the selected airport covers, centred on a tapped tile.
+ * @param tap The tapped tile.
+ * @param[out] area The tiles.
+ * @return \c false when no airport is selected.
+ */
+static bool GetMobileAirportArea(TileIndex tap, TileArea &area)
+{
+	if (_selected_airport_index == -1) return false;
+	const AirportSpec *as = AirportClass::Get(_selected_airport_class)->GetSpec(_selected_airport_index);
+	int w = as->size_x;
+	int h = as->size_y;
+	Direction rotation = as->layouts[_selected_airport_layout].rotation;
+	if (rotation == Direction::E || rotation == Direction::W) std::swap(w, h);
+	int x = Clamp<int>(TileX(tap) - (w - 1) / 2, 0, std::max<int>(0, Map::MaxX() - w + 1));
+	int y = Clamp<int>(TileY(tap) - (h - 1) / 2, 0, std::max<int>(0, Map::MaxY() - h + 1));
+	area = TileArea(TileXY(x, y), w, h);
+	return true;
+}
+
+/**
+ * Mobile layout: build the selected airport (or, under an estimating capture, test it). It joins an adjacent
+ * station of the company, as the desktop's does without a choice.
+ * @param north Its north tile.
+ */
+static void PostMobileAirport(TileIndex north)
+{
+	if (_selected_airport_index == -1) return;
+	uint8_t airport_type = AirportClass::Get(_selected_airport_class)->GetSpec(_selected_airport_index)->GetIndex();
+	Command<Commands::BuildAirport>::Post(STR_ERROR_CAN_T_BUILD_AIRPORT_HERE, CcBuildAirport, north, airport_type, _selected_airport_layout, StationID::Invalid(), false);
+}
+
+/** The airport toolbar of the mobile layout (round 5 design, 11.3). */
+struct MobileAirToolbarWindow : MobileToolbarWindow {
+	MobileAirToolbarWindow(WindowDesc &desc, bool landscape) : MobileToolbarWindow(desc, landscape)
+	{
+		this->InitNested(TransportType::Air);
+		this->UpdateMobileHint();
+		this->UpdateMobileWidgets();
+	}
+
+	bool IsPickerOpen() const override
+	{
+		return FindWindowById(WindowClass::BuildStation, TransportType::Air) != nullptr;
+	}
+
+	StringID GetToolHint() const override
+	{
+		switch (this->last_tool) {
+			case WID_AT_AIRPORT: return STR_MOBILE_BUILD_HINT_AIRPORT;
+			case WID_AT_DEMOLISH: return STR_MOBILE_BUILD_HINT_DEMOLISH;
+			default: return STR_MOBILE_BUILD_HINT_PICK_TOOL;
+		}
+	}
+
+	WidgetID GetDemolishTool() const override { return WID_AT_DEMOLISH; }
+
+	void Recreate() override
+	{
+		WidgetID tool = _thd.GetCallbackWnd() == this ? this->last_tool : INVALID_WIDGET;
+		this->Close();
+		Window *w = ShowBuildAirToolbar();
+		if (w != nullptr && tool != INVALID_WIDGET) w->OnClick({0, 0}, tool, 1);
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (widget == WID_MTB_STATUS) this->DrawStatus(r);
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		if (this->OnMobileClick(widget)) return;
+		switch (widget) {
+			case WID_AT_AIRPORT:
+				if (HandlePlacePushButton(this, WID_AT_AIRPORT, SPR_CURSOR_AIRPORT, HT_RECT)) ShowBuildAirportPicker(this);
+				break;
+			case WID_AT_DEMOLISH:
+				HandlePlacePushButton(this, WID_AT_DEMOLISH, ANIMCURSOR_DEMOLISH, HT_RECT | HT_DIAGONAL);
+				break;
+			default: return;
+		}
+		this->last_tool = widget;
+		this->UpdateMobileHint();
+		this->UpdateMobileWidgets();
+	}
+
+	void OnPlaceObject([[maybe_unused]] Point pt, TileIndex tile) override
+	{
+		switch (this->last_tool) {
+			case WID_AT_AIRPORT: {
+				/* A tap puts the airport, centred on it, in review. */
+				TileArea area;
+				if (GetMobileAirportArea(tile, area)) MobileBuildTapPending(this, area.tile, area, PostMobileAirport, STR_MOBILE_BUILD_STATUS_AIRPORT);
+				break;
+			}
+			case WID_AT_DEMOLISH:
+				PlaceProc_DemolishArea(tile);
+				break;
+		}
+	}
+
+	void OnPlaceDrag(ViewportPlaceMethod select_method, [[maybe_unused]] ViewportDragDropSelectionProcess select_proc, Point pt) override
+	{
+		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
+	}
+
+	void OnPlaceMouseUp([[maybe_unused]] ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt, TileIndex start_tile, TileIndex end_tile) override
+	{
+		if (pt.x != -1 && select_proc == DDSP_DEMOLISH_AREA) GUIPlaceProcDragXY(select_proc, start_tile, end_tile);
+	}
+
+	void OnPlaceObjectAbort() override
+	{
+		this->RaiseButtons();
+		CloseWindowById(WindowClass::BuildStation, TransportType::Air);
+		this->UpdateMobileHint();
+		this->UpdateMobileWidgets();
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		if (!gui_scope) return;
+		this->UpdateMobileWidgets();
+	}
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_air_landscape_widgets = {
+	MOBILE_TOOLBAR_LANDSCAPE_BEGIN(SPR_IMG_AIRPORT),
+		MOBILE_TOOLBAR_TOOL(WID_AT_AIRPORT, SPR_IMG_AIRPORT, STR_TOOLBAR_AIRCRAFT_BUILD_AIRPORT_TOOLTIP),
+		MOBILE_TOOLBAR_TOOL(WID_AT_DEMOLISH, SPR_IMG_DYNAMITE, STR_TOOLTIP_DEMOLISH_BUILDINGS_ETC),
+	MOBILE_TOOLBAR_LANDSCAPE_END,
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_air_portrait_widgets = {
+	MOBILE_TOOLBAR_PORTRAIT_BEGIN(SPR_IMG_AIRPORT),
+		MOBILE_TOOLBAR_TOOL(WID_AT_AIRPORT, SPR_IMG_AIRPORT, STR_TOOLBAR_AIRCRAFT_BUILD_AIRPORT_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_AT_DEMOLISH, SPR_IMG_DYNAMITE, STR_TOOLTIP_DEMOLISH_BUILDINGS_ETC), SetFill(1, 0), SetResize(1, 0),
+	MOBILE_TOOLBAR_PORTRAIT_END,
+};
+
+static WindowDesc _mobile_air_landscape_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::BuildToolbar, WindowClass::None,
+	WindowDefaultFlag::Construction,
+	_nested_mobile_air_landscape_widgets
+);
+
+static WindowDesc _mobile_air_portrait_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::BuildToolbar, WindowClass::None,
+	WindowDefaultFlag::Construction,
+	_nested_mobile_air_portrait_widgets
+);
+
 Window *ShowBuildAirToolbar()
 {
 	if (!Company::IsValidID(_local_company)) return nullptr;
+
+	if (IsMobileLayout()) {
+		if (Window *w = FindWindowById(WindowClass::BuildToolbar, TransportType::Air); w != nullptr && dynamic_cast<MobileToolbarWindow *>(w) != nullptr) return w;
+		CloseWindowByClass(WindowClass::BuildToolbar);
+		bool landscape = _screen.width > _screen.height;
+		return new MobileAirToolbarWindow(landscape ? _mobile_air_landscape_desc : _mobile_air_portrait_desc, landscape);
+	}
 
 	CloseWindowByClass(WindowClass::BuildToolbar);
 	return AllocateWindowDescFront<BuildAirToolbarWindow>(_air_toolbar_desc, TransportType::Air);
@@ -635,7 +800,9 @@ static WindowDesc _build_airport_desc(
 
 static void ShowBuildAirportPicker(Window *parent)
 {
-	new BuildAirportWindow(_build_airport_desc, parent);
+	Window *w = new BuildAirportWindow(_build_airport_desc, parent);
+	/* The mobile layout shows the picker in the sheet slot, the toolbar's status and Build below it. */
+	if (IsMobileLayout()) MobileShowInSheet(w);
 }
 
 void InitializeAirportGui()

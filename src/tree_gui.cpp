@@ -26,6 +26,8 @@
 #include "table/strings.h"
 #include "table/tree_land.h"
 
+#include "mobile_gui.h"
+
 #include "safeguards.h"
 
 void PlaceTreesRandomly();
@@ -320,5 +322,7 @@ static WindowDesc _build_trees_desc(
 void ShowBuildTreesToolbar()
 {
 	if (_game_mode != GameMode::Editor && !Company::IsValidID(_local_company)) return;
-	AllocateWindowDescFront<BuildTreesWindow>(_build_trees_desc, 0);
+	Window *w = AllocateWindowDescFront<BuildTreesWindow>(_build_trees_desc, 0);
+	/* The mobile layout shows the picker in the sheet slot, the landscape toolbar's status and Build below it. */
+	if (w != nullptr && IsMobileLayout()) MobileShowInSheet(w);
 }

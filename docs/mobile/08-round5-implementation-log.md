@@ -14,7 +14,8 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 | 6. Finances | done, headless |
 | 7. Industries | done, headless |
 | 8. Towns, news and land info | done, headless (land info needs a long press: phone; story book still desktop) |
-| 9. Landscape, water and air | next |
+| 9. Landscape, water and air | done, headless (locks, docks, buoys, aqueducts untested: no coast in the test area) |
+| 10. Details, timetable, autoreplace, groups | next |
 
 ## Batch 1: fonts, main menu, cells, fixes, leftovers (§2, §3)
 
@@ -174,3 +175,24 @@ Design input: [`handoffs/10-design-to-impl-round5.md`](handoffs/10-design-to-imp
 - **Story book**: still the desktop window in the World hub's tab (the page renderer works there; the 40-tall buttons and the title row with a page dropdown aren't built).
 - The newspaper doesn't show the news picture (vehicle, company face); the headline is the whole text.
 - Land info is untested on the phone (long press).
+
+## Batch 9: Landscape, water, air (§11)
+
+### Steps
+- **A shared mobile toolbar**: `src/mobile_toolbar.cpp` (+ `.h`) has `MobileToolbarWindow`, the status line, Turn, Cancel, Build/Undo/Show tools, Exit and the picker plane of the rail toolbar as one base class, with layout macros (`MOBILE_TOOLBAR_LANDSCAPE_BEGIN/END`, `MOBILE_TOOLBAR_PORTRAIT_BEGIN/END`, `MOBILE_TOOLBAR_TOOL`) and shared widgets `WID_MTB_*` (numbered from 200, so they never meet a toolbar's own tool widgets). The landscape, water and airport toolbars are built on it; the rail and road toolbars keep their own copies (older, and tested).
+- **Landscape** (`MobileTerraformToolbarWindow`, `terraform_gui.cpp`): Raise · Lower · Level · Demolish · Trees · Buy land · Sign. Raise, lower, level and buy land are reviewed ("Raise 1 tile · £277", "Lower 6 tiles · £x", "Buy 4 tiles · £x"); Trees opens the desktop tree picker in the sheet (`ShowBuildTreesToolbar()`), whose placement is reviewed too ("Trees on 1 tile · £15"); Sign places at once and asks for the text, as the desktop.
+- **Water** (`MobileDocksToolbarWindow`, `dock_gui.cpp`): Canal (drag, reviewed) · Lock · Dock · Ship depot · Buoy · Aqueduct · Demolish. Lock, dock, buoy and aqueduct use the new **tap pending** (`MobileBuildTapPending()`: the thing's tiles highlighted, its cost, Build, Undo by clearing it); the ship depot is a depot in review covering two tiles, with Turn switching its axis (`GetShipDepotAxis()`, `PostShipDepot()`, new `dock_gui.h`).
+- **Airports** (`MobileAirToolbarWindow`, `airport_gui.cpp`): Airport · Demolish; the desktop airport picker in the sheet; a tap puts the selected airport, centred on it, in review ("Airport · £5,760"), then Build and Undo.
+- **Review flow** (`mobile_build.cpp`): selections know their toolbar exactly (`IsRail()`, `IsRoad()`, `IsWater()` check the class too: the landscape toolbar's class `ScenarioGenerateLandscape` has window number 0, the same as rail); only rail and road have a remove mode and an Undo by removing; tapped things and depots are undone by clearing them. Area tools count their area (dx × dy).
+- **Mobile layout pass**: `GetMobileToolbar()` finds these toolbars; rotation calls `Recreate()`; the Build flyout anchors to `WID_MTB_CATEGORY` and knows which category each toolbar is.
+- Screenshots `L34`–`L37`.
+
+### Findings
+- The review flow invalidated only `BuildToolbar` windows; the landscape toolbar is `ScenarioGenerateLandscape`, so `SetMobileBuildDirty()` invalidates both.
+- A header may not use `STR_*` ids (`table/strings.h` is generated and only included by .cpp files): the base class's default hint lives in the .cpp.
+- Docks and airports join an adjacent station of the company without a choice (the desktop's join window would open over the review); a join dropdown for them is backlog.
+
+### Not done
+- The airport and tree pickers are the desktop windows in the sheet (functional, not restyled).
+- No catchment or Accepts/Supplies for a pending dock or airport; no join choice.
+- Transmitter and lighthouse (scenario editor only) and rivers are not in the mobile toolbars.

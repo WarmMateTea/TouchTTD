@@ -41,6 +41,8 @@
 #include "openttd.h"
 #include "rail_map.h"
 #include "road_gui.h"
+#include "dock_gui.h"
+#include "mobile_toolbar.h"
 #include "road_map.h"
 #include "road_cmd.h"
 #include "station_cmd.h"
@@ -81,8 +83,18 @@ struct PendingSelection {
 	uint8_t cycles = 1; ///< Turning a signal, or a one-way road: how many times to turn it (each tap on the pending selection adds one).
 	bool one_way = false; ///< The road toolbar's one-way tool: toggles the direction of existing road.
 
+	void (*tap_post)(TileIndex tile) = nullptr; ///< A tapped thing (lock, buoy, dock, aqueduct, airport): posts it at #tap_tile.
+	TileIndex tap_tile = INVALID_TILE; ///< Where the thing was tapped (for an airport: its north tile).
+	StringID tap_label = STR_NULL; ///< Its status text, "Lock · {RAW_STRING}".
+
+	/** @return Whether the selection belongs to the rail toolbar. */
+	bool IsRail() const { return this->cls == WindowClass::BuildToolbar && this->num == TransportType::Rail; }
+
 	/** @return Whether the selection belongs to the road (or tram) toolbar. */
-	bool IsRoad() const { return this->num == TransportType::Road; }
+	bool IsRoad() const { return this->cls == WindowClass::BuildToolbar && this->num == TransportType::Road; }
+
+	/** @return Whether the selection belongs to the water toolbar. */
+	bool IsWater() const { return this->cls == WindowClass::BuildToolbar && this->num == TransportType::Water; }
 
 	/** @return Whether the selection places road stops (bus, lorry or tram stops). */
 	bool IsRoadStop() const { return this->proc == DDSP_BUILD_BUSSTOP || this->proc == DDSP_BUILD_TRUCKSTOP; }
@@ -113,7 +125,20 @@ struct PendingSelection {
 	{
 		uint dx = Delta(TileX(this->StartTile()), TileX(this->EndTile())) + 1;
 		uint dy = Delta(TileY(this->StartTile()), TileY(this->EndTile())) + 1;
-		if (this->proc == DDSP_DEMOLISH_AREA || this->proc == DDSP_CONVERT_RAIL || this->station) return dx * dy;
+		switch (this->proc) {
+			case DDSP_DEMOLISH_AREA:
+			case DDSP_CONVERT_RAIL:
+			case DDSP_CONVERT_ROAD:
+			case DDSP_RAISE_AND_LEVEL_AREA:
+			case DDSP_LOWER_AND_LEVEL_AREA:
+			case DDSP_LEVEL_AREA:
+			case DDSP_BUILD_OBJECT:
+			case DDSP_PLANT_TREES:
+			case DDSP_CREATE_WATER:
+				return dx * dy;
+			default: break;
+		}
+		if (this->station) return dx * dy;
 		return std::max(dx, dy);
 	}
 };
@@ -162,8 +187,9 @@ static constexpr std::chrono::seconds UNDO_OFFER_TIME{8};
 
 static void SetMobileBuildDirty()
 {
-	/* The toolbar updates its buttons on invalidation, not just on redraw. */
+	/* The toolbar updates its buttons on invalidation, not just on redraw (the landscape toolbar has its own class). */
 	InvalidateWindowClassesData(WindowClass::BuildToolbar, 0, true);
+	InvalidateWindowClassesData(WindowClass::ScenarioGenerateLandscape, 0, true);
 }
 
 /**
@@ -173,7 +199,10 @@ static void SetMobileBuildDirty()
  */
 static bool IsReviewToolbar(const Window *w)
 {
-	return w != nullptr && IsMobileLayout() && w->window_class == WindowClass::BuildToolbar && (w->window_number == TransportType::Rail || w->window_number == TransportType::Road);
+	if (w == nullptr || !IsMobileLayout()) return false;
+	if (w->window_class == WindowClass::BuildToolbar && (w->window_number == TransportType::Rail || w->window_number == TransportType::Road)) return true;
+	/* The landscape, water and airport toolbars, and the tree picker (it places the trees itself). */
+	return dynamic_cast<const MobileToolbarWindow *>(w) != nullptr || w->window_class == WindowClass::BuildTrees;
 }
 
 /**
@@ -228,8 +257,14 @@ static void ReplaySelection(const PendingSelection &sel)
 	if (w == nullptr) return;
 
 	bool road = sel.IsRoad();
+	if (sel.tap_post != nullptr) {
+		sel.tap_post(sel.tap_tile);
+		return;
+	}
 	if (sel.depot) {
-		if (road) {
+		if (sel.IsWater()) {
+			PostShipDepot(sel.StartTile(), DiagDirToAxis(sel.depot_dir));
+		} else if (road) {
 			PostRoadDepot(sel.StartTile(), sel.depot_dir);
 		} else {
 			PostRailDepot(sel.StartTile(), sel.depot_dir);
@@ -237,8 +272,10 @@ static void ReplaySelection(const PendingSelection &sel)
 		return;
 	}
 
-	bool old_remove = IsRemoveModeActive(road);
-	SetRemoveMode(road, sel.remove);
+	/* Only the rail and road toolbars have a remove mode. */
+	bool has_remove = sel.IsRail() || road;
+	bool old_remove = has_remove && IsRemoveModeActive(road);
+	if (has_remove) SetRemoveMode(road, sel.remove);
 	bool old_one_way = IsRoadOneWayModeActive();
 	if (road) SetRoadOneWayMode(sel.one_way);
 	if (sel.tunnel) {
@@ -254,7 +291,7 @@ static void ReplaySelection(const PendingSelection &sel)
 		int times = (sel.IsSignals() && sel.IsSingleTile()) || sel.one_way ? sel.cycles : 1;
 		for (int i = 0; i < times; i++) w->OnPlaceMouseUp(sel.method, sel.proc, sel.selend, sel.StartTile(), sel.EndTile());
 	}
-	SetRemoveMode(road, old_remove);
+	if (has_remove) SetRemoveMode(road, old_remove);
 	SetRoadOneWayMode(old_one_way);
 }
 
@@ -300,7 +337,7 @@ static PendingSelection SnapshotSelection(const Window *w)
 	sel.selstart = _thd.selstart;
 	sel.selend = _thd.selend;
 	sel.drawstyle = _thd.drawstyle;
-	sel.remove = IsRemoveModeActive(sel.IsRoad());
+	sel.remove = (sel.IsRail() || sel.IsRoad()) && IsRemoveModeActive(sel.IsRoad());
 	sel.one_way = sel.IsRoad() && IsRoadOneWayModeActive();
 	sel.fract = _tile_fract_coords;
 	return sel;
@@ -543,6 +580,17 @@ static std::string GetSelectionCostText(const PendingSelection &sel, Money cost)
 				return GetString(STR_MOBILE_BUILD_STATUS_SIGNALS, GetSignalCount(sel, cost, _price[Price::BuildSignals]), density, money);
 		}
 	}
+	if (sel.tap_post != nullptr) return GetString(sel.tap_label, money);
+	if (sel.depot && sel.IsWater()) return GetString(STR_MOBILE_BUILD_STATUS_SHIP_DEPOT, money);
+	switch (sel.proc) {
+		case DDSP_RAISE_AND_LEVEL_AREA: return GetString(STR_MOBILE_BUILD_STATUS_RAISE, sel.TileCount(), money);
+		case DDSP_LOWER_AND_LEVEL_AREA: return GetString(STR_MOBILE_BUILD_STATUS_LOWER, sel.TileCount(), money);
+		case DDSP_LEVEL_AREA: return GetString(STR_MOBILE_BUILD_STATUS_LEVEL, sel.TileCount(), money);
+		case DDSP_BUILD_OBJECT: return GetString(STR_MOBILE_BUILD_STATUS_BUY_LAND, sel.TileCount(), money);
+		case DDSP_PLANT_TREES: return GetString(STR_MOBILE_BUILD_STATUS_TREES, sel.TileCount(), money);
+		case DDSP_CREATE_WATER: return GetString(STR_MOBILE_BUILD_STATUS_CANAL, sel.TileCount(), money);
+		default: break;
+	}
 	if (sel.station && sel.IsRoadStop()) {
 		bool tram = RoadTypeIsTram(GetCurrentRoadType());
 		StringID what = sel.proc == DDSP_BUILD_BUSSTOP ? (tram ? STR_MOBILE_BUILD_STOPS_TRAM_PASSENGER : STR_MOBILE_BUILD_STOPS_BUS) : (tram ? STR_MOBILE_BUILD_STOPS_TRAM_FREIGHT : STR_MOBILE_BUILD_STOPS_LORRY);
@@ -662,6 +710,15 @@ bool MobileBuildReviewWanted(const Window *w)
 		case DDSP_REMOVE_BUSSTOP:
 		case DDSP_REMOVE_TRUCKSTOP:
 		case DDSP_CONVERT_ROAD:
+			return true;
+
+		/* Landscaping, trees, canals (round 5 design, batch 9). */
+		case DDSP_RAISE_AND_LEVEL_AREA:
+		case DDSP_LOWER_AND_LEVEL_AREA:
+		case DDSP_LEVEL_AREA:
+		case DDSP_BUILD_OBJECT:
+		case DDSP_PLANT_TREES:
+		case DDSP_CREATE_WATER:
 			return true;
 		default:
 			return false;
@@ -869,7 +926,8 @@ static Point TileCentreOnScreen(const Viewport &vp, TileIndex tile)
  */
 static std::vector<TileIndex> GetHandles()
 {
-	if (_mb.sel.depot) return {};
+	/* A depot or a tapped thing has a fixed size: no ends to drag. */
+	if (_mb.sel.depot || _mb.sel.tap_post != nullptr) return {};
 	if (!_mb.sel.station) return {_mb.sel.StartTile(), _mb.sel.EndTile()};
 	TileArea ta = _mb.sel.Area();
 	return {ta.tile, TileAddXY(ta.tile, ta.w - 1, 0), TileAddXY(ta.tile, 0, ta.h - 1), TileAddXY(ta.tile, ta.w - 1, ta.h - 1)};
@@ -1074,6 +1132,17 @@ static DiagDirection GetAutoDepotDirection(TileIndex tile, bool &faces_track, bo
  * @param tile The tapped tile.
  * @return \c true when the depot is now in review; \c false to build it at once.
  */
+/**
+ * A ship depot covers two tiles along its axis.
+ * @param sel The depot in review.
+ */
+static void SetShipDepotArea(PendingSelection &sel)
+{
+	TileIndex tile = sel.StartTile();
+	TileIndex other = TileAddByDiagDir(tile, AxisToDiagDir(DiagDirToAxis(sel.depot_dir)));
+	SetSelectionArea(sel, tile, IsValidTile(other) ? other : tile);
+}
+
 bool MobileBuildDepotTap(Window *w, TileIndex tile)
 {
 	if (!IsReviewToolbar(w)) return false;
@@ -1089,7 +1158,12 @@ bool MobileBuildDepotTap(Window *w, TileIndex tile)
 	sel.place_mode = _thd.place_mode;
 	SetSelectionArea(sel, tile, tile);
 	sel.depot = true;
-	sel.depot_dir = GetAutoDepotDirection(tile, sel.depot_faces_track, sel.IsRoad());
+	if (sel.IsWater()) {
+		sel.depot_dir = AxisToDiagDir(GetShipDepotAxis());
+		SetShipDepotArea(sel);
+	} else {
+		sel.depot_dir = GetAutoDepotDirection(tile, sel.depot_faces_track, sel.IsRoad());
+	}
 	_mb.sel = sel;
 	ShowFrozen(sel);
 
@@ -1110,6 +1184,10 @@ void MobileBuildRotateDepot()
 	if (_mb.state != MobileBuildState::Pending || !_mb.sel.depot) return;
 	_mb.sel.depot_dir = ChangeDiagDir(_mb.sel.depot_dir, DiagDirDiff::Right90);
 	_mb.sel.depot_faces_track = false;
+	if (_mb.sel.IsWater()) {
+		SetShipDepotArea(_mb.sel);
+		ShowFrozen(_mb.sel);
+	}
 	_mb.estimate = TrySelection(_mb.sel, true);
 	MarkTileDirtyByTile(_mb.sel.StartTile());
 	SetMobileBuildDirty();
@@ -1123,8 +1201,49 @@ void MobileBuildRotateDepot()
  */
 bool GetMobileBuildDepotArrow(TileIndex tile, DiagDirection &dir)
 {
-	if (_mb.state != MobileBuildState::Pending || !_mb.sel.depot || tile != _mb.sel.StartTile()) return false;
+	/* A ship depot has no entrance arrow: its footprint shows the way. */
+	if (_mb.state != MobileBuildState::Pending || !_mb.sel.depot || _mb.sel.IsWater() || tile != _mb.sel.StartTile()) return false;
 	dir = _mb.sel.depot_dir;
+	return true;
+}
+
+/** @return Whether the selection in review can be turned (a depot). */
+bool MobileBuildCanRotate()
+{
+	return _mb.state == MobileBuildState::Pending && _mb.sel.depot;
+}
+
+/**
+ * A tap that puts a thing of a fixed size in review (a lock, a buoy, a dock, an aqueduct, an airport).
+ * @param w The toolbar.
+ * @param tile Where it is built (passed to \p post).
+ * @param area The tiles it covers, shown while it is in review.
+ * @param post Posts it at \p tile (or, under an estimating capture, tests it).
+ * @param label Its status text, with "{RAW_STRING}" for the cost.
+ * @return \c true when it is now in review; \c false to build it at once.
+ */
+bool MobileBuildTapPending(Window *w, TileIndex tile, TileArea area, void (*post)(TileIndex tile), StringID label)
+{
+	if (!IsReviewToolbar(w)) return false;
+
+	_mb.message.clear();
+	ClearUndo();
+	PendingSelection sel;
+	sel.cls = w->window_class;
+	sel.num = w->window_number;
+	sel.method = VPM_X_AND_Y;
+	sel.proc = DDSP_DEMOLISH_AREA; // Not a station or waypoint; the tap_post is what builds it.
+	sel.drawstyle = HT_RECT;
+	sel.place_mode = _thd.place_mode;
+	SetSelectionArea(sel, area.tile, TileAddXY(area.tile, std::max<int>(area.w, 1) - 1, std::max<int>(area.h, 1) - 1));
+	sel.tap_post = post;
+	sel.tap_tile = tile;
+	sel.tap_label = label;
+	_mb.sel = sel;
+	ShowFrozen(sel);
+
+	_mb.estimate = TrySelection(_mb.sel, true);
+	SetState(MobileBuildState::Pending);
 	return true;
 }
 
@@ -1312,8 +1431,8 @@ void MobileBuildConfirm()
 	bool offer_undo = GetMobileBuildKind() == MobileBuildKind::Build && !sel.tunnel && !sel.depot && !sel.station && (is_waypoint || !SelectionHasTrack(sel));
 	/* A station over existing track is undone keeping the track; over an existing station, not at all. */
 	bool undo_station = sel.station && !SelectionHasStation(sel);
-	/* One-way changes and conversions have no undo of their own. */
-	if (sel.one_way) offer_undo = false;
+	/* One-way changes and conversions have no undo of their own; landscaping, trees and canals neither. */
+	if (sel.one_way || (!sel.IsRail() && !sel.IsRoad())) offer_undo = false;
 	bool keep_rail = SelectionHasTrack(sel);
 
 	ReleaseHighlight();
@@ -1330,12 +1449,13 @@ void MobileBuildConfirm()
 	_mb.done_cost = result.cost;
 	_mb.undo_available = false;
 	_mb.undo_keep_rail = false;
-	if ((sel.tunnel || sel.depot) && result.valid) {
+	if ((sel.tunnel || sel.depot || sel.tap_post != nullptr) && result.valid) {
 		/* Undo a tunnel by demolishing its entrance, which removes the whole tunnel; a depot by demolishing it. */
 		_mb.undo = sel;
-		if (sel.depot) {
+		if (sel.depot || sel.tap_post != nullptr) {
+			/* Clearing one of its tiles removes the whole thing (a lock, a dock, an airport). */
 			_mb.undo.tunnel = true;
-			_mb.undo.tunnel_start = sel.StartTile();
+			_mb.undo.tunnel_start = sel.tap_post != nullptr ? sel.tap_tile : sel.StartTile();
 		}
 		offer_undo = true;
 	} else if (undo_station && result.valid) {
@@ -1446,7 +1566,7 @@ void MobileBuildSetToolHint(StringID hint)
 void MobileBuildReestimate()
 {
 	if (_mb.state != MobileBuildState::Pending) return;
-	_mb.sel.remove = IsRemoveModeActive(_mb.sel.IsRoad());
+	_mb.sel.remove = (_mb.sel.IsRail() || _mb.sel.IsRoad()) && IsRemoveModeActive(_mb.sel.IsRoad());
 	_mb.estimate = TrySelection(_mb.sel, true);
 	SetMobileBuildDirty();
 }
@@ -1461,7 +1581,7 @@ MobileBuildState GetMobileBuildState()
 MobileBuildKind GetMobileBuildKind()
 {
 	switch (_mb.sel.proc) {
-		case DDSP_DEMOLISH_AREA: return MobileBuildKind::Demolish;
+		case DDSP_DEMOLISH_AREA: return _mb.sel.tap_post != nullptr ? MobileBuildKind::Build : MobileBuildKind::Demolish;
 		case DDSP_CONVERT_RAIL:
 		case DDSP_CONVERT_ROAD: return MobileBuildKind::Convert;
 		case DDSP_PLACE_ROAD_X_DIR:
@@ -1504,7 +1624,7 @@ std::string GetMobileBuildStatus(TextColour &colour)
 			if (_mb.sel.station) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_STATION, money);
 			if (_mb.sel.depot) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_DEPOT, money);
 			if (_mb.sel.IsWaypoint()) return GetString(STR_MOBILE_BUILD_STATUS_BUILT_WAYPOINT, money);
-			if (_mb.sel.IsSignals() || _mb.sel.one_way) return GetString(STR_MOBILE_BUILD_STATUS_DONE, money);
+			if (_mb.sel.IsSignals() || _mb.sel.one_way || _mb.sel.tap_post != nullptr || (!_mb.sel.IsRail() && !_mb.sel.IsRoad())) return GetString(STR_MOBILE_BUILD_STATUS_DONE, money);
 			return GetString(STR_MOBILE_BUILD_STATUS_BUILT, _mb.done_tiles, money);
 		}
 
@@ -1565,7 +1685,7 @@ bool IsMobileBuildHandleTile(TileIndex tile)
  */
 bool MobileBuildHandleError(const std::string &message)
 {
-	if (!IsMobileLayout() || !IsReviewToolbar(FindWindowByClass(WindowClass::BuildToolbar))) return false;
+	if (!IsMobileLayout() || (!IsReviewToolbar(FindWindowByClass(WindowClass::BuildToolbar)) && GetMobileToolbar() == nullptr)) return false;
 	_mb.message = message;
 	SetMobileBuildDirty();
 	return true;

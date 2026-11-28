@@ -946,6 +946,32 @@ STR_MOBILE_BUILD_STATUS_SIGNAL_CONVERT                          :Convert {COMMA}
 STR_MOBILE_BUILD_STATUS_SIGNAL_REMOVE_ONE                       :Remove 1 signal · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_SIGNAL_REMOVE                           :Remove {COMMA} signal{P "" s} · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_DONE                                    :Done · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_RAISE                                   :Raise {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_LOWER                                   :Lower {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_LEVEL                                   :Level {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_BUY_LAND                                :Buy {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_TREES                                   :Trees on {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_CANAL                                   :Canal, {COMMA} tile{P "" s} · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_SHIP_DEPOT                              :Ship depot · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_LOCK                                    :Lock · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_BUOY                                    :Buoy · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_DOCK                                    :Dock · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_AQUEDUCT                                :Aqueduct · {RAW_STRING}
+STR_MOBILE_BUILD_STATUS_AIRPORT                                 :Airport · {RAW_STRING}
+STR_MOBILE_BUILD_HINT_RAISE                                     :Tap a tile, or drag over an area, to raise it
+STR_MOBILE_BUILD_HINT_LOWER                                     :Tap a tile, or drag over an area, to lower it
+STR_MOBILE_BUILD_HINT_LEVEL                                     :Drag from a tile to level the area to its height
+STR_MOBILE_BUILD_HINT_BUY_LAND                                  :Tap or drag to buy land
+STR_MOBILE_BUILD_HINT_SIGN                                      :Tap a tile to place a sign
+STR_MOBILE_BUILD_HINT_TREES                                     :Tap for one tree, or drag over an area
+STR_MOBILE_BUILD_HINT_CANAL                                     :Drag to dig a canal
+STR_MOBILE_BUILD_HINT_LOCK                                      :Tap a straight slope with water for a lock
+STR_MOBILE_BUILD_HINT_DOCK                                      :Tap a coastal slope for a dock
+STR_MOBILE_BUILD_HINT_SHIP_DEPOT                                :Tap water for a ship depot
+STR_MOBILE_BUILD_HINT_BUOY                                      :Tap water for a buoy
+STR_MOBILE_BUILD_HINT_AQUEDUCT                                  :Tap a slope to start an aqueduct
+STR_MOBILE_BUILD_HINT_AIRPORT                                   :Tap the map to place the airport
+STR_MOBILE_TOOLBAR_CATEGORY_TOOLTIP                             :{BLACK}Build something else
 STR_MOBILE_BUILD_STATUS_STOP                                    :{RAW_STRING} · {RAW_STRING}
 STR_MOBILE_BUILD_STATUS_STOP_JOIN                               :{RAW_STRING}, joins {STATION} · {RAW_STRING}
 STR_MOBILE_BUILD_STOPS_BUS                                      :{COMMA} bus stop{P "" s}

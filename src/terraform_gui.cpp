@@ -39,6 +39,8 @@
 #include "object_cmd.h"
 
 #include "widgets/terraform_widget.h"
+#include "mobile_toolbar.h"
+#include "mobile_gui.h"
 
 #include "table/strings.h"
 
@@ -424,6 +426,161 @@ struct TerraformToolbarWindow : Window {
 	}, TerraformToolbarGlobalHotkeys};
 };
 
+/** The landscape toolbar of the mobile layout (round 5 design, 11.1). */
+struct MobileTerraformToolbarWindow : MobileToolbarWindow {
+	MobileTerraformToolbarWindow(WindowDesc &desc, bool landscape) : MobileToolbarWindow(desc, landscape)
+	{
+		this->InitNested(0);
+		this->UpdateMobileHint();
+		this->UpdateMobileWidgets();
+	}
+
+	bool IsPickerOpen() const override
+	{
+		return FindWindowById(WindowClass::BuildTrees, 0) != nullptr;
+	}
+
+	StringID GetToolHint() const override
+	{
+		if (this->IsPickerOpen()) return STR_MOBILE_BUILD_HINT_TREES;
+		switch (this->last_tool) {
+			case WID_TT_RAISE_LAND: return STR_MOBILE_BUILD_HINT_RAISE;
+			case WID_TT_LOWER_LAND: return STR_MOBILE_BUILD_HINT_LOWER;
+			case WID_TT_LEVEL_LAND: return STR_MOBILE_BUILD_HINT_LEVEL;
+			case WID_TT_DEMOLISH: return STR_MOBILE_BUILD_HINT_DEMOLISH;
+			case WID_TT_BUY_LAND: return STR_MOBILE_BUILD_HINT_BUY_LAND;
+			case WID_TT_PLACE_SIGN: return STR_MOBILE_BUILD_HINT_SIGN;
+			default: return STR_MOBILE_BUILD_HINT_PICK_TOOL;
+		}
+	}
+
+	WidgetID GetDemolishTool() const override { return WID_TT_DEMOLISH; }
+
+	void Recreate() override
+	{
+		WidgetID tool = _thd.GetCallbackWnd() == this ? this->last_tool : INVALID_WIDGET;
+		this->Close();
+		Window *w = ShowTerraformToolbar(nullptr);
+		if (w != nullptr && tool != INVALID_WIDGET) w->OnClick({0, 0}, tool, 1);
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (widget == WID_MTB_STATUS) this->DrawStatus(r);
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		if (this->OnMobileClick(widget)) return;
+		switch (widget) {
+			case WID_TT_RAISE_LAND: HandlePlacePushButton(this, widget, ANIMCURSOR_RAISELAND, HT_POINT | HT_DIAGONAL); break;
+			case WID_TT_LOWER_LAND: HandlePlacePushButton(this, widget, ANIMCURSOR_LOWERLAND, HT_POINT | HT_DIAGONAL); break;
+			case WID_TT_LEVEL_LAND: HandlePlacePushButton(this, widget, SPR_CURSOR_LEVEL_LAND, HT_POINT | HT_DIAGONAL); break;
+			case WID_TT_DEMOLISH: HandlePlacePushButton(this, widget, ANIMCURSOR_DEMOLISH, HT_RECT | HT_DIAGONAL); break;
+			case WID_TT_BUY_LAND: HandlePlacePushButton(this, widget, SPR_CURSOR_BUY_LAND, HT_RECT | HT_DIAGONAL); break;
+			case WID_TT_PLACE_SIGN: HandlePlacePushButton(this, widget, SPR_CURSOR_SIGN, HT_RECT); break;
+			case WID_TT_PLANT_TREES:
+				/* The tree picker fills the sheet; it places the trees itself. */
+				ShowBuildTreesToolbar();
+				break;
+			default: return;
+		}
+		if (widget != WID_TT_PLANT_TREES) this->last_tool = widget;
+		this->UpdateMobileHint();
+		this->UpdateMobileWidgets();
+	}
+
+	void OnPlaceObject([[maybe_unused]] Point pt, TileIndex tile) override
+	{
+		switch (this->last_tool) {
+			case WID_TT_LOWER_LAND: VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_LOWER_AND_LEVEL_AREA); break;
+			case WID_TT_RAISE_LAND: VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_RAISE_AND_LEVEL_AREA); break;
+			case WID_TT_LEVEL_LAND: VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_LEVEL_AREA); break;
+			case WID_TT_DEMOLISH: PlaceProc_DemolishArea(tile); break;
+			case WID_TT_BUY_LAND: VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_BUILD_OBJECT); break;
+			case WID_TT_PLACE_SIGN: PlaceProc_Sign(tile); break;
+			default: break;
+		}
+	}
+
+	void OnPlaceDrag(ViewportPlaceMethod select_method, [[maybe_unused]] ViewportDragDropSelectionProcess select_proc, Point pt) override
+	{
+		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
+	}
+
+	void OnPlaceMouseUp([[maybe_unused]] ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt, TileIndex start_tile, TileIndex end_tile) override
+	{
+		if (pt.x == -1) return;
+		switch (select_proc) {
+			case DDSP_DEMOLISH_AREA:
+			case DDSP_RAISE_AND_LEVEL_AREA:
+			case DDSP_LOWER_AND_LEVEL_AREA:
+			case DDSP_LEVEL_AREA:
+				GUIPlaceProcDragXY(select_proc, start_tile, end_tile);
+				break;
+			case DDSP_BUILD_OBJECT:
+				if (!_settings_game.construction.freeform_edges) {
+					if (TileX(end_tile) == Map::MaxX()) end_tile += TileDiffXY(-1, 0);
+					if (TileY(end_tile) == Map::MaxY()) end_tile += TileDiffXY(0, -1);
+				}
+				Command<Commands::BuildObjectArea>::Post(STR_ERROR_CAN_T_PURCHASE_THIS_LAND, CcPlaySound_CONSTRUCTION_RAIL, end_tile, start_tile, OBJECT_OWNED_LAND, 0, false);
+				break;
+			default: break;
+		}
+	}
+
+	void OnPlaceObjectAbort() override
+	{
+		this->RaiseButtons();
+		this->UpdateMobileHint();
+		this->UpdateMobileWidgets();
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		if (!gui_scope) return;
+		this->UpdateMobileWidgets();
+	}
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_terraform_landscape_widgets = {
+	MOBILE_TOOLBAR_LANDSCAPE_BEGIN(SPR_IMG_LANDSCAPING),
+		MOBILE_TOOLBAR_TOOL(WID_TT_RAISE_LAND, SPR_IMG_TERRAFORM_UP, STR_LANDSCAPING_TOOLTIP_RAISE_A_CORNER_OF_LAND),
+		MOBILE_TOOLBAR_TOOL(WID_TT_LOWER_LAND, SPR_IMG_TERRAFORM_DOWN, STR_LANDSCAPING_TOOLTIP_LOWER_A_CORNER_OF_LAND),
+		MOBILE_TOOLBAR_TOOL(WID_TT_LEVEL_LAND, SPR_IMG_LEVEL_LAND, STR_LANDSCAPING_LEVEL_LAND_TOOLTIP),
+		MOBILE_TOOLBAR_TOOL(WID_TT_DEMOLISH, SPR_IMG_DYNAMITE, STR_TOOLTIP_DEMOLISH_BUILDINGS_ETC),
+		MOBILE_TOOLBAR_TOOL(WID_TT_PLANT_TREES, SPR_IMG_PLANTTREES, STR_SCENEDIT_TOOLBAR_PLANT_TREES_TOOLTIP),
+		MOBILE_TOOLBAR_TOOL(WID_TT_BUY_LAND, SPR_IMG_BUY_LAND, STR_LANDSCAPING_TOOLTIP_PURCHASE_LAND),
+		MOBILE_TOOLBAR_TOOL(WID_TT_PLACE_SIGN, SPR_IMG_SIGN, STR_SCENEDIT_TOOLBAR_PLACE_SIGN_TOOLTIP),
+	MOBILE_TOOLBAR_LANDSCAPE_END,
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_terraform_portrait_widgets = {
+	MOBILE_TOOLBAR_PORTRAIT_BEGIN(SPR_IMG_LANDSCAPING),
+		MOBILE_TOOLBAR_TOOL(WID_TT_RAISE_LAND, SPR_IMG_TERRAFORM_UP, STR_LANDSCAPING_TOOLTIP_RAISE_A_CORNER_OF_LAND), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_TT_LOWER_LAND, SPR_IMG_TERRAFORM_DOWN, STR_LANDSCAPING_TOOLTIP_LOWER_A_CORNER_OF_LAND), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_TT_LEVEL_LAND, SPR_IMG_LEVEL_LAND, STR_LANDSCAPING_LEVEL_LAND_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_TT_DEMOLISH, SPR_IMG_DYNAMITE, STR_TOOLTIP_DEMOLISH_BUILDINGS_ETC), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_TT_PLANT_TREES, SPR_IMG_PLANTTREES, STR_SCENEDIT_TOOLBAR_PLANT_TREES_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_TT_BUY_LAND, SPR_IMG_BUY_LAND, STR_LANDSCAPING_TOOLTIP_PURCHASE_LAND), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_TT_PLACE_SIGN, SPR_IMG_SIGN, STR_SCENEDIT_TOOLBAR_PLACE_SIGN_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+	MOBILE_TOOLBAR_PORTRAIT_END,
+};
+
+static WindowDesc _mobile_terraform_landscape_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::ScenarioGenerateLandscape, WindowClass::None,
+	WindowDefaultFlag::Construction,
+	_nested_mobile_terraform_landscape_widgets
+);
+
+static WindowDesc _mobile_terraform_portrait_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::ScenarioGenerateLandscape, WindowClass::None,
+	WindowDefaultFlag::Construction,
+	_nested_mobile_terraform_portrait_widgets
+);
+
 static constexpr std::initializer_list<NWidgetPart> _nested_terraform_widgets = {
 	NWidget(NWID_HORIZONTAL),
 		NWidget(WWT_CLOSEBOX, Colours::DarkGreen),
@@ -472,6 +629,15 @@ static WindowDesc _terraform_desc(
 Window *ShowTerraformToolbar(Window *link)
 {
 	if (!Company::IsValidID(_local_company)) return nullptr;
+
+	if (IsMobileLayout()) {
+		/* The mobile layout has one construction toolbar at a time, in the dock's place. */
+		if (Window *w = FindWindowById(WindowClass::ScenarioGenerateLandscape, 0); w != nullptr && dynamic_cast<MobileToolbarWindow *>(w) != nullptr) return w;
+		CloseWindowByClass(WindowClass::BuildToolbar);
+		CloseWindowById(WindowClass::ScenarioGenerateLandscape, 0, true);
+		bool landscape = _screen.width > _screen.height;
+		return new MobileTerraformToolbarWindow(landscape ? _mobile_terraform_landscape_desc : _mobile_terraform_portrait_desc, landscape);
+	}
 
 	/* Delete the terraform toolbar to place it again. */
 	CloseWindowById(WindowClass::ScenarioGenerateLandscape, 0, true);

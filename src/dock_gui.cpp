@@ -38,6 +38,10 @@
 #include "table/sprites.h"
 #include "table/strings.h"
 
+#include "mobile_toolbar.h"
+#include "mobile_gui.h"
+#include "dock_gui.h"
+
 #include "safeguards.h"
 
 static void ShowBuildDockStationPicker(Window *parent);
@@ -50,7 +54,25 @@ void CcBuildDocks(Commands, const CommandCost &result, TileIndex tile)
 	if (result.Failed()) return;
 
 	if (_settings_client.sound.confirm) SndPlayTileFx(SND_02_CONSTRUCTION_WATER, tile);
-	if (!_settings_client.gui.persistent_buildingtools) ResetObjectToPlace();
+	/* The mobile layout keeps the tool, for the next one is one tap away. */
+	if (!_settings_client.gui.persistent_buildingtools && !IsMobileLayout()) ResetObjectToPlace();
+}
+
+/** @return The axis new ship depots are built along. */
+Axis GetShipDepotAxis()
+{
+	return _ship_depot_direction;
+}
+
+/**
+ * Build a ship depot (or, under an estimating #CommandResultCapture, test it).
+ * @param tile Its first tile.
+ * @param axis Its axis.
+ */
+void PostShipDepot(TileIndex tile, Axis axis)
+{
+	_ship_depot_direction = axis;
+	Command<Commands::BuildShipDepot>::Post(STR_ERROR_CAN_T_BUILD_SHIP_DEPOT, CcBuildDocks, tile, axis);
 }
 
 void CcPlaySound_CONSTRUCTION_WATER(Commands, const CommandCost &result, TileIndex tile)
@@ -334,6 +356,193 @@ struct BuildDocksToolbarWindow : Window {
 	}, DockToolbarGlobalHotkeys};
 };
 
+/** The water toolbar of the mobile layout (round 5 design, 11.2). */
+struct MobileDocksToolbarWindow : MobileToolbarWindow {
+	MobileDocksToolbarWindow(WindowDesc &desc, bool landscape) : MobileToolbarWindow(desc, landscape)
+	{
+		this->InitNested(TransportType::Water);
+		this->UpdateMobileHint();
+		this->UpdateMobileWidgets();
+	}
+
+	StringID GetToolHint() const override
+	{
+		switch (this->last_tool) {
+			case WID_DT_CANAL: return STR_MOBILE_BUILD_HINT_CANAL;
+			case WID_DT_LOCK: return STR_MOBILE_BUILD_HINT_LOCK;
+			case WID_DT_DEMOLISH: return STR_MOBILE_BUILD_HINT_DEMOLISH;
+			case WID_DT_DEPOT: return STR_MOBILE_BUILD_HINT_SHIP_DEPOT;
+			case WID_DT_STATION: return STR_MOBILE_BUILD_HINT_DOCK;
+			case WID_DT_BUOY: return STR_MOBILE_BUILD_HINT_BUOY;
+			case WID_DT_BUILD_AQUEDUCT: return STR_MOBILE_BUILD_HINT_AQUEDUCT;
+			default: return STR_MOBILE_BUILD_HINT_PICK_TOOL;
+		}
+	}
+
+	WidgetID GetDemolishTool() const override { return WID_DT_DEMOLISH; }
+
+	void Recreate() override
+	{
+		WidgetID tool = _thd.GetCallbackWnd() == this ? this->last_tool : INVALID_WIDGET;
+		this->Close();
+		Window *w = ShowBuildDocksToolbar();
+		if (w != nullptr && tool != INVALID_WIDGET) w->OnClick({0, 0}, tool, 1);
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (widget == WID_MTB_STATUS) this->DrawStatus(r);
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		if (this->OnMobileClick(widget)) return;
+		static const std::pair<WidgetID, CursorID> tools[] = {
+			{WID_DT_CANAL, SPR_CURSOR_CANAL}, {WID_DT_LOCK, SPR_CURSOR_LOCK}, {WID_DT_DEMOLISH, ANIMCURSOR_DEMOLISH},
+			{WID_DT_DEPOT, SPR_CURSOR_SHIP_DEPOT}, {WID_DT_STATION, SPR_CURSOR_DOCK}, {WID_DT_BUOY, SPR_CURSOR_BUOY},
+			{WID_DT_BUILD_AQUEDUCT, SPR_CURSOR_AQUEDUCT},
+		};
+		for (const auto &[tool, cursor] : tools) {
+			if (tool != widget) continue;
+			HandlePlacePushButton(this, widget, cursor, (widget == WID_DT_CANAL || widget == WID_DT_DEMOLISH) ? HT_RECT | HT_DIAGONAL : HT_RECT);
+			this->last_tool = widget;
+		}
+		this->UpdateMobileHint();
+		this->UpdateMobileWidgets();
+	}
+
+	/**
+	 * The tiles a lock or dock on a slope covers: the slope, the tile down it, and for a lock the tile up it.
+	 * @param tile The slope.
+	 * @param lock A lock rather than a dock.
+	 * @return The tiles.
+	 */
+	static TileArea GetSlopeArea(TileIndex tile, bool lock)
+	{
+		DiagDirection dir = GetInclinedSlopeDirection(GetTileSlope(tile));
+		if (!IsValidDiagDirection(dir)) return TileArea(tile, 1, 1);
+		TileIndex down = TileAddByDiagDir(tile, ReverseDiagDir(dir));
+		TileIndex up = lock ? TileAddByDiagDir(tile, dir) : tile;
+		if (!IsValidTile(down) || !IsValidTile(up)) return TileArea(tile, 1, 1);
+		return TileArea(down, up);
+	}
+
+	void OnPlaceObject([[maybe_unused]] Point pt, TileIndex tile) override
+	{
+		switch (this->last_tool) {
+			case WID_DT_CANAL:
+				VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_CREATE_WATER);
+				break;
+
+			case WID_DT_DEMOLISH:
+				PlaceProc_DemolishArea(tile);
+				break;
+
+			case WID_DT_LOCK:
+				MobileBuildTapPending(this, tile, GetSlopeArea(tile, true), [](TileIndex t) {
+					Command<Commands::BuildLock>::Post(STR_ERROR_CAN_T_BUILD_LOCKS, CcBuildDocks, t);
+				}, STR_MOBILE_BUILD_STATUS_LOCK);
+				break;
+
+			case WID_DT_DEPOT:
+				MobileBuildDepotTap(this, tile);
+				break;
+
+			case WID_DT_STATION:
+				/* The dock joins an adjacent station of yours, as the desktop's does without a choice. */
+				MobileBuildTapPending(this, tile, GetSlopeArea(tile, false), [](TileIndex t) {
+					Command<Commands::BuildDock>::Post(STR_ERROR_CAN_T_BUILD_DOCK_HERE, CcBuildDocks, t, StationID::Invalid(), false);
+				}, STR_MOBILE_BUILD_STATUS_DOCK);
+				break;
+
+			case WID_DT_BUOY:
+				MobileBuildTapPending(this, tile, TileArea(tile, 1, 1), [](TileIndex t) {
+					Command<Commands::BuildBuoy>::Post(STR_ERROR_CAN_T_POSITION_BUOY_HERE, CcBuildDocks, t);
+				}, STR_MOBILE_BUILD_STATUS_BUOY);
+				break;
+
+			case WID_DT_BUILD_AQUEDUCT: {
+				TileIndex end = tile;
+				GetOtherAqueductEnd(tile, &end);
+				MobileBuildTapPending(this, tile, TileArea(tile, IsValidTile(end) ? end : tile), [](TileIndex t) {
+					Command<Commands::BuildBridge>::Post(STR_ERROR_CAN_T_BUILD_AQUEDUCT_HERE, CcBuildBridge, t, GetOtherAqueductEnd(t), TransportType::Water, 0, INVALID_RAILTYPE, INVALID_ROADTYPE);
+				}, STR_MOBILE_BUILD_STATUS_AQUEDUCT);
+				break;
+			}
+		}
+	}
+
+	void OnPlaceDrag(ViewportPlaceMethod select_method, [[maybe_unused]] ViewportDragDropSelectionProcess select_proc, Point pt) override
+	{
+		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
+	}
+
+	void OnPlaceMouseUp([[maybe_unused]] ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt, TileIndex start_tile, TileIndex end_tile) override
+	{
+		if (pt.x == -1) return;
+		switch (select_proc) {
+			case DDSP_DEMOLISH_AREA:
+				GUIPlaceProcDragXY(select_proc, start_tile, end_tile);
+				break;
+			case DDSP_CREATE_WATER:
+				Command<Commands::BuildCanal>::Post(STR_ERROR_CAN_T_BUILD_CANALS, CcPlaySound_CONSTRUCTION_WATER, end_tile, start_tile, WaterClass::Canal, false);
+				break;
+			default: break;
+		}
+	}
+
+	void OnPlaceObjectAbort() override
+	{
+		this->RaiseButtons();
+		this->UpdateMobileHint();
+		this->UpdateMobileWidgets();
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		if (!gui_scope) return;
+		this->UpdateMobileWidgets();
+	}
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_docks_landscape_widgets = {
+	MOBILE_TOOLBAR_LANDSCAPE_BEGIN(SPR_IMG_BUILD_CANAL),
+		MOBILE_TOOLBAR_TOOL(WID_DT_CANAL, SPR_IMG_BUILD_CANAL, STR_WATERWAYS_TOOLBAR_BUILD_CANALS_TOOLTIP),
+		MOBILE_TOOLBAR_TOOL(WID_DT_LOCK, SPR_IMG_BUILD_LOCK, STR_WATERWAYS_TOOLBAR_BUILD_LOCKS_TOOLTIP),
+		MOBILE_TOOLBAR_TOOL(WID_DT_STATION, SPR_IMG_SHIP_DOCK, STR_WATERWAYS_TOOLBAR_BUILD_DOCK_TOOLTIP),
+		MOBILE_TOOLBAR_TOOL(WID_DT_DEPOT, SPR_IMG_SHIP_DEPOT, STR_WATERWAYS_TOOLBAR_BUILD_DEPOT_TOOLTIP),
+		MOBILE_TOOLBAR_TOOL(WID_DT_BUOY, SPR_IMG_BUOY, STR_WATERWAYS_TOOLBAR_BUOY_TOOLTIP),
+		MOBILE_TOOLBAR_TOOL(WID_DT_BUILD_AQUEDUCT, SPR_IMG_AQUEDUCT, STR_WATERWAYS_TOOLBAR_BUILD_AQUEDUCT_TOOLTIP),
+		MOBILE_TOOLBAR_TOOL(WID_DT_DEMOLISH, SPR_IMG_DYNAMITE, STR_TOOLTIP_DEMOLISH_BUILDINGS_ETC),
+	MOBILE_TOOLBAR_LANDSCAPE_END,
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_mobile_docks_portrait_widgets = {
+	MOBILE_TOOLBAR_PORTRAIT_BEGIN(SPR_IMG_BUILD_CANAL),
+		MOBILE_TOOLBAR_TOOL(WID_DT_CANAL, SPR_IMG_BUILD_CANAL, STR_WATERWAYS_TOOLBAR_BUILD_CANALS_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_DT_LOCK, SPR_IMG_BUILD_LOCK, STR_WATERWAYS_TOOLBAR_BUILD_LOCKS_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_DT_STATION, SPR_IMG_SHIP_DOCK, STR_WATERWAYS_TOOLBAR_BUILD_DOCK_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_DT_DEPOT, SPR_IMG_SHIP_DEPOT, STR_WATERWAYS_TOOLBAR_BUILD_DEPOT_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_DT_BUOY, SPR_IMG_BUOY, STR_WATERWAYS_TOOLBAR_BUOY_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_DT_BUILD_AQUEDUCT, SPR_IMG_AQUEDUCT, STR_WATERWAYS_TOOLBAR_BUILD_AQUEDUCT_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+		MOBILE_TOOLBAR_TOOL(WID_DT_DEMOLISH, SPR_IMG_DYNAMITE, STR_TOOLTIP_DEMOLISH_BUILDINGS_ETC), SetFill(1, 0), SetResize(1, 0),
+	MOBILE_TOOLBAR_PORTRAIT_END,
+};
+
+static WindowDesc _mobile_docks_landscape_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::BuildToolbar, WindowClass::None,
+	WindowDefaultFlag::Construction,
+	_nested_mobile_docks_landscape_widgets
+);
+
+static WindowDesc _mobile_docks_portrait_desc(
+	WindowPosition::Manual, {}, 0, 0,
+	WindowClass::BuildToolbar, WindowClass::None,
+	WindowDefaultFlag::Construction,
+	_nested_mobile_docks_portrait_widgets
+);
+
 /**
  * Nested widget parts of docks toolbar, game version.
  * Position of #WID_DT_RIVER widget has changed.
@@ -376,6 +585,12 @@ Window *ShowBuildDocksToolbar()
 {
 	if (!Company::IsValidID(_local_company)) return nullptr;
 
+	if (IsMobileLayout()) {
+		if (Window *w = FindWindowById(WindowClass::BuildToolbar, TransportType::Water); w != nullptr && dynamic_cast<MobileToolbarWindow *>(w) != nullptr) return w;
+		CloseWindowByClass(WindowClass::BuildToolbar);
+		bool landscape = _screen.width > _screen.height;
+		return new MobileDocksToolbarWindow(landscape ? _mobile_docks_landscape_desc : _mobile_docks_portrait_desc, landscape);
+	}
 	CloseWindowByClass(WindowClass::BuildToolbar);
 	return AllocateWindowDescFront<BuildDocksToolbarWindow>(_build_docks_toolbar_desc, TransportType::Water);
 }

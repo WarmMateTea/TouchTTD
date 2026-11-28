@@ -73,6 +73,7 @@
 #	include "os/android/android_bridge.h"
 #endif
 #include "widgets/mobile_widget.h"
+#include "mobile_toolbar.h"
 #include "widgets/road_widget.h"
 #include "widgets/rail_widget.h"
 
@@ -432,7 +433,8 @@ static void OpenSheetContent(WindowClass cls, void (*open)())
 static Window *GetMobileConstructionToolbar()
 {
 	if (Window *w = GetMobileRailToolbar(); w != nullptr) return w;
-	return GetMobileRoadToolbar();
+	if (Window *w = GetMobileRoadToolbar(); w != nullptr) return w;
+	return GetMobileToolbar();
 }
 
 static Window *GetMobileBottomBar()
@@ -851,7 +853,8 @@ struct MobileBuildMenuWindow : Window {
 	MobileBuildMenuWindow(WindowDesc &desc, Window *toolbar = nullptr) : Window(desc), toolbar(toolbar)
 	{
 		const Company *company = Company::GetIfValid(_local_company);
-		if (toolbar != nullptr && toolbar->window_number == TransportType::Rail) {
+		bool construction = toolbar != nullptr && toolbar->window_class == WindowClass::BuildToolbar;
+		if (construction && toolbar->window_number == TransportType::Rail) {
 			RailTypes used = GetRailTypes(true);
 			used.Reset(_railtypes_hidden_mask);
 			for (RailType rt : _sorted_railtypes) {
@@ -859,7 +862,7 @@ struct MobileBuildMenuWindow : Window {
 				const RailTypeInfo *rti = GetRailTypeInfo(rt);
 				this->types.push_back({rt, rti->gui_sprites.build_x_rail, rti->strings.menu_text, RailBuildCost(rt), company != nullptr && company->avail_railtypes.Test(rt)});
 			}
-		} else if (toolbar != nullptr && toolbar->window_number == TransportType::Road) {
+		} else if (construction && toolbar->window_number == TransportType::Road) {
 			/* Road types, or tram types, as the toolbar builds. */
 			this->road = true;
 			RoadTramType rtt = GetRoadTramType(GetCurrentRoadType());
@@ -962,8 +965,17 @@ struct MobileBuildMenuWindow : Window {
 		/* The category of the open toolbar just closes the flyout. */
 		if (this->toolbar != nullptr) {
 			bool same = false;
-			if (this->toolbar->window_number == TransportType::Rail) same = category == BuildCategory::Rail;
-			if (this->toolbar->window_number == TransportType::Road) same = category == (RoadTypeIsRoad(GetCurrentRoadType()) ? BuildCategory::Road : BuildCategory::Tram);
+			if (this->toolbar->window_class == WindowClass::ScenarioGenerateLandscape) {
+				same = category == BuildCategory::Landscape;
+			} else if (this->toolbar->window_number == TransportType::Rail) {
+				same = category == BuildCategory::Rail;
+			} else if (this->toolbar->window_number == TransportType::Road) {
+				same = category == (RoadTypeIsRoad(GetCurrentRoadType()) ? BuildCategory::Road : BuildCategory::Tram);
+			} else if (this->toolbar->window_number == TransportType::Water) {
+				same = category == BuildCategory::Water;
+			} else if (this->toolbar->window_number == TransportType::Air) {
+				same = category == BuildCategory::Air;
+			}
 			if (same) {
 				this->Close();
 				return;
@@ -1195,7 +1207,8 @@ static bool WantToolCancel()
 	const Window *w = _thd.GetCallbackWnd();
 	/* Not for the construction toolbar (it has its own Cancel), nor while adding stops (the stops bar has Done). */
 	/* Nor for Fund new industry, whose review footer has one. */
-	return w != nullptr && w != GetMobileConstructionToolbar() && w->window_class != WindowClass::MainWindow && w->window_class != WindowClass::VehicleView && w->window_class != WindowClass::BuildIndustry;
+	/* Nor for the tree picker, whose landscape toolbar has one. */
+	return w != nullptr && w != GetMobileConstructionToolbar() && w->window_class != WindowClass::MainWindow && w->window_class != WindowClass::VehicleView && w->window_class != WindowClass::BuildIndustry && w->window_class != WindowClass::BuildTrees;
 }
 
 /** The hub dock: a left rail in landscape and a bottom bar in portrait, with the same widgets. */
@@ -1559,8 +1572,12 @@ void RelocateMobileWindows()
 	}
 	if (dock == nullptr) dock = new MobileDockWindow(landscape ? _mobile_dock_landscape_desc : _mobile_dock_portrait_desc, landscape);
 	Window *toolbar = GetMobileConstructionToolbar();
-	if (toolbar != nullptr && (IsMobileRailToolbarLandscape(toolbar) || IsMobileRoadToolbarLandscape(toolbar)) != landscape) {
-		if (toolbar->window_number == TransportType::Rail) {
+	MobileToolbarWindow *generic = dynamic_cast<MobileToolbarWindow *>(toolbar);
+	bool toolbar_landscape = generic != nullptr ? generic->landscape : (IsMobileRailToolbarLandscape(toolbar) || IsMobileRoadToolbarLandscape(toolbar));
+	if (toolbar != nullptr && toolbar_landscape != landscape) {
+		if (generic != nullptr) {
+			generic->Recreate();
+		} else if (toolbar->window_number == TransportType::Rail) {
 			RecreateMobileRailToolbar();
 		} else {
 			RecreateMobileRoadToolbar();
@@ -1626,6 +1643,7 @@ void RelocateMobileWindows()
 		/* Its tools don't fit beside a sheet: let it switch to status, Cancel and Build only (it asks IsMobileSheetOpen()). */
 		UpdateMobileRailToolbarPlanes(toolbar);
 		UpdateMobileRoadToolbarPlanes(toolbar);
+		if (MobileToolbarWindow *t = dynamic_cast<MobileToolbarWindow *>(toolbar); t != nullptr) t->UpdateMobileWidgets();
 		/* Along the bottom of the map, between the dock and the sheet. */
 		FitWindowTo(toolbar, map_right - map_left, toolbar->height);
 		MoveWindowTo(toolbar, map_left, _screen.height - toolbar->height);
@@ -1675,7 +1693,13 @@ void RelocateMobileWindows()
 	if (MobileBuildMenuWindow *build = dynamic_cast<MobileBuildMenuWindow *>(FindWindowById(WindowClass::MobileBuildMenu, 0)); build != nullptr) {
 		if (build->toolbar != nullptr && build->toolbar == toolbar) {
 			/* Above the toolbar's category button, left edges aligned. */
-			const NWidgetBase *button = toolbar->GetWidget<NWidgetBase>(toolbar->window_number == TransportType::Road ? static_cast<WidgetID>(WID_ROT_CATEGORY) : static_cast<WidgetID>(WID_RAT_CATEGORY));
+			WidgetID category = WID_RAT_CATEGORY;
+			if (dynamic_cast<MobileToolbarWindow *>(toolbar) != nullptr) {
+				category = WID_MTB_CATEGORY;
+			} else if (toolbar->window_number == TransportType::Road) {
+				category = WID_ROT_CATEGORY;
+			}
+			const NWidgetBase *button = toolbar->GetWidget<NWidgetBase>(category);
 			int x = toolbar->left + button->pos_x;
 			MoveWindowTo(build, Clamp(x, safe.left, std::max(safe.left, safe.right + 1 - build->width)), std::max(safe.top, toolbar->top + (int)button->pos_y - build->height));
 		} else {

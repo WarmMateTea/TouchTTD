@@ -202,6 +202,26 @@ enum MobileStopsBarWidgets : WidgetID {
 	WID_MSB_GAP_BOTTOM, ///< Spacer filling the screen edge's inset at the bottom.
 };
 
+/**
+ * Widgets shared by the mobile construction toolbars built on MobileToolbarWindow (landscape, water, air).
+ * They start at 200 so they never meet the toolbars' own tool widgets.
+ */
+enum MobileToolbarWidgets : WidgetID {
+	WID_MTB_STATUS = 200, ///< Status line.
+	WID_MTB_CANCEL, ///< Cancel the selection in review, or drop the tool.
+	WID_MTB_CONFIRM, ///< Build (or demolish) the selection in review.
+	WID_MTB_UNDO, ///< Undo the last construction.
+	WID_MTB_SHOW_TOOLS, ///< Close the sheet that hides the tools.
+	WID_MTB_ROTATE, ///< Turn the depot in review.
+	WID_MTB_EXIT, ///< Leave build mode (portrait).
+	WID_MTB_CATEGORY, ///< Build flyout: build something else.
+	WID_MTB_SEL_TOOLS, ///< Selection hiding the tools while a picker fills the sheet.
+	WID_MTB_SEL_CONFIRM, ///< Selection between Build, Undo and Show tools.
+	WID_MTB_SEL_CANCEL, ///< Selection hiding Cancel while the tools are hidden by a sheet.
+	WID_MTB_SEL_ROTATE, ///< Selection showing Turn while a depot is in review.
+	WID_MTB_GAP_BOTTOM, ///< Spacer filling the screen edge's inset at the bottom.
+};
+
 /** Widgets of the mobile local authority (round 5 design, 10.1). */
 enum MobileTownAuthorityWidgets : WidgetID {
 	WID_MTA_SEL_BACK, ///< Selection showing Back when opened over the town window.

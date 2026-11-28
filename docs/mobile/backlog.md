@@ -24,6 +24,9 @@ Left over: a "Continue" entry on the main menu (the menus are in design round 4)
 - **Fund new industry: footprint highlight** (round 5 §9.3): the pending industry shows only the tapped tile. `IndustrySpec::layouts[layout]` gives the tiles; highlight their bounding box with `SetTileSelectSize()` after the tap.
 - **Story book in the mobile layout** (round 5 §10.3): title row ‹ · page dropdown · ›, the desktop page renderer filling the area with drag-scroll, story buttons at least 40 tall. Today the desktop `StoryBookWindow` sits in the World hub's tab.
 - **Newspaper picture** (round 5 §10.5): the mobile newspaper shows the headline only; the desktop `NewsWindow` draws vehicle and company pictures per `NewsStyle`.
+- **Docks and airports: catchment, acceptance and join** (round 5 §11.2, §11.3): a pending dock or airport shows no catchment or Accepts/Supplies and joins without a choice. The rail station's footprint code (`PendingSelection::station`, `UpdateJoinCandidates()`) would need a per-kind catchment radius and footprint size.
+- **Mobile layouts of the airport and tree pickers** (round 5 §11.1, §11.3): both are the desktop windows in the sheet.
+- **Rail and road toolbars on MobileToolbarWindow**: they predate the base class and keep their own copies of the status, Cancel and Build logic.
 - **Steppers: hold to repeat** (round 5 design §4): Settings' − value + steps once per tap. A held finger is a long press today (tooltip); repeating needs the gesture layer to send repeated clicks while a stepper button is held.
 - **Station picker Type row** for NewGRF station classes/types (design round 3 §3.2) isn't built; base game unaffected.
 - **"Building…" state** for multiplayer (design round 3 §1.2): planned with multiplayer in round 5, batch 13.

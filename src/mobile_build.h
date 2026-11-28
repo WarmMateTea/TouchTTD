@@ -47,6 +47,8 @@ enum class MobileViewportClick : uint8_t {
 
 bool MobileBuildReviewWanted(const Window *w);
 bool IsMobileSignalConvertOn();
+bool MobileBuildCanRotate();
+bool MobileBuildTapPending(Window *w, TileIndex tile, struct OrthogonalTileArea area, void (*post)(TileIndex tile), StringID label);
 void MobileBuildOnRelease(Window *w);
 void MobileBuildOnSizingUpdate(Window *w);
 MobileViewportClick MobileBuildOnViewportClick(const Viewport &vp, int x, int y);

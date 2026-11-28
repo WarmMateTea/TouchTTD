@@ -159,6 +159,7 @@ add_files(
     disaster_vehicle.h
     dock_cmd.h
     dock_gui.cpp
+    dock_gui.h
     driver.cpp
     driver.h
     dropdown.cpp
@@ -289,6 +290,8 @@ add_files(
     mobile_saveload_gui.h
     mobile_settings_gui.cpp
     mobile_settings_gui.h
+    mobile_toolbar.cpp
+    mobile_toolbar.h
     mobile_touch.cpp
     mobile_touch.h
     mobile_vehicle_gui.cpp
